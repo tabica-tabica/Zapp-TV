@@ -16,6 +16,7 @@
     "build:tauri:web": "node scripts/sync-brand.mjs && tsc -b && vite build --config vite.tauri.config.ts",
     "dev:tauri": "tauri dev",
     "build:tauri": "tauri build",
+    "tauri": "tauri",
     "brand:sync": "node scripts/sync-brand.mjs",
     "brand:icons": "node scripts/generate-icons.mjs",
     "lint": "eslint .",
