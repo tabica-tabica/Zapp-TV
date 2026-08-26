@@ -28,6 +28,9 @@ function humanKb(bytes) {
     return `${Math.round(bytes / 1024)} KB`;
 }
 
+// ---- 0. nome/marca: brand.config.mjs é a fonte da verdade ----
+run('node scripts/sync-brand.mjs');
+
 // ---- 1. versão: package.json é a fonte da verdade ----
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
 const config = readFileSync(configPath, 'utf8');

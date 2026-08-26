@@ -1,7 +1,8 @@
 // Retrospectiva de uso (Wrapped lite, Fase 4b): slides com as estatísticas
 // do período em tela cheia. ←→ navega, Voltar fecha.
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, type ReactNode } from 'react';
+import { FaBroadcastTower, FaFilm, FaTv, FaTrophy } from 'react-icons/fa';
 import { usageStats, type UsageKind } from '../services/usageStats';
 import { useTVNavigation } from '../hooks/useTVNavigation';
 import './WrappedOverlay.css';
@@ -10,10 +11,10 @@ interface WrappedOverlayProps {
     onClose: () => void;
 }
 
-const KIND_LABELS: Record<UsageKind, string> = {
-    live: '📺 TV ao vivo',
-    movie: '🎬 Filmes',
-    series: '🎞 Séries',
+const KIND_LABELS: Record<UsageKind, ReactNode> = {
+    live: <><FaBroadcastTower /> TV ao vivo</>,
+    movie: <><FaFilm /> Filmes</>,
+    series: <><FaTv /> Séries</>,
 };
 
 function formatHours(seconds: number): string {
@@ -34,7 +35,7 @@ export function WrappedOverlay({ onClose }: WrappedOverlayProps) {
     }, [summary]);
 
     const slides = useMemo(() => {
-        const list: Array<{ title: string; big: string; sub: string }> = [
+        const list: Array<{ title: string; big: ReactNode; sub: string }> = [
             {
                 title: 'Sua retrospectiva',
                 big: formatHours(summary.totalSeconds),
@@ -76,7 +77,7 @@ export function WrappedOverlay({ onClose }: WrappedOverlayProps) {
     return (
         <div className="wrapped-overlay">
             <div className="wrapped-slide">
-                <span className="wrapped-kicker">🏆 NeoStream Wrapped</span>
+                <span className="wrapped-kicker"><FaTrophy /> {__BRAND_NAME__} Wrapped</span>
                 <h2 className="wrapped-title">{current.title}</h2>
                 <div className="wrapped-big">{current.big}</div>
                 <p className="wrapped-sub">{current.sub}</p>

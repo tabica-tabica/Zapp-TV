@@ -17,9 +17,11 @@ interface MoviePlayerProps {
     onClose: () => void;
     /** Repassa pro VideoPlayer: aberto de dentro de um overlay (Busca Global) */
     isOverlayOwner?: boolean;
+    /** Ano de lançamento (pra busca de legenda no OpenSubtitles) */
+    year?: string;
 }
 
-export function MoviePlayer({ movieId, title, poster, container, streamId, onClose , isOverlayOwner}: MoviePlayerProps) {
+export function MoviePlayer({ movieId, title, poster, container, streamId, onClose, isOverlayOwner, year }: MoviePlayerProps) {
     const resumeTime = progressService.getMovieResumeTime(movieId);
     useWatchSession('movie', title);
 
@@ -35,6 +37,7 @@ export function MoviePlayer({ movieId, title, poster, container, streamId, onClo
             onTimeUpdate={(time, duration) => {
                 progressService.saveMovie({ id: movieId, name: title, poster, container, time, duration });
             }}
+            subtitleQuery={{ title, year }}
             onClose={onClose}
         />
     );

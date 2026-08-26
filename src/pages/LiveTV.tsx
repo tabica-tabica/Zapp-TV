@@ -4,16 +4,36 @@
 // 🎲 aleatório e retomada do último canal.
 // Color keys: 🔴 só-EPG · 🟢 aleatório · 🟡 favorito · 🔵 ocultar
 
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, type ReactNode } from 'react';
+import {
+    FaExclamationTriangle, FaStar, FaRegStar, FaEye, FaEyeSlash, FaBell, FaBellSlash,
+    FaBroadcastTower, FaCalendarAlt, FaThLarge, FaRandom, FaFutbol, FaPlay, FaHistory,
+    FaClipboardList, FaTimes,
+} from 'react-icons/fa';
+import { Grid, type CellComponentProps } from 'react-window';
+import { RemoteColorHint } from '../components/RemoteColorHint';
 import { api } from '../services/api';
 import { storage } from '../services/storage';
 import { epgService, epgOffset, type ChannelEpg, type EpgProgram } from '../services/epgService';
 import { zapHistory, hiddenChannels, hiddenCategories, liveToggles } from '../services/liveExtras';
 import { kidsFilter } from '../services/kidsFilter';
+import { contentFlags } from '../services/contentFlags';
 import { useWatchSession } from '../hooks/useWatchSession';
-import { groupChannelVariants, qualityLabel } from '../services/channelVariants';
+import { groupChannelVariants, qualityLabel, channelDisplayName } from '../services/channelVariants';
+import {
+    curatedHiddenPrefs, detectJunkCategories, detectQualityOnlyCategories,
+    isQualityTaggedChannel, computeEffectiveVisibility, type DetectedGroup,
+} from '../services/curatedHiddenGroups';
+import { detectRegionalFamilies, detectCategoryFamilies } from '../services/regionalVariants';
+import { regionalPrefs } from '../services/regionalPrefs';
 import type { LiveStream, Category } from '../types';
 import { useTVNavigation } from '../hooks/useTVNavigation';
+import { useVirtualGridNavigation } from '../hooks/useVirtualGridNavigation';
+import { useMeasuredColumns } from '../hooks/useMeasuredColumns';
+import { useBrokenImages } from '../hooks/useBrokenImages';
+import { useAdultLock } from '../hooks/useAdultLock';
+import { parentalService } from '../services/parentalService';
+import { PinPrompt } from '../components/PinPrompt';
 import { useFocusZone } from '../contexts/FocusContext';
 import { CategoryMenu, type CategoryMenuHandle } from '../components/CategoryMenu';
 import { ChannelAgendaOverlay } from '../components/ChannelAgendaOverlay';
@@ -23,6 +43,8 @@ import { reminderService } from '../services/reminderService';
 import { favoriteOrder, isRadioChannel, isSportsCategory, type SportsEvent } from '../services/liveDiscovery';
 import { AnimatedSearchBar, type AnimatedSearchBarHandle } from '../components/AnimatedSearchBar';
 import { VideoPlayer, type PlayerChannel } from '../components/VideoPlayer';
+import { LiveChannelPreview } from '../components/LiveChannelPreview';
+import { ChannelCard } from './ChannelCard';
 import './LiveTV.css';
 import { readCatalog, writeCatalog, dropCatalog, trimLive, trimCategory, type CachedLiveStream } from '../services/catalogCache';
 import { ErrorScreen } from '../components/ErrorScreen';
@@ -30,6 +52,50 @@ import { ErrorScreen } from '../components/ErrorScreen';
 function formatClock(ms: number): string {
     const d = new Date(ms);
     return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+}
+
+// Referência estável (fora do componente, nunca recriada por render) — o
+// filtro "só com tag de qualidade" roda DEPOIS do agrupamento agora, então
+// esse estágio anterior (processedStreams) nunca precisa dessa lista.
+const EMPTY_QUALITY_ONLY_MAP = new Map<string, DetectedGroup>();
+
+const CARD_WIDTH = 220;
+const CARD_GAP = 12;
+// Card horizontal (logo + texto), não um pôster — altura fixa, não deriva de columnWidth.
+const CARD_HEIGHT = 72;
+
+interface ChannelCellProps {
+    items: LiveStream[];
+    columns: number;
+    focusedIndex: number;
+    gap: number;
+    isBroken: (id: number) => boolean;
+    onImageError: (id: number) => void;
+    onSelect: (stream: LiveStream) => void;
+    selectedId: number | undefined;
+    favoriteIds: Set<number>;
+}
+
+function ChannelGridCell({
+    rowIndex, columnIndex, style, items, columns, focusedIndex, gap, isBroken, onImageError, onSelect, selectedId, favoriteIds,
+}: CellComponentProps<ChannelCellProps>) {
+    const index = rowIndex * columns + columnIndex;
+    const stream = items[index];
+    if (!stream) return null;
+    return (
+        <ChannelCard
+            stream={stream}
+            index={index}
+            focused={index === focusedIndex}
+            selected={selectedId === stream.stream_id}
+            isFavorite={favoriteIds.has(stream.stream_id)}
+            broken={isBroken(stream.stream_id)}
+            onImageError={onImageError}
+            onSelect={onSelect}
+            style={style}
+            gap={gap}
+        />
+    );
 }
 
 export function LiveTV() {
@@ -42,13 +108,25 @@ export function LiveTV() {
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedChannel, setSelectedChannel] = useState<LiveStream | null>(null);
     const [playingChannel, setPlayingChannel] = useState<LiveStream | null>(null);
-    const [brokenImages, setBrokenImages] = useState<Set<number>>(new Set());
-    const [visibleCount, setVisibleCount] = useState(24);
-    const scrollContainerRef = useRef<HTMLDivElement>(null);
+    const { isBroken, markBroken } = useBrokenImages<number>();
+    const { containerRef: scrollContainerRef, columns, columnWidth } = useMeasuredColumns({
+        cardWidth: CARD_WIDTH, gap: CARD_GAP, minColumns: 3, maxColumns: 10,
+    });
+    const {
+        lockedCategoryIds, guardSelect: guardCategorySelect, pendingCategoryId,
+        setPendingCategoryId, setUnlocked: setAdultUnlocked, justProvisioned,
+    } = useAdultLock(categories);
 
     // Filtros/toggles persistidos
     const [onlyWithEpg, setOnlyWithEpg] = useState(() => liveToggles.getOnlyWithEpg());
-    const [groupVariantsOn, setGroupVariantsOn] = useState(() => liveToggles.getGroupVariants());
+    // Só leitura aqui: o toggle mora em Configurações agora (não tem mais
+    // botão na TV ao Vivo pra ele) — se o usuário mudar lá, esta página pega
+    // o novo valor na próxima montagem.
+    const [groupVariantsOn] = useState(() => liveToggles.getGroupVariants());
+    // Categorias "ruído" ocultas por padrão — gerenciamento mora em
+    // Configurações; aqui só lê o que já foi desocultado.
+    const [curatedUnhiddenGroups] = useState(() => curatedHiddenPrefs.getUnhiddenGroups());
+    const [curatedChannelOverrides] = useState(() => curatedHiddenPrefs.getChannelOverrides());
     const [hiddenIds, setHiddenIds] = useState<Set<number>>(() => hiddenChannels.get());
     const [showOnlyHidden, setShowOnlyHidden] = useState(false);
     const [favTick, setFavTick] = useState(0);
@@ -60,8 +138,14 @@ export function LiveTV() {
     const [previewEpgFor, setPreviewEpgFor] = useState<number | null>(null);
     const [playerEpg, setPlayerEpg] = useState<ChannelEpg | null>(null);
 
-    // Toast OSD da página (⭐/🙈/failover — R1 item 53)
-    const [toast, setToast] = useState<string | null>(null);
+    // Preview de vídeo mudo da ficha (item da sessão): debounce de 400ms —
+    // igual ao lookup de EPG do zap-list em VideoPlayer.tsx — pra não ligar
+    // HLS a cada canal que o usuário só passou o olho antes de trocar de novo.
+    const [previewSrc, setPreviewSrc] = useState<string | null>(null);
+    const [previewFailed, setPreviewFailed] = useState(false);
+
+    // Toast OSD da página (favorito/oculto/failover — R1 item 53)
+    const [toast, setToast] = useState<ReactNode | null>(null);
     useEffect(() => {
         if (!toast) return;
         const timeout = setTimeout(() => setToast(null), 2500);
@@ -92,59 +176,26 @@ export function LiveTV() {
     // 'categories' = header: 0 busca, 1 menu, 2+ botões da toolbar
     const [focusArea, setFocusArea] = useState<'categories' | 'channels' | 'preview'>('channels');
     const [focusedCategoryIndex, setFocusedCategoryIndex] = useState(0);
-    const [focusedChannelIndex, setFocusedChannelIndex] = useState(0);
     const [previewFocusIndex, setPreviewFocusIndex] = useState(0);
     const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
     const searchRef = useRef<AnimatedSearchBarHandle>(null);
     const categoryMenuRef = useRef<CategoryMenuHandle>(null);
 
-    // Calculate initial visible count based on screen size
-    useEffect(() => {
-        const calculateVisibleItems = () => {
-            const container = scrollContainerRef.current;
-            if (!container) return;
-
-            // Card dimensions
-            const cardWidth = 220; // larger for live tv
-            const cardHeight = 80;
-
-            const containerWidth = container.clientWidth - 32;
-            const containerHeight = window.innerHeight;
-
-            const cols = Math.floor(containerWidth / cardWidth);
-            const rows = Math.ceil(containerHeight / cardHeight) + 1;
-
-            const initialCount = cols * rows;
-            setVisibleCount(Math.max(initialCount, 15));
-        };
-
-        calculateVisibleItems();
-        window.addEventListener('resize', calculateVisibleItems);
-
-        return () => window.removeEventListener('resize', calculateVisibleItems);
-    }, [loading]);
-
-    // Reset on filter change
-    useEffect(() => {
-        const container = scrollContainerRef.current;
-        if (!container) return;
-
-        const cardWidth = 220;
-        const cardHeight = 80;
-        const containerWidth = container.clientWidth - 32;
-        const containerHeight = window.innerHeight;
-        const cols = Math.floor(containerWidth / cardWidth);
-        const rows = Math.ceil(containerHeight / cardHeight) + 1;
-
-        setVisibleCount(Math.max(cols * rows, 15));
-        setSelectedChannel(null);
-        setFocusedChannelIndex(0);
-        setFocusArea(prev => (prev === 'preview' ? 'channels' : prev));
-    }, [searchQuery, selectedCategory, onlyWithEpg, showOnlyHidden]);
+    // Seleção/foco resetam ao trocar filtro — o canal focado pode não
+    // pertencer mais ao resultado filtrado (movido pra perto do hook de
+    // navegação da grade, mais abaixo, porque precisa de setFocusedIndex).
 
     // Fetch data
     useEffect(() => {
         async function fetchData() {
+            // "Incluir canais de TV" desmarcado no login: nem busca. Sem isto a
+            // flag só escondia o botão da sidebar — quem chegasse aqui por
+            // outro caminho (ex.: "ligar e assistir") via a busca rodar normal.
+            if (!contentFlags.includeTV()) {
+                setLoading(false);
+                return;
+            }
+
             // A flag de "ligar e assistir" é consumida AQUI, antes de qualquer
             // await. Consumi-la só depois do fetch fazia duas coisas erradas:
             // se o fetch falhava ela sobrevivia e disparava autoplay numa
@@ -238,6 +289,23 @@ export function LiveTV() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [favTick]);
 
+    // Categorias "ruído" detectadas dinamicamente na playlist ativa
+    // (curiosidades/treino/câmeras/rádios/shows/24h etc.) — recalculado
+    // sempre que a lista de categorias mudar, não uma lista fixa.
+    const junkGroupsByCategory = useMemo(() => {
+        return new Map(detectJunkCategories(categories).map(g => [g.categoryId, g]));
+    }, [categories]);
+
+    // Categorias "só com tag de qualidade" (Esportes/Variedades): ocultação
+    // POR CANAL, não por bloco — ver comentário em detectQualityOnlyCategories.
+    // Aplicado DEPOIS do agrupamento de qualidade (mais abaixo), não aqui —
+    // se aplicasse antes, "GNT" (sem tag) seria descartado ANTES de poder
+    // virar variante de fallback dentro do grupo de "GNT FHD" (a mesma
+    // marca, a mesma categoria, só que sem tag no nome).
+    const qualityOnlyGroupsByCategory = useMemo(() => {
+        return new Map(detectQualityOnlyCategories(categories).map(g => [g.categoryId, g]));
+    }, [categories]);
+
     // Cadeia de filtros (memoizada — lista pode ter milhares de canais)
     const processedStreams = useMemo(() => {
         let list = streams;
@@ -252,6 +320,20 @@ export function LiveTV() {
         // categoria no menu ainda mostra (caminho pra rever/desocultar)
         if (hiddenCatIds.size > 0 && selectedCategory !== 'FAVORITES' && !hiddenCatIds.has(selectedCategory)) {
             list = list.filter(s => !hiddenCatIds.has(s.category_id));
+        }
+
+        // Categorias curadas (curiosidades/treino/câmeras/rádios/shows/24h
+        // etc.) ocultas por padrão — gerenciado em Configurações, não aqui.
+        // "Só com tag de qualidade" (qualityOnlyGroupsByCategory) NÃO entra
+        // aqui de propósito — esse corte roda DEPOIS do agrupamento de
+        // qualidade, mais abaixo, senão perderia a chance de virar fallback.
+        list = list.filter(s => curatedHiddenPrefs.isVisible(s.name, s.category_id, s.stream_id, junkGroupsByCategory, curatedUnhiddenGroups, EMPTY_QUALITY_ONLY_MAP, curatedChannelOverrides));
+
+        // Categoria travada por PIN só aparece quando ela mesma está
+        // selecionada (guardCategorySelect já exigiu o PIN antes disso) — sem
+        // isto, canal de categoria adulta aparecia em "Todos" sem pedir PIN.
+        if (lockedCategoryIds.size > 0 && selectedCategory !== 'FAVORITES' && !lockedCategoryIds.has(selectedCategory)) {
+            list = list.filter(s => !lockedCategoryIds.has(s.category_id));
         }
 
         if (onlyWithEpg) {
@@ -270,15 +352,52 @@ export function LiveTV() {
         }
 
         return list;
-    }, [streams, hiddenIds, hiddenCatIds, showOnlyHidden, onlyWithEpg, selectedCategory, favoriteChannelIds, searchQuery]);
+    }, [streams, hiddenIds, hiddenCatIds, junkGroupsByCategory, curatedUnhiddenGroups, curatedChannelOverrides, lockedCategoryIds, showOnlyHidden, onlyWithEpg, selectedCategory, favoriteChannelIds, searchQuery]);
 
     // Agrupamento de variantes FHD/HD/SD (port do desktop)
-    const { groups: filteredStreams, variantsOf } = useMemo(() => {
+    const { groups: rawGrouped, variantsOf } = useMemo(() => {
         if (!groupVariantsOn) {
             return { groups: processedStreams, variantsOf: new Map<string, LiveStream[]>() };
         }
         return groupChannelVariants(processedStreams);
     }, [processedStreams, groupVariantsOn]);
+
+    // "Só com tag de qualidade" (Esportes/Variedades) — AGORA sim, depois do
+    // agrupamento: olha o REPRESENTANTE do grupo (a melhor variante), não
+    // cada stream_id cru. Um grupo com QUALQUER variante taggeada passa
+    // inteiro (o representante, por definição, é a de melhor qualidade —
+    // "GNT FHD" ganha de "GNT"/"GNT H265" na hora de virar representante);
+    // só fica de fora o grupo em que NENHUMA variante tem tag nenhuma.
+    const qualityGrouped = useMemo(() => {
+        if (qualityOnlyGroupsByCategory.size === 0) return rawGrouped;
+        return rawGrouped.filter(s => {
+            if (!qualityOnlyGroupsByCategory.has(s.category_id)) return true;
+            const defaultVisible = isQualityTaggedChannel(s.name);
+            return computeEffectiveVisibility(s.stream_id, defaultVisible, curatedChannelOverrides);
+        });
+    }, [rawGrouped, qualityOnlyGroupsByCategory, curatedChannelOverrides]);
+
+    // Afiliadas/praças regionais da mesma marca ("RedeTV! Guará"/"Imperial"/
+    // "Paraná"): detecta DEPOIS do agrupamento de qualidade (uma afiliada com
+    // variantes FHD/HD já virou uma entrada só) e mantém só as que o usuário
+    // selecionou em Configurações — padrão é só a primeira detectada.
+    const filteredStreams = useMemo(() => {
+        const families = detectRegionalFamilies(qualityGrouped);
+        // Redes de TV aberta nacionais (Globo/SBT/RecordTV/Band/"Abertos"): a
+        // categoria INTEIRA já é a rede, então vira 1 família por categoria —
+        // ver o comentário em detectCategoryFamilies.
+        const categoryFamilies = detectCategoryFamilies(qualityGrouped, categories);
+        if (families.size === 0 && categoryFamilies.size === 0) return qualityGrouped;
+        const hidden = new Set<number>();
+        for (const [familyKey, members] of [...families, ...categoryFamilies]) {
+            const selected = regionalPrefs.getSelected(familyKey, members[0].stream_id);
+            for (const member of members) {
+                if (!selected.has(member.stream_id)) hidden.add(member.stream_id);
+            }
+        }
+        if (hidden.size === 0) return qualityGrouped;
+        return qualityGrouped.filter(s => !hidden.has(s.stream_id));
+    }, [qualityGrouped, categories]);
 
     // Canais favoritos na ORDEM MANUAL do usuário (item 17)
     const favoriteChannels = useMemo(() => {
@@ -304,13 +423,19 @@ export function LiveTV() {
         return map;
     }, [categories]);
 
-    // Lista de canais pro player (zapping)
+    // Lista de canais pro player (zapping). `num` é a posição sequencial
+    // NESTA lista (1, 2, 3...), não o número bruto do provedor — com canal
+    // oculto (manual, categoria ou grupo curado) de fora, o número bruto
+    // tinha buraco (1, 2, 5, 8...); o zap-banner, a tira de preview do zap e
+    // o pulo por dígito em VideoPlayer.tsx todos leem esse campo, então a
+    // renumeração vale nos três de graça.
     const playerChannelList = useMemo<PlayerChannel[]>(
-        () => filteredStreams.map(s => ({
+        () => filteredStreams.map((s, index) => ({
             stream_id: s.stream_id,
-            name: s.name,
-            num: s.num,
+            name: channelDisplayName(s.name),
+            num: index + 1,
             stream_icon: s.stream_icon,
+            direct_source: s.direct_source,
         })),
         [filteredStreams]
     );
@@ -331,9 +456,33 @@ export function LiveTV() {
         ? (representativeOf.get(playingChannel.stream_id) ?? playingChannel.stream_id)
         : undefined;
 
-    // Índice focado sempre dentro do range (a lista encolhe ao ocultar/
-    // desfavoritar/agrupar sem passar pelo effect de reset)
-    const safeChannelIndex = Math.min(focusedChannelIndex, Math.max(0, filteredStreams.length - 1));
+    const {
+        focusedIndex: focusedChannelIndex, setFocusedIndex: setFocusedChannelIndex, gridRef,
+        handleNavigate: handleChannelGridNavigate, handleSelect: handleChannelGridSelect,
+    } = useVirtualGridNavigation({
+        itemCount: filteredStreams.length,
+        columns,
+        enabled: focusArea === 'channels',
+        onExitUp: () => setFocusArea('categories'),
+        onExitLeft: () => setFocusZone('sidebar'),
+        onSelect: (index) => {
+            const channel = filteredStreams[index];
+            if (!channel) return;
+            // 1º OK abre a ficha com foco no "Assistir"; 2º OK dá play
+            setSelectedChannel(channel);
+            setFocusArea('preview');
+            setPreviewFocusIndex(0);
+        },
+    });
+
+    // Seleção/foco resetam ao trocar filtro — o canal focado pode não
+    // pertencer mais ao resultado filtrado
+    useEffect(() => {
+        setSelectedChannel(null);
+        setFocusedChannelIndex(0);
+        setFocusArea(prev => (prev === 'preview' ? 'channels' : prev));
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- setFocusedChannelIndex vem do hook (estável via useCallback), não precisa entrar como dep
+    }, [searchQuery, selectedCategory, onlyWithEpg, showOnlyHidden]);
 
     // Variantes de qualidade do canal selecionado (botões da ficha)
     const selectedVariants = selectedChannel
@@ -348,8 +497,7 @@ export function LiveTV() {
 
     // Botões da toolbar na ordem do JSX — vira a extensão da zona do header
     // (sem isso, ⭐ Agora e ⚽ Jogos só abriam por mouse)
-    const toolbarItems: Array<'variants' | 'onlyepg' | 'guide' | 'random' | 'hidden' | 'favpanel' | 'sports'> = [
-        'variants',
+    const toolbarItems: Array<'onlyepg' | 'guide' | 'random' | 'hidden' | 'favpanel' | 'sports'> = [
         'onlyepg',
         'guide',
         'random',
@@ -380,22 +528,6 @@ export function LiveTV() {
     // Sessão de uso do canal ao vivo (estatísticas)
     useWatchSession('live', playingChannel?.name || '');
 
-    // Lazy loading scroll
-    useEffect(() => {
-        const container = scrollContainerRef.current;
-        if (!container) return;
-
-        const handleScroll = () => {
-            const { scrollTop, scrollHeight, clientHeight } = container;
-            if (scrollTop + clientHeight >= scrollHeight * 0.8 && visibleCount < filteredStreams.length) {
-                setVisibleCount(prev => Math.min(prev + 12, filteredStreams.length));
-            }
-        };
-
-        container.addEventListener('scroll', handleScroll);
-        return () => container.removeEventListener('scroll', handleScroll);
-    }, [filteredStreams.length, visibleCount]);
-
     // EPG da ficha do canal selecionado
     useEffect(() => {
         if (!selectedChannel) return;
@@ -407,6 +539,19 @@ export function LiveTV() {
             }
         });
         return () => { cancelled = true; };
+    }, [selectedChannel]);
+
+    // Preview de vídeo mudo da ficha: só liga o HLS depois de 400ms parado
+    // no mesmo canal — sem isto, passear pela grade com o D-pad ligaria e
+    // desligaria stream a cada canal que a seleção só passou de raspão.
+    useEffect(() => {
+        setPreviewFailed(false);
+        setPreviewSrc(null);
+        if (!selectedChannel) return;
+        const timer = setTimeout(() => {
+            setPreviewSrc(selectedChannel.direct_source || api.getLiveStreamUrl(selectedChannel.stream_id));
+        }, 400);
+        return () => clearTimeout(timer);
     }, [selectedChannel]);
 
     // EPG do canal tocando (mini-EPG do player, atualiza a cada 60s)
@@ -446,13 +591,37 @@ export function LiveTV() {
         const index = variants.findIndex(v => v.stream_id === playingChannel.stream_id);
         const next = variants[index + 1];
         if (next) {
-            setToast(`⚠ Falha no stream — trocando para ${qualityLabel(next.name)}`);
+            setToast(<><FaExclamationTriangle /> Falha no stream — trocando para {qualityLabel(next.name)}</>);
             playChannel(next);
         } else {
-            setToast('⚠ Todas as variantes deste canal falharam');
+            setToast(<><FaExclamationTriangle /> Todas as variantes deste canal falharam</>);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [playingChannel, representativeOf, variantsOf]);
+
+    // Variantes do canal TOCANDO (não o pré-visualizado) → menu unificado do player
+    const playingVariants = useMemo(
+        () => playingChannel
+            ? variantsOf.get(String(representativeOf.get(playingChannel.stream_id) ?? playingChannel.stream_id)) || []
+            : [],
+        [playingChannel, representativeOf, variantsOf]
+    );
+
+    const playerQualityVariants = useMemo(
+        () => playingVariants.length > 1
+            ? playingVariants.map(v => ({
+                  id: String(v.stream_id),
+                  label: qualityLabel(v.name),
+                  selected: v.stream_id === playingChannel?.stream_id,
+              }))
+            : undefined,
+        [playingVariants, playingChannel?.stream_id]
+    );
+
+    const handleSelectQualityVariant = useCallback((id: string) => {
+        const variant = playingVariants.find(v => String(v.stream_id) === id);
+        if (variant) playChannel(variant);
+    }, [playingVariants, playChannel]);
 
     // Zapping vindo do player (CH±, dígitos, overlay)
     const handleSwitchChannel = useCallback((streamId: number) => {
@@ -469,13 +638,17 @@ export function LiveTV() {
             poster: stream.stream_icon || undefined,
         });
         setFavTick(t => t + 1);
-        setToast(added ? `⭐ ${stream.name} favoritado` : `☆ ${stream.name} removido dos favoritos`);
+        setToast(added
+            ? <><FaStar /> {stream.name} favoritado</>
+            : <><FaRegStar /> {stream.name} removido dos favoritos</>);
     }, []);
 
     const toggleChannelHidden = useCallback((stream: LiveStream) => {
         const set = hiddenChannels.toggle(stream.stream_id);
         setHiddenIds(new Set(set));
-        setToast(set.has(stream.stream_id) ? `🙈 ${stream.name} oculto` : `👁 ${stream.name} visível de novo`);
+        setToast(set.has(stream.stream_id)
+            ? <><FaEyeSlash /> {stream.name} oculto</>
+            : <><FaEye /> {stream.name} visível de novo</>);
     }, []);
 
     // Tocar programas do arquivo como FILA (agenda ou reiniciar): no fim de
@@ -553,8 +726,8 @@ export function LiveTV() {
             startMs: program.start,
         });
         setToast(active
-            ? `🔔 Lembrete criado: ${program.title}`
-            : `🔕 Lembrete removido: ${program.title}`);
+            ? <><FaBell /> Lembrete criado: {program.title}</>
+            : <><FaBellSlash /> Lembrete removido: {program.title}</>);
         return active;
     }, []);
 
@@ -587,13 +760,6 @@ export function LiveTV() {
         });
     }, []);
 
-    const toggleGroupVariants = useCallback(() => {
-        setGroupVariantsOn(prev => {
-            liveToggles.setGroupVariants(!prev);
-            return !prev;
-        });
-    }, []);
-
     // TV Navigation
     const handleNavigate = (direction: 'up' | 'down' | 'left' | 'right') => {
         if (focusArea === 'categories') {
@@ -620,61 +786,9 @@ export function LiveTV() {
                 setFocusArea('channels');
             }
         } else if (focusArea === 'channels') {
-            const cols = 6;
-            const totalChannels = filteredStreams.length;
-            const currentCol = focusedChannelIndex % cols;
-
-            if (direction === 'up') {
-                if (focusedChannelIndex < cols) {
-                    setFocusArea('categories');
-                } else {
-                    setFocusedChannelIndex(prev => Math.max(0, prev - cols));
-                }
-            } else if (direction === 'down') {
-                setFocusedChannelIndex(prev => {
-                    const next = Math.min(totalChannels - 1, prev + cols);
-                    if (next >= visibleCount - 6) {
-                        setVisibleCount(current => Math.min(current + cols * 4, totalChannels));
-                    }
-                    return next;
-                });
-            } else if (direction === 'left') {
-                if (currentCol === 0) {
-                    setFocusZone('sidebar');
-                } else {
-                    setFocusedChannelIndex(prev => Math.max(0, prev - 1));
-                }
-            } else if (direction === 'right') {
-                setFocusedChannelIndex(prev => {
-                    const next = Math.min(totalChannels - 1, prev + 1);
-                    if (next >= visibleCount - 3) {
-                        setVisibleCount(current => Math.min(current + cols * 4, totalChannels));
-                    }
-                    return next;
-                });
-            }
+            handleChannelGridNavigate(direction);
         }
     };
-
-    // Scroll selected item into view securely
-    useEffect(() => {
-        if (focusArea === 'channels') {
-            const container = scrollContainerRef.current;
-            const focusedItem = container?.querySelector('.channel-card.tv-focused') as HTMLElement;
-
-            if (container && focusedItem) {
-                const containerRect = container.getBoundingClientRect();
-                const itemRect = focusedItem.getBoundingClientRect();
-
-                // Keep some padding for smooth view
-                if (itemRect.bottom > containerRect.bottom) {
-                    container.scrollTop += (itemRect.bottom - containerRect.bottom) + 80;
-                } else if (itemRect.top < containerRect.top) {
-                    container.scrollTop -= (containerRect.top - itemRect.top) + 80;
-                }
-            }
-        }
-    }, [focusedChannelIndex, focusArea]);
 
     const handleEnter = (fromInput?: boolean) => {
         // OK vindo de dentro do campo de busca já fechou o teclado; reabrir
@@ -687,8 +801,7 @@ export function LiveTV() {
                 categoryMenuRef.current?.open();
             } else {
                 const item = toolbarItems[focusedCategoryIndex - HEADER_BASE];
-                if (item === 'variants') toggleGroupVariants();
-                else if (item === 'onlyepg') toggleOnlyEpg();
+                if (item === 'onlyepg') toggleOnlyEpg();
                 else if (item === 'guide') setShowGuide(true);
                 else if (item === 'random') randomZap();
                 else if (item === 'hidden') setShowOnlyHidden(prev => !prev);
@@ -710,13 +823,7 @@ export function LiveTV() {
                 if (variant) playChannel(variant);
             }
         } else if (focusArea === 'channels') {
-            const channel = filteredStreams[safeChannelIndex];
-            if (channel) {
-                // 1º OK abre a ficha com foco no "Assistir"; 2º OK dá play
-                setSelectedChannel(channel);
-                setFocusArea('preview');
-                setPreviewFocusIndex(0);
-            }
+            handleChannelGridSelect();
         }
     };
 
@@ -738,7 +845,7 @@ export function LiveTV() {
         } else if (action === 'green') {
             randomZap();
         } else if (action === 'yellow' || action === 'blue') {
-            const channel = (focusArea === 'channels' && filteredStreams[safeChannelIndex]) || selectedChannel;
+            const channel = (focusArea === 'channels' && filteredStreams[focusedChannelIndex]) || selectedChannel;
             if (channel) {
                 if (action === 'yellow') toggleChannelFavorite(channel);
                 else toggleChannelHidden(channel);
@@ -751,16 +858,25 @@ export function LiveTV() {
         onEnter: handleEnter,
         onBack: handleBack,
         onAction: handleAction,
-        enabled: focusZone === 'content' && !error && !playingChannel && !archivePlayback && !showAgenda && !showGuide && !categoryMenuOpen && !showFavoritesPanel && !showSportsPanel,
+        enabled: focusZone === 'content' && !error && !playingChannel && !archivePlayback && !showAgenda && !showGuide && !categoryMenuOpen && !showFavoritesPanel && !showSportsPanel && !pendingCategoryId,
     });
-
-    const handleImageError = (streamId: number) => {
-        setBrokenImages(prev => new Set(prev).add(streamId));
-    };
 
     const getLivePlaybackUrl = (stream: LiveStream) => {
         return stream.direct_source || api.getLiveStreamUrl(stream.stream_id);
     };
+
+    const channelRowCount = Math.max(1, Math.ceil(filteredStreams.length / columns));
+    const channelCellProps = useMemo<ChannelCellProps>(() => ({
+        items: filteredStreams,
+        columns,
+        focusedIndex: focusArea === 'channels' ? focusedChannelIndex : -1,
+        gap: CARD_GAP,
+        isBroken,
+        onImageError: markBroken,
+        onSelect: setSelectedChannel,
+        selectedId: selectedChannel?.stream_id,
+        favoriteIds: favoriteChannelIds,
+    }), [filteredStreams, columns, focusArea, focusedChannelIndex, isBroken, markBroken, selectedChannel, favoriteChannelIds]);
 
     // Loading State with Animation
     if (loading) {
@@ -773,7 +889,7 @@ export function LiveTV() {
                     {[0, 1, 2].map(i => (
                         <div key={i} className="loading-ring" style={{ animationDelay: `${i * 0.5}s` }} />
                     ))}
-                    <div className="loading-tv-icon">📺</div>
+                    <div className="loading-tv-icon"><FaBroadcastTower /></div>
                 </div>
 
                 <div className="loading-text">
@@ -804,7 +920,7 @@ export function LiveTV() {
     if (error) {
         return (
             <ErrorScreen
-                icon="📡"
+                icon={FaBroadcastTower}
                 title="Erro ao carregar canais"
                 message={error}
                 className="livetv-error-container"
@@ -832,44 +948,58 @@ export function LiveTV() {
                 ref={categoryMenuRef}
                 categories={categories}
                 selectedCategory={selectedCategory}
-                onSelectCategory={setSelectedCategory}
+                onSelectCategory={(id) => guardCategorySelect(id, () => setSelectedCategory(id))}
                 type="live"
                 tvFocused={focusArea === 'categories' && focusedCategoryIndex === 1}
                 onOpenChange={setCategoryMenuOpen}
-                extraCategories={[{ category_id: 'FAVORITES', category_name: '⭐ Favoritos', parent_id: 0 }]}
+                extraCategories={[{ category_id: 'FAVORITES', category_name: 'Favoritos', parent_id: 0 }]}
                 hiddenCategoryIds={hiddenCatIds}
                 onToggleHideCategory={(id) => setHiddenCatIds(new Set(hiddenCategories.toggle(id)))}
+                lockedCategoryIds={lockedCategoryIds}
             />
+
+            {pendingCategoryId && (
+                <PinPrompt
+                    title="Categoria bloqueada"
+                    hint={justProvisioned
+                        ? 'Conteúdo adulto — PIN padrão: 0000 (altere em Configurações)'
+                        : 'Conteúdo adulto — digite o PIN'}
+                    parental
+                    onSubmit={async (pin) => {
+                        const ok = await parentalService.verify(pin);
+                        if (ok) {
+                            setAdultUnlocked(true);
+                            setSelectedCategory(pendingCategoryId);
+                            setPendingCategoryId(null);
+                        }
+                        return ok;
+                    }}
+                    onCancel={() => setPendingCategoryId(null)}
+                />
+            )}
 
             {/* Toolbar de filtros */}
             <div className="livetv-toolbar">
                 <button
-                    className={`toolbar-btn ${groupVariantsOn ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('variants') ? 'tv-focused' : ''}`}
-                    onClick={toggleGroupVariants}
-                    title="Agrupar variantes de qualidade (FHD/HD/SD)"
-                >
-                    🧬
-                </button>
-                <button
                     className={`toolbar-btn ${onlyWithEpg ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('onlyepg') ? 'tv-focused' : ''}`}
                     onClick={toggleOnlyEpg}
-                    title="Só canais com EPG (🔴)"
+                    title="Só canais com EPG"
                 >
-                    📅
+                    <FaCalendarAlt />
                 </button>
                 <button
                     className={`toolbar-btn ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('guide') ? 'tv-focused' : ''}`}
                     onClick={() => setShowGuide(true)}
                     title="Guia de programação (grade multi-canal)"
                 >
-                    📊
+                    <FaThLarge />
                 </button>
                 <button
                     className={`toolbar-btn ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('random') ? 'tv-focused' : ''}`}
                     onClick={randomZap}
-                    title="Canal aleatório (🟢)"
+                    title="Canal aleatório"
                 >
-                    🎲
+                    <FaRandom />
                 </button>
                 {(hiddenIds.size > 0 || showOnlyHidden) && (
                     <button
@@ -877,7 +1007,7 @@ export function LiveTV() {
                         onClick={() => setShowOnlyHidden(prev => !prev)}
                         title="Ver canais ocultos"
                     >
-                        🙈 {hiddenIds.size}
+                        <FaEyeSlash /> {hiddenIds.size}
                     </button>
                 )}
                 {favoriteChannels.length > 0 && (
@@ -886,7 +1016,7 @@ export function LiveTV() {
                         onClick={() => setShowFavoritesPanel(true)}
                         title="Agora nos favoritos"
                     >
-                        ⭐ Agora
+                        <FaStar /> Agora
                     </button>
                 )}
                 {sportsChannels.length > 0 && (
@@ -895,37 +1025,59 @@ export function LiveTV() {
                         onClick={() => setShowSportsPanel(true)}
                         title="Jogos de hoje"
                     >
-                        ⚽ Jogos
+                        <FaFutbol /> Jogos
                     </button>
                 )}
             </div>
 
-            {/* Channel Preview (when selected) */}
-            {selectedChannel && (
+            {/* Channel Preview (when selected) — não junto com o player cheio
+                tocando: a ficha ficava montada por baixo do VideoPlayer,
+                com a própria prévia de vídeo ainda tentando manter conexão
+                HLS atrás da tela cheia — canal duplicado consumindo uma
+                conexão à toa (achado ao verificar a prévia muda do zap-list:
+                a conta de teste aguenta 2 conexões simultâneas só, e essa
+                sobrava escondida gastando uma). Fechar o player (onClose)
+                não limpa `selectedChannel` de propósito — o usuário volta
+                pra ficha, não pra grade — então a prévia reaparece sozinha
+                quando `playingChannel` volta a null. */}
+            {selectedChannel && !playingChannel && (
                 <div className="channel-preview">
                     <div className="preview-header">
-                        <h2 className="preview-title">{selectedChannel.name}</h2>
+                        <h2 className="preview-title">{channelDisplayName(selectedChannel.name)}</h2>
                         <button
                             className="preview-close"
                             onClick={() => {
                                 setSelectedChannel(null);
                                 setFocusArea('channels');
                             }}
-                        >✕</button>
+                        ><FaTimes /></button>
                     </div>
                     <div className="preview-content">
                         <div className="preview-video">
-                            <div className="preview-placeholder">
-                                {brokenImages.has(selectedChannel.stream_id) ? (
-                                    <span className="placeholder-emoji">📺</span>
-                                ) : (
-                                    <img decoding="async"
-                                        src={selectedChannel?.stream_icon || ''}
-                                        alt={selectedChannel?.name || 'Canal'}
-                                        onError={() => handleImageError(selectedChannel.stream_id)}
-                                    />
-                                )}
-                            </div>
+                            {/* Vídeo mudo só depois do debounce (previewSrc) — antes
+                                disso, ou se o stream falhar, cai no logo estático de
+                                sempre. `key` força remontar o preview (e portanto o
+                                useHls por trás) quando o canal muda mesmo que o src
+                                resolvido dê na mesma URL por acidente. */}
+                            {previewSrc && !previewFailed ? (
+                                <LiveChannelPreview
+                                    key={selectedChannel.stream_id}
+                                    src={previewSrc}
+                                    onError={() => setPreviewFailed(true)}
+                                />
+                            ) : (
+                                <div className="preview-placeholder">
+                                    {isBroken(selectedChannel.stream_id) ? (
+                                        <span className="placeholder-emoji"><FaBroadcastTower /></span>
+                                    ) : (
+                                        <img decoding="async"
+                                            src={selectedChannel?.stream_icon || ''}
+                                            alt={selectedChannel?.name || 'Canal'}
+                                            onError={() => markBroken(selectedChannel.stream_id)}
+                                        />
+                                    )}
+                                </div>
+                            )}
                             <div className="live-badge">
                                 <span className="live-dot" />
                                 {/* O <span> não é decorativo: texto solto vira
@@ -983,21 +1135,21 @@ export function LiveTV() {
                                     className={`play-button ${focusArea === 'preview' && previewFocusIndex === previewActionIndex('play') ? 'tv-focused' : ''}`}
                                     onClick={() => playChannel(selectedChannel)}
                                 >
-                                    ▶ Assistir
+                                    <FaPlay /> Assistir
                                 </button>
                                 <button
                                     className={`info-button ${favoriteChannelIds.has(selectedChannel.stream_id) ? 'active' : ''} ${focusArea === 'preview' && previewFocusIndex === previewActionIndex('fav') ? 'tv-focused' : ''}`}
                                     onClick={() => toggleChannelFavorite(selectedChannel)}
-                                    title="Favorito (🟡)"
+                                    title="Favorito"
                                 >
-                                    {favoriteChannelIds.has(selectedChannel.stream_id) ? '⭐ Favorito' : '☆ Favoritar'}
+                                    {favoriteChannelIds.has(selectedChannel.stream_id) ? <><FaStar /> Favorito</> : <><FaRegStar /> Favoritar</>}
                                 </button>
                                 <button
                                     className={`info-button ${focusArea === 'preview' && previewFocusIndex === previewActionIndex('hide') ? 'tv-focused' : ''}`}
                                     onClick={() => toggleChannelHidden(selectedChannel)}
-                                    title="Ocultar canal (🔵)"
+                                    title="Ocultar canal"
                                 >
-                                    🙈 {hiddenIds.has(selectedChannel.stream_id) ? 'Mostrar' : 'Ocultar'}
+                                    {hiddenIds.has(selectedChannel.stream_id) ? <><FaEye /> Mostrar</> : <><FaEyeSlash /> Ocultar</>}
                                 </button>
                                 {canRestart && (
                                     <button
@@ -1005,7 +1157,7 @@ export function LiveTV() {
                                         onClick={restartProgram}
                                         title="Reiniciar o programa atual (catch-up)"
                                     >
-                                        ⏮ Reiniciar
+                                        <FaHistory /> Reiniciar
                                     </button>
                                 )}
                                 <button
@@ -1013,7 +1165,7 @@ export function LiveTV() {
                                     onClick={() => setShowAgenda(true)}
                                     title="Programação do dia"
                                 >
-                                    📋 Agenda
+                                    <FaClipboardList /> Agenda
                                 </button>
                             </div>
                         </div>
@@ -1021,45 +1173,37 @@ export function LiveTV() {
                 </div>
             )}
 
-            {/* Channels Grid - Horizontal Cards */}
+            {/* Channels Grid — virtualizado (react-window): o catálogo pode
+                ter milhares de canais, e só a janela visível+overscan monta. */}
             <div ref={scrollContainerRef} className="livetv-content">
                 {filteredStreams.length === 0 ? (
                     <div className="no-results">
-                        <div className="no-results-icon">📺</div>
-                        <p>Nenhum canal encontrado</p>
-                        <span>Tente buscar por outro termo</span>
+                        <div className="no-results-icon"><FaBroadcastTower /></div>
+                        {contentFlags.includeTV() ? (
+                            <>
+                                <p>Nenhum canal encontrado</p>
+                                <span>Tente buscar por outro termo</span>
+                            </>
+                        ) : (
+                            <>
+                                <p>TV ao vivo desativada para esta playlist</p>
+                                <span>Mude isso ao adicionar a playlist de novo, em Configurações</span>
+                            </>
+                        )}
                     </div>
                 ) : (
-                    <div className="channels-grid">
-                        {filteredStreams.slice(0, visibleCount).map((stream, index) => (
-                            <div
-                                key={stream.stream_id}
-                                className={`channel-card ${focusArea === 'channels' && safeChannelIndex === index ? 'tv-focused' : ''} ${selectedChannel?.stream_id === stream.stream_id ? 'selected' : ''}`}
-                                onClick={() => setSelectedChannel(stream)}
-                                style={{ animationDelay: `${Math.min(index * 0.03, 0.5)}s` }}
-                            >
-                                <div className="channel-logo">
-                                    {brokenImages.has(stream.stream_id) ? (
-                                        <span className="channel-placeholder">📺</span>
-                                    ) : (
-                                        <img decoding="async"
-                                            src={stream?.stream_icon || ''}
-                                            alt={stream?.name || 'Canal'}
-                                            onError={() => handleImageError(stream.stream_id)}
-                                        />
-                                    )}
-                                </div>
-                                <div className="channel-info">
-                                    <div className="channel-name">
-                                        {favoriteChannelIds.has(stream.stream_id) && <span className="channel-fav">⭐ </span>}
-                                        {stream?.name || 'Canal Sem Nome'}
-                                        {Number(stream.tv_archive) > 0 && <span className="channel-catchup"> ⏮</span>}
-                                    </div>
-                                </div>
-                                <div className="channel-live-indicator" />
-                            </div>
-                        ))}
-                    </div>
+                    <Grid
+                        className="channels-grid-viewport"
+                        gridRef={gridRef}
+                        cellComponent={ChannelGridCell}
+                        cellProps={channelCellProps}
+                        columnCount={columns}
+                        columnWidth={columnWidth}
+                        rowCount={channelRowCount}
+                        rowHeight={CARD_HEIGHT + CARD_GAP}
+                        overscanCount={1}
+                        style={{ height: '100%', width: '100%' }}
+                    />
                 )}
             </div>
 
@@ -1068,10 +1212,10 @@ export function LiveTV() {
                 <span>↑↓←→ Navegar</span>
                 <span>OK Ficha / Assistir</span>
                 <span>← Voltar</span>
-                <span className="hint-red">🔴 Só EPG</span>
-                <span className="hint-green">🟢 Aleatório</span>
-                <span className="hint-yellow">🟡 Favorito</span>
-                <span className="hint-blue">🔵 Ocultar</span>
+                <RemoteColorHint color="red" label="Só EPG" />
+                <RemoteColorHint color="green" label="Aleatório" />
+                <RemoteColorHint color="yellow" label="Favorito" />
+                <RemoteColorHint color="blue" label="Ocultar" />
             </div>
 
             {/* Agenda do dia do canal (itens 2+4) */}
@@ -1107,7 +1251,7 @@ export function LiveTV() {
                         key={`${archivePlayback.channel.stream_id}-${program.start}`}
                         autoAdvanceCountRef={archiveAutoAdvanceRef}
                         src={api.getTimeshiftUrl(archivePlayback.channel.stream_id, realStart, durationMin)}
-                        title={`⏮ ${program.title} — ${archivePlayback.channel.name}`}
+                        title={`Replay: ${program.title} — ${archivePlayback.channel.name}`}
                         poster={archivePlayback.channel.stream_icon || undefined}
                         autoPlay
                         // A fila do arquivo sempre emenda: é ela que devolve o
@@ -1127,7 +1271,7 @@ export function LiveTV() {
             {showGuide && (
                 <EpgGrid
                     channels={filteredStreams}
-                    initialChannelId={selectedChannel?.stream_id ?? filteredStreams[safeChannelIndex]?.stream_id}
+                    initialChannelId={selectedChannel?.stream_id ?? filteredStreams[focusedChannelIndex]?.stream_id}
                     onClose={() => setShowGuide(false)}
                     onPlay={(canal) => {
                         setShowGuide(false);
@@ -1175,7 +1319,7 @@ export function LiveTV() {
             {playingChannel && !archivePlayback && (
                 <VideoPlayer
                     src={getLivePlaybackUrl(playingChannel)}
-                    title={playingChannel.name}
+                    title={channelDisplayName(playingChannel.name)}
                     poster={playingChannel.stream_icon}
                     isLive
                     autoPlay
@@ -1188,6 +1332,8 @@ export function LiveTV() {
                     onStreamFailed={handleStreamFailed}
                     onRequestPauseLive={handleRequestPauseLive}
                     isRadio={isRadioChannel(playingChannel, categoryNameById.get(playingChannel.category_id))}
+                    qualityVariants={playerQualityVariants}
+                    onSelectQualityVariant={handleSelectQualityVariant}
                     onClose={() => setPlayingChannel(null)}
                 />
             )}

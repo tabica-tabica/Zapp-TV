@@ -6,7 +6,7 @@
         </platform>
     </platforms>
     <package>
-        <name>NeoStreamTV</name>
+        <name>ZappTV</name>
         <type>webapp</type>
     </package>
 </tproject>

@@ -56,6 +56,7 @@ export function SeriesQueuePlayer({ queue: initialQueue, onClose, isOverlayOwner
                     isLastEpisode: !hasNext(queue),
                 });
             }}
+            subtitleQuery={{ title: queue.seriesName, season: ep.season, episode: ep.episode }}
             onNextEpisode={() => setQueue(q => (hasNext(q) ? { ...q, index: q.index + 1 } : q))}
             onPreviousEpisode={() => setQueue(q => (hasPrevious(q) ? { ...q, index: q.index - 1 } : q))}
             canGoNext={hasNext(queue)}

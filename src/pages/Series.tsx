@@ -1,15 +1,28 @@
 // Series Page - Matching NeoStream Desktop Style
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, type ReactNode } from 'react';
+import {
+    FaTv, FaHeart, FaRegHeart, FaBookmark, FaRegBookmark, FaSort, FaEyeSlash,
+    FaCalendarAlt, FaTheaterMasks, FaStar,
+} from 'react-icons/fa';
+import { RemoteColorHint } from '../components/RemoteColorHint';
+import { Grid, type CellComponentProps } from 'react-window';
 import { api } from '../services/api';
 import type { Series as SeriesType, Category } from '../types';
 import { useTVNavigation } from '../hooks/useTVNavigation';
+import { useVirtualGridNavigation } from '../hooks/useVirtualGridNavigation';
+import { useMeasuredColumns } from '../hooks/useMeasuredColumns';
+import { useBrokenImages } from '../hooks/useBrokenImages';
+import { useAdultLock } from '../hooks/useAdultLock';
+import { parentalService } from '../services/parentalService';
+import { PinPrompt } from '../components/PinPrompt';
 import { useFocusZone } from '../contexts/FocusContext';
 import { mapaDeGeneros, generosDisponiveis, rotuloDoGenero } from '../services/catalogGenres';
 import { CategoryMenu, type CategoryMenuHandle } from '../components/CategoryMenu';
 import { AnimatedSearchBar, type AnimatedSearchBarHandle } from '../components/AnimatedSearchBar';
 import { ContentDetailModal } from '../components/ContentDetailModal';
 import { SeriesQueuePlayer } from '../components/SeriesQueuePlayer';
+import { SeriesCard, type SeriesCardBadge } from './SeriesCard';
 import { buildEpisodeQueue, type EpisodeQueue } from '../services/seriesPlayback';
 import {
     catalogSort, sortCatalog, hideWatched, isRecentlyAdded, newEpisodes, SORT_LABELS, type CatalogSort,
@@ -17,10 +30,49 @@ import {
     type CatalogFilters,
 } from '../services/catalogExtras';
 import { kidsFilter } from '../services/kidsFilter';
+import { contentFlags } from '../services/contentFlags';
 import { progressService } from '../services/progressService';
 import { storage } from '../services/storage';
 import './Series.css';
 import { ErrorScreen } from '../components/ErrorScreen';
+
+const CARD_WIDTH = 180;
+const CARD_GAP = 16;
+const CARD_INFO_HEIGHT = 40;
+
+interface SeriesCellProps {
+    items: SeriesType[];
+    columns: number;
+    focusedIndex: number;
+    gap: number;
+    isBroken: (id: number) => boolean;
+    onImageError: (id: number) => void;
+    onSelect: (item: SeriesType) => void;
+    selectedId: number | undefined;
+    badgeFor: (item: SeriesType) => SeriesCardBadge;
+}
+
+function SeriesGridCell({
+    rowIndex, columnIndex, style, items, columns, focusedIndex, gap, isBroken, onImageError, onSelect, selectedId, badgeFor,
+}: CellComponentProps<SeriesCellProps>) {
+    const index = rowIndex * columns + columnIndex;
+    const item = items[index];
+    if (!item) return null;
+    return (
+        <SeriesCard
+            item={item}
+            index={index}
+            focused={index === focusedIndex}
+            selected={selectedId === item.series_id}
+            broken={isBroken(item.series_id)}
+            badge={badgeFor(item)}
+            onSelect={onSelect}
+            onImageError={onImageError}
+            style={style}
+            gap={gap}
+        />
+    );
+}
 
 export function Series() {
     const { focusZone, setFocusZone } = useFocusZone();
@@ -35,9 +87,14 @@ export function Series() {
     const [selectedSeries, setSelectedSeries] = useState<SeriesType | null>(null);
     const [showModal, setShowModal] = useState(false);
     const [seriesQueue, setSeriesQueue] = useState<EpisodeQueue | null>(null);
-    const [brokenImages, setBrokenImages] = useState<Set<number>>(new Set());
-    const [visibleCount, setVisibleCount] = useState(24); // Start with reasonable default
-    const scrollContainerRef = useRef<HTMLDivElement>(null);
+    const { isBroken, markBroken } = useBrokenImages<number>();
+    const { containerRef: scrollContainerRef, columns, columnWidth } = useMeasuredColumns({
+        cardWidth: CARD_WIDTH, gap: CARD_GAP, minColumns: 3, maxColumns: 10,
+    });
+    const {
+        lockedCategoryIds, guardSelect: guardCategorySelect, pendingCategoryId,
+        setPendingCategoryId, setUnlocked: setAdultUnlocked, justProvisioned,
+    } = useAdultLock(categories);
 
     // Ordenação / esconder assistidos / selo NOVO / novos episódios (Fase 3)
     const [sortMode, setSortMode] = useState<CatalogSort>(() => catalogSort.get('series'));
@@ -47,7 +104,7 @@ export function Series() {
     const [filters, setFilters] = useState<CatalogFilters>(() => catalogFilters.get('series'));
     const [contextItem, setContextItem] = useState<SeriesType | null>(null);
     const [contextIndex, setContextIndex] = useState(0);
-    const [toast, setToast] = useState<string | null>(null);
+    const [toast, setToast] = useState<ReactNode | null>(null);
     // Congelado no mount: Date.now() no render viola a pureza do react-hooks
     const [nowMs] = useState(() => Date.now());
 
@@ -55,41 +112,19 @@ export function Series() {
     // 'categories' = zona do header: índice 0 é a busca, 1 é o menu de categorias
     const [focusArea, setFocusArea] = useState<'categories' | 'series'>('series');
     const [focusedCategoryIndex, setFocusedCategoryIndex] = useState(0);
-    const [focusedSeriesIndex, setFocusedSeriesIndex] = useState(0);
     const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
     const searchRef = useRef<AnimatedSearchBarHandle>(null);
     const categoryMenuRef = useRef<CategoryMenuHandle>(null);
 
-    // Calculate initial visible count based on screen size
-    useEffect(() => {
-        const calculateVisibleItems = () => {
-            const container = scrollContainerRef.current;
-            if (!container) return;
-
-            // Card dimensions (160px min width + 20px gap)
-            const cardWidth = 180;
-            const cardHeight = 290; // 2:3 aspect ratio (~240px) + title (~50px)
-
-            const containerWidth = container.clientWidth - 32; // minus padding
-            const containerHeight = window.innerHeight;
-
-            // Calculate columns and rows that fit on screen + 1 extra row
-            const cols = Math.floor(containerWidth / cardWidth);
-            const rows = Math.ceil(containerHeight / cardHeight) + 1; // +1 extra row
-
-            const initialCount = cols * rows;
-            setVisibleCount(Math.max(initialCount, 12)); // Minimum 12 items
-        };
-
-        calculateVisibleItems();
-        window.addEventListener('resize', calculateVisibleItems);
-
-        return () => window.removeEventListener('resize', calculateVisibleItems);
-    }, [loading]); // Recalculate when loading finishes
-
     // Fetch data
     useEffect(() => {
         async function fetchData() {
+            // "Incluir VOD" desmarcado no login: nem busca — mesmo motivo do
+            // gate em LiveTV.tsx.
+            if (!contentFlags.includeVOD()) {
+                setLoading(false);
+                return;
+            }
             try {
                 setLoading(true);
                 const [seriesData, categoriesData] = await Promise.all([
@@ -170,6 +205,9 @@ export function Series() {
             const matchesSearch = !query || fuzzyMatches(s.name || '', query);
             const matchesCategory = selectedCategory === 'all' || s.category_id === selectedCategory;
             if (!matchesSearch || !matchesCategory) return false;
+            // Categoria travada por PIN só aparece quando ela mesma está
+            // selecionada — mesmo motivo do gate em Movies.tsx.
+            if (lockedCategoryIds.has(s.category_id) && selectedCategory !== s.category_id) return false;
             if (hasFilters && !matchesFilters(s, filters)) return false;
             if (genero && generoPorCategoria.get(s.category_id) !== genero) return false;
             return true;
@@ -183,7 +221,7 @@ export function Series() {
             );
         }
         return list;
-    }, [sortedSeries, searchQuery, selectedCategory, finishedSeriesIds, filters, genero, generoPorCategoria]);
+    }, [sortedSeries, searchQuery, selectedCategory, finishedSeriesIds, filters, genero, generoPorCategoria, lockedCategoryIds]);
 
     // Grade vazia numa TV e indistinguivel de defeito: dizer QUAIS filtros
     // estao ligados e o que fecha a duvida
@@ -196,41 +234,33 @@ export function Series() {
         hideWatchedOn ? 'esconder assistidos' : '',
     ].filter(Boolean);
 
-    // Índice focado sempre no range (lista encolhe ao esconder assistidos)
-    const safeSeriesIndex = Math.min(focusedSeriesIndex, Math.max(0, filteredSeries.length - 1));
-
-    // Lazy loading scroll - load one more row when scrolling near bottom
+    // Selecionado limpa ao trocar busca/categoria — a ficha aberta pode não
+    // fazer mais parte do resultado filtrado
     useEffect(() => {
-        const container = scrollContainerRef.current;
-        if (!container) return;
-
-        const handleScroll = () => {
-            const { scrollTop, scrollHeight, clientHeight } = container;
-            // Load more when user scrolls to 80% of the content
-            if (scrollTop + clientHeight >= scrollHeight * 0.8 && visibleCount < filteredSeries.length) {
-                setVisibleCount(prev => Math.min(prev + 12, filteredSeries.length));
-            }
-        };
-
-        container.addEventListener('scroll', handleScroll);
-        return () => container.removeEventListener('scroll', handleScroll);
-    }, [filteredSeries.length, visibleCount]);
-
-    // Reset on filter change - recalculate visible count
-    useEffect(() => {
-        const container = scrollContainerRef.current;
-        if (!container) return;
-
-        const cardWidth = 180;
-        const cardHeight = 290;
-        const containerWidth = container.clientWidth - 32;
-        const containerHeight = window.innerHeight;
-        const cols = Math.floor(containerWidth / cardWidth);
-        const rows = Math.ceil(containerHeight / cardHeight) + 1;
-
-        setVisibleCount(Math.max(cols * rows, 12));
         setSelectedSeries(null);
     }, [searchQuery, selectedCategory]);
+
+    const openSeriesModal = useCallback((item: SeriesType) => {
+        setSelectedSeries(item);
+        setShowModal(true);
+        // Abrir a ficha "vê" os episódios novos — atualiza o baseline
+        newEpisodes.markSeen(String(item.series_id), item.last_modified || '0');
+        setNewEpisodesTick(t => t + 1);
+    }, []);
+
+    const {
+        focusedIndex, setFocusedIndex, gridRef, handleNavigate: handleGridNavigate, handleSelect: handleGridSelect,
+    } = useVirtualGridNavigation({
+        itemCount: filteredSeries.length,
+        columns,
+        enabled: focusArea === 'series',
+        onExitUp: () => setFocusArea('categories'),
+        onExitLeft: () => setFocusZone('sidebar'),
+        onSelect: (index) => {
+            const item = filteredSeries[index];
+            if (item) openSeriesModal(item);
+        },
+    });
 
     // TV Navigation
     const handleNavigate = (direction: 'up' | 'down' | 'left' | 'right') => {
@@ -247,68 +277,12 @@ export function Series() {
                 setFocusedCategoryIndex(prev => Math.min(maxHeaderIndex, prev + 1));
             } else if (direction === 'down') {
                 setFocusArea('series');
-                setFocusedSeriesIndex(0);
+                setFocusedIndex(0);
             }
         } else if (focusArea === 'series') {
-            const cols = 6;
-            const totalSeries = filteredSeries.length;
-            const currentCol = focusedSeriesIndex % cols;
-
-            if (direction === 'up') {
-                if (focusedSeriesIndex < cols) {
-                    setFocusArea('categories');
-                } else {
-                    setFocusedSeriesIndex(prev => Math.max(0, prev - cols));
-                }
-            } else if (direction === 'down') {
-                setFocusedSeriesIndex(prev => {
-                    const next = Math.min(totalSeries - 1, prev + cols);
-                    // If we're getting close to the visible limit, load more
-                    if (next >= visibleCount - 10) {
-                        setVisibleCount(current => Math.min(current + cols * 4, totalSeries));
-                    }
-                    return next;
-                });
-            } else if (direction === 'left') {
-                if (currentCol === 0) {
-                    // At first column - go to sidebar
-                    setFocusZone('sidebar');
-                } else {
-                    setFocusedSeriesIndex(prev => Math.max(0, prev - 1));
-                }
-            } else if (direction === 'right') {
-                setFocusedSeriesIndex(prev => {
-                    const next = Math.min(totalSeries - 1, prev + 1);
-                    if (next >= visibleCount - 5) {
-                        setVisibleCount(current => Math.min(current + cols * 4, totalSeries));
-                    }
-                    return next;
-                });
-            }
+            handleGridNavigate(direction);
         }
     };
-
-    // Scroll selected item into view when navigating with TV remote
-    useEffect(() => {
-        if (focusArea === 'series' && focusZone === 'content') {
-            const container = scrollContainerRef.current;
-            const focusedItem = container?.querySelector('.series-card.tv-focused') as HTMLElement;
-            
-            if (container && focusedItem) {
-                const containerRect = container.getBoundingClientRect();
-                const itemRect = focusedItem.getBoundingClientRect();
-                
-                // If item is below the view
-                if (itemRect.bottom > containerRect.bottom) {
-                    container.scrollTop += (itemRect.bottom - containerRect.bottom) + 20;
-                }
-                // If item is above the view
-                else if (itemRect.top < containerRect.top) {
-                    container.scrollTop -= (containerRect.top - itemRect.top) + 20;
-                }
-            }
-        }
-    }, [focusedSeriesIndex, focusArea, focusZone]);
 
     const cycleSort = () => {
         setSortMode(prev => {
@@ -355,7 +329,7 @@ export function Series() {
 
     // Menu de contexto no card (item 24)
     const openContextMenu = () => {
-        const item = filteredSeries[safeSeriesIndex];
+        const item = filteredSeries[focusedIndex];
         if (!item) return;
         setContextItem(item);
         setContextIndex(0);
@@ -363,7 +337,8 @@ export function Series() {
 
     const contextActions = contextItem ? [
         {
-            label: storage.isFavorite(String(contextItem.series_id), 'series') ? '💔 Remover dos favoritos' : '❤️ Favoritar',
+            label: storage.isFavorite(String(contextItem.series_id), 'series')
+                ? <><FaHeart /> Remover dos favoritos</> : <><FaRegHeart /> Favoritar</>,
             run: () => {
                 const added = storage.toggleFavorite({
                     id: String(contextItem.series_id),
@@ -372,11 +347,12 @@ export function Series() {
                     poster: contextItem.cover,
                     rating: contextItem.rating,
                 });
-                setToast(added ? '❤️ Adicionado aos favoritos' : '💔 Removido dos favoritos');
+                setToast(added ? <><FaHeart /> Adicionado aos favoritos</> : <><FaRegHeart /> Removido dos favoritos</>);
             },
         },
         {
-            label: storage.isInWatchLater(String(contextItem.series_id), 'series') ? '➖ Tirar da Minha Lista' : '➕ Minha Lista',
+            label: storage.isInWatchLater(String(contextItem.series_id), 'series')
+                ? <><FaBookmark /> Tirar da Minha Lista</> : <><FaRegBookmark /> Minha Lista</>,
             run: () => {
                 const added = storage.toggleWatchLater({
                     id: String(contextItem.series_id),
@@ -385,18 +361,10 @@ export function Series() {
                     poster: contextItem.cover,
                     rating: contextItem.rating,
                 });
-                setToast(added ? '➕ Salvo na Minha Lista' : '➖ Removido da Minha Lista');
+                setToast(added ? <><FaBookmark /> Salvo na Minha Lista</> : <><FaRegBookmark /> Removido da Minha Lista</>);
             },
         },
     ] : [];
-
-    const openSeriesModal = (item: SeriesType) => {
-        setSelectedSeries(item);
-        setShowModal(true);
-        // Abrir a ficha "vê" os episódios novos — atualiza o baseline
-        newEpisodes.markSeen(String(item.series_id), item.last_modified || '0');
-        setNewEpisodesTick(t => t + 1);
-    };
 
     const handleEnter = (fromInput?: boolean) => {
         // OK vindo de dentro do campo de busca já fechou o teclado; reabrir
@@ -417,8 +385,7 @@ export function Series() {
                 else if (item === 'nota') cycleNota();
             }
         } else if (focusArea === 'series') {
-            const item = filteredSeries[safeSeriesIndex];
-            if (item) openSeriesModal(item);
+            handleGridSelect();
         }
     };
 
@@ -429,7 +396,7 @@ export function Series() {
         onAction: (action) => {
             if (action === 'yellow' && focusArea === 'series') openContextMenu();
         },
-        enabled: focusZone === 'content' && !error && !showModal && !seriesQueue && !categoryMenuOpen && !contextItem,
+        enabled: focusZone === 'content' && !error && !showModal && !seriesQueue && !categoryMenuOpen && !contextItem && !pendingCategoryId,
     });
 
     useTVNavigation({
@@ -457,9 +424,27 @@ export function Series() {
         },
     });
 
-    const handleImageError = (seriesId: number) => {
-        setBrokenImages(prev => new Set(prev).add(seriesId));
-    };
+    const badgeFor = useCallback((item: SeriesType): SeriesCardBadge => {
+        if (followedSeriesIds.has(String(item.series_id)) && newEpisodes.has(String(item.series_id), item.last_modified || '0')) {
+            return 'episodes';
+        }
+        return isRecentlyAdded(item, nowMs) ? 'new' : null;
+    }, [followedSeriesIds, nowMs]);
+
+    // Altura da linha: pôster 2:3 + a faixa de título + o gap entre linhas.
+    const seriesCardHeight = Math.round((columnWidth - CARD_GAP) * 1.5) + CARD_INFO_HEIGHT + CARD_GAP;
+    const seriesRowCount = Math.max(1, Math.ceil(filteredSeries.length / columns));
+    const seriesCellProps = useMemo<SeriesCellProps>(() => ({
+        items: filteredSeries,
+        columns,
+        focusedIndex: focusArea === 'series' ? focusedIndex : -1,
+        gap: CARD_GAP,
+        isBroken,
+        onImageError: markBroken,
+        onSelect: openSeriesModal,
+        selectedId: selectedSeries?.series_id,
+        badgeFor,
+    }), [filteredSeries, columns, focusArea, focusedIndex, isBroken, markBroken, openSeriesModal, selectedSeries, badgeFor]);
 
     // Loading State
     if (loading) {
@@ -484,7 +469,7 @@ export function Series() {
     if (error) {
         return (
             <ErrorScreen
-                icon="📺"
+                icon={FaTv}
                 title="Erro ao carregar séries"
                 message={error}
                 className="series-error-container"
@@ -517,11 +502,32 @@ export function Series() {
                 ref={categoryMenuRef}
                 categories={categories}
                 selectedCategory={selectedCategory}
-                onSelectCategory={setSelectedCategory}
+                onSelectCategory={(id) => guardCategorySelect(id, () => setSelectedCategory(id))}
                 type="series"
                 tvFocused={focusArea === 'categories' && focusedCategoryIndex === 1}
                 onOpenChange={setCategoryMenuOpen}
+                lockedCategoryIds={lockedCategoryIds}
             />
+
+            {pendingCategoryId && (
+                <PinPrompt
+                    title="Categoria bloqueada"
+                    hint={justProvisioned
+                        ? 'Conteúdo adulto — PIN padrão: 0000 (altere em Configurações)'
+                        : 'Conteúdo adulto — digite o PIN'}
+                    parental
+                    onSubmit={async (pin) => {
+                        const ok = await parentalService.verify(pin);
+                        if (ok) {
+                            setAdultUnlocked(true);
+                            setSelectedCategory(pendingCategoryId);
+                            setPendingCategoryId(null);
+                        }
+                        return ok;
+                    }}
+                    onCancel={() => setPendingCategoryId(null)}
+                />
+            )}
 
             {/* Toolbar: ordenar + esconder assistidos */}
             <div className="catalog-toolbar">
@@ -530,21 +536,21 @@ export function Series() {
                     onClick={cycleSort}
                     title="Ordenar"
                 >
-                    ↕ {SORT_LABELS[sortMode]}
+                    <FaSort /> {SORT_LABELS[sortMode]}
                 </button>
                 <button
                     className={`toolbar-btn ${hideWatchedOn ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('hidewatched') ? 'tv-focused' : ''}`}
                     onClick={toggleHideWatched}
                     title="Esconder assistidos"
                 >
-                    🙈
+                    <FaEyeSlash />
                 </button>
                 <button
                     className={`toolbar-btn ${filters.decade > 0 ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('decade') ? 'tv-focused' : ''}`}
                     onClick={cycleFilters}
                     title="Filtrar por década"
                 >
-                    {filters.decade > 0 ? `${filters.decade}s` : '📅 Década'}
+                    {filters.decade > 0 ? `${filters.decade}s` : <><FaCalendarAlt /> Década</>}
                 </button>
                 {generosDoCatalogo.length > 0 && (
                     <button
@@ -552,7 +558,7 @@ export function Series() {
                         onClick={cycleGenero}
                         title="Filtrar por gênero"
                     >
-                        {genero ? rotuloDoGenero(genero) : '🎭 Gênero'}
+                        {genero ? rotuloDoGenero(genero) : <><FaTheaterMasks /> Gênero</>}
                     </button>
                 )}
                 <button
@@ -560,7 +566,7 @@ export function Series() {
                     onClick={cycleNota}
                     title="Nota mínima"
                 >
-                    {filters.minRating > 0 ? `⭐ ${filters.minRating}+` : '⭐ Nota'}
+                    {filters.minRating > 0 ? <><FaStar /> {filters.minRating}+</> : <><FaStar /> Nota</>}
                 </button>
             </div>
 
@@ -615,52 +621,41 @@ export function Series() {
                 />
             )}
 
-            {/* Series Grid */}
+            {/* Series Grid — virtualizado (react-window): o catálogo pode ter
+                centenas de séries, e só a janela visível+overscan monta. */}
             <div ref={scrollContainerRef} className="series-content">
                 {filteredSeries.length === 0 ? (
                     <div className="no-results">
-                        <div className="no-results-icon">📺</div>
-                        <p>Nenhuma série encontrada</p>
-                        <span>
-                            {filtrosLigados.length > 0
-                                ? `Filtros ligados: ${filtrosLigados.join(' · ')}`
-                                : 'Tente buscar por outro termo'}
-                        </span>
+                        <div className="no-results-icon"><FaTv /></div>
+                        {contentFlags.includeVOD() ? (
+                            <>
+                                <p>Nenhuma série encontrada</p>
+                                <span>
+                                    {filtrosLigados.length > 0
+                                        ? `Filtros ligados: ${filtrosLigados.join(' · ')}`
+                                        : 'Tente buscar por outro termo'}
+                                </span>
+                            </>
+                        ) : (
+                            <>
+                                <p>VOD desativado para esta playlist</p>
+                                <span>Mude isso ao adicionar a playlist de novo, em Configurações</span>
+                            </>
+                        )}
                     </div>
                 ) : (
-                    <div className="series-grid">
-                        {filteredSeries.slice(0, visibleCount).map((item, index) => (
-                            <div
-                                key={item.series_id}
-                                className={`series-card ${focusArea === 'series' && safeSeriesIndex === index ? 'tv-focused' : ''} ${selectedSeries?.series_id === item.series_id ? 'selected' : ''}`}
-                                onClick={() => openSeriesModal(item)}
-                                style={{ animationDelay: `${Math.min(index * 0.03, 0.5)}s` }}
-                            >
-                                <div className="series-poster">
-                                    {brokenImages.has(item.series_id) ? (
-                                        <div className="poster-placeholder">📺</div>
-                                    ) : (
-                                        <img decoding="async"
-                                            src={item.cover}
-                                            alt={item.name}
-                                            loading="lazy"
-                                            onError={() => handleImageError(item.series_id)}
-                                        />
-                                    )}
-                                    {followedSeriesIds.has(String(item.series_id)) &&
-                                        newEpisodes.has(String(item.series_id), item.last_modified || '0') ? (
-                                        <div className="new-badge new-badge-episodes">NOVOS EPS</div>
-                                    ) : isRecentlyAdded(item, nowMs) && (
-                                        <div className="new-badge">NOVO</div>
-                                    )}
-                                    {item.rating && parseFloat(item.rating) > 0 && (
-                                        <div className="series-rating">⭐ {item.rating}</div>
-                                    )}
-                                </div>
-                                <div className="series-title">{item?.name || 'Série Sem Nome'}</div>
-                            </div>
-                        ))}
-                    </div>
+                    <Grid
+                        className="series-grid-viewport"
+                        gridRef={gridRef}
+                        cellComponent={SeriesGridCell}
+                        cellProps={seriesCellProps}
+                        columnCount={columns}
+                        columnWidth={columnWidth}
+                        rowCount={seriesRowCount}
+                        rowHeight={seriesCardHeight}
+                        overscanCount={1}
+                        style={{ height: '100%', width: '100%' }}
+                    />
                 )}
             </div>
 
@@ -672,7 +667,7 @@ export function Series() {
                         <div className="context-title">{contextItem.name}</div>
                         {contextActions.map((action, index) => (
                             <div
-                                key={action.label}
+                                key={index}
                                 className={`context-item ${contextIndex === index ? 'tv-focused' : ''}`}
                                 onClick={() => {
                                     action.run();
@@ -692,7 +687,7 @@ export function Series() {
                 <span>↑↓←→ Navegar</span>
                 <span>OK Selecionar</span>
                 <span>← Voltar</span>
-                <span>🟡 Ações</span>
+                <RemoteColorHint color="yellow" label="Ações" />
             </div>
         </div>
     );

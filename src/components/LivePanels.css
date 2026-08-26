@@ -144,6 +144,14 @@
     font-size: 20px;
 }
 
+.fav-now-next {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.5);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 /* Linha do painel de jogos */
 .sports-row {
     display: flex;

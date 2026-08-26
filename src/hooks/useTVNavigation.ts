@@ -1,6 +1,7 @@
 // TV Navigation Hook - Handles D-pad navigation for Smart TVs
 
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback } from 'react';
+import { naTV } from '../services/platformApp';
 
 // Key codes for TV remotes
 const TV_KEYS = {
@@ -12,19 +13,32 @@ const TV_KEYS = {
 
     // Action keys - Samsung OK button uses 13, 29443, or space (32)
     ENTER: ['Enter', '13', '29443', ' ', '32', 'Select'],
-    BACK: ['Backspace', 'XF86Back', '10009', '8', '461'], // Samsung, LG, etc.
+    // Botão físico "Voltar" do controle remoto + 'Escape' (padrão de
+    // desktop, funciona em QUALQUER lugar, dentro ou fora de campo de
+    // texto). Backspace/tecla 8 NUNCA entram aqui: um teclado de verdade
+    // (desktop, ou bluetooth numa TV) usa essas teclas pra apagar
+    // caractere, não pra fechar campo/voltar de tela — ver LEGACY_REMOTE_BACK.
+    BACK: ['XF86Back', '10009', '461', 'Escape'],
 
     // Media keys
     PLAY: ['MediaPlayPause', '415'],
     PAUSE: ['MediaPause', '19'],
     STOP: ['MediaStop', '413'],
 
-    // Color keys (Samsung/LG)
-    RED: ['ColorF0Red', '403'],
-    GREEN: ['ColorF1Green', '404'],
-    YELLOW: ['ColorF2Yellow', '405'],
-    BLUE: ['ColorF3Blue', '406'],
+    // Color keys (Samsung/LG) — '1'..'4' são o fallback de teclado (sem
+    // equivalente físico num teclado comum pras cores do controle).
+    RED: ['ColorF0Red', '403', '1'],
+    GREEN: ['ColorF1Green', '404', '2'],
+    YELLOW: ['ColorF2Yellow', '405', '3'],
+    BLUE: ['ColorF3Blue', '406', '4'],
 };
+
+// Alguns controles remotos antigos mandam o código de Backspace pro botão
+// físico "Voltar". Só conta FORA de um campo de texto (dentro, precisa
+// continuar apagando caractere) e só em build de TV — fora disso, em
+// desktop, era só uma armadilha: Backspace solto fechava tela/campo sem
+// querer no meio de uma digitação normal.
+const LEGACY_REMOTE_BACK = ['Backspace', '8'];
 
 type Direction = 'up' | 'down' | 'left' | 'right';
 type TVAction = 'enter' | 'back' | 'play' | 'pause' | 'stop' | 'red' | 'green' | 'yellow' | 'blue';
@@ -71,11 +85,11 @@ export function useTVNavigation(options: UseTVNavigationOptions = {}) {
                 return;
             }
 
-            // If the user presses the 'Return' / 'Back' button on the TV remote while editing, 
+            // If the user presses the 'Return' / 'Back' button on the TV remote while editing,
             // we should blur the input to hide the virtual keyboard and restore TV navigation.
-            // 10009 (Tizen Back), 461 (WebOS Back), XF86Back (Generic), Escape
-            // Also handle keyCode 8 (Backspace) ONLY when input value is empty (to exit editing)
-            if (matchKey(key, TV_KEYS.BACK) || key === 'Escape') {
+            // 10009 (Tizen Back), 461 (WebOS Back), XF86Back (Generic), Escape.
+            // Backspace/tecla 8 propositalmente NÃO entram aqui — ver LEGACY_REMOTE_BACK.
+            if (matchKey(key, TV_KEYS.BACK)) {
                 event.preventDefault();
                 event.stopPropagation();
                 target.blur();
@@ -102,7 +116,7 @@ export function useTVNavigation(options: UseTVNavigationOptions = {}) {
                 onEnter?.();
                 onAction?.('enter');
             }
-        } else if (matchKey(key, TV_KEYS.BACK)) {
+        } else if (matchKey(key, TV_KEYS.BACK) || (naTV() && matchKey(key, LEGACY_REMOTE_BACK))) {
             if (onBack || onAction) {
                 event.preventDefault();
                 onBack?.();
@@ -149,110 +163,4 @@ export function useTVNavigation(options: UseTVNavigationOptions = {}) {
             window.removeEventListener('tizenhwkey', handleTizenHwKey as EventListener);
         };
     }, [handleKeyDown]);
-}
-
-// Focus management for TV navigation
-export function useFocusManager<T extends HTMLElement>() {
-    const containerRef = useRef<T>(null);
-    const focusedIndexRef = useRef(0);
-
-    const getFocusableElements = useCallback(() => {
-        if (!containerRef.current) return [];
-        return Array.from(containerRef.current.querySelectorAll('[data-focusable="true"]')) as HTMLElement[];
-    }, []);
-
-    const focusElement = useCallback((index: number) => {
-        const elements = getFocusableElements();
-        if (elements.length === 0) return;
-
-        // Clamp index
-        const newIndex = Math.max(0, Math.min(index, elements.length - 1));
-        focusedIndexRef.current = newIndex;
-
-        // Remove focus from all
-        elements.forEach(el => el.classList.remove('tv-focused'));
-
-        // Add focus to target
-        const target = elements[newIndex];
-        if (target) {
-            target.classList.add('tv-focused');
-            target.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
-        }
-    }, [getFocusableElements]);
-
-    const moveFocus = useCallback((delta: number) => {
-        focusElement(focusedIndexRef.current + delta);
-    }, [focusElement]);
-
-    const getCurrentElement = useCallback(() => {
-        const elements = getFocusableElements();
-        return elements[focusedIndexRef.current] || null;
-    }, [getFocusableElements]);
-
-    return {
-        containerRef,
-        focusElement,
-        moveFocus,
-        getCurrentElement,
-        getFocusedIndex: () => focusedIndexRef.current,
-    };
-}
-
-// Grid navigation hook
-export function useGridNavigation(columns: number) {
-    const containerRef = useRef<HTMLDivElement>(null);
-    const focusedIndexRef = useRef(0);
-
-    const getFocusableElements = useCallback(() => {
-        if (!containerRef.current) return [];
-        return Array.from(containerRef.current.querySelectorAll('[data-focusable="true"]')) as HTMLElement[];
-    }, []);
-
-    const focusElement = useCallback((index: number) => {
-        const elements = getFocusableElements();
-        if (elements.length === 0) return;
-
-        const newIndex = Math.max(0, Math.min(index, elements.length - 1));
-        focusedIndexRef.current = newIndex;
-
-        elements.forEach(el => el.classList.remove('tv-focused'));
-
-        const target = elements[newIndex];
-        if (target) {
-            target.classList.add('tv-focused');
-            target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
-        }
-    }, [getFocusableElements]);
-
-    const handleNavigate = useCallback((direction: Direction) => {
-        const elements = getFocusableElements();
-        const current = focusedIndexRef.current;
-        let newIndex = current;
-
-        switch (direction) {
-            case 'up':
-                newIndex = current - columns;
-                break;
-            case 'down':
-                newIndex = current + columns;
-                break;
-            case 'left':
-                if (current % columns !== 0) newIndex = current - 1;
-                break;
-            case 'right':
-                if ((current + 1) % columns !== 0) newIndex = current + 1;
-                break;
-        }
-
-        if (newIndex >= 0 && newIndex < elements.length) {
-            focusElement(newIndex);
-        }
-    }, [columns, getFocusableElements, focusElement]);
-
-    return {
-        containerRef,
-        focusElement,
-        handleNavigate,
-        getCurrentIndex: () => focusedIndexRef.current,
-    };
 }

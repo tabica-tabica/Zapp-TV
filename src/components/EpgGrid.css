@@ -50,6 +50,11 @@
     color: #fff;
 }
 
+.epgrid-reminder-icon {
+    margin-right: 4px;
+    vertical-align: -1px;
+}
+
 .epgrid-day {
     font-size: 17px;
     color: #a3adcc;
@@ -123,8 +128,8 @@
 }
 
 .epgrid-row.is-focused-row .epgrid-channel {
-    background: rgba(168, 85, 247, 0.16);
-    border-color: rgba(168, 85, 247, 0.5);
+    background: rgba(var(--ns-accent-rgb), 0.16);
+    border-color: rgba(var(--ns-accent-rgb), 0.5);
 }
 
 .epgrid-channel {
@@ -209,14 +214,14 @@
 }
 
 .epgrid-prog.is-live {
-    background: rgba(168, 85, 247, 0.22);
-    border-color: rgba(168, 85, 247, 0.45);
+    background: rgba(var(--ns-accent-rgb), 0.22);
+    border-color: rgba(var(--ns-accent-rgb), 0.45);
 }
 
 .epgrid-prog.tv-focused {
-    background: rgba(236, 72, 153, 0.3);
-    border-color: #ec4899;
-    box-shadow: 0 0 0 2px rgba(236, 72, 153, 0.55);
+    background: rgba(var(--ns-accent-4-rgb), 0.3);
+    border-color: var(--ns-accent-4);
+    box-shadow: 0 0 0 2px rgba(var(--ns-accent-4-rgb), 0.55);
     opacity: 1;
     z-index: 2;
 }

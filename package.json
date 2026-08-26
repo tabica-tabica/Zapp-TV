@@ -1,5 +1,5 @@
 {
-  "name": "neostream-tv",
+  "name": "zapp-tv",
   "private": true,
   "version": "1.0.0",
   "type": "module",
@@ -10,8 +10,14 @@
   "scripts": {
     "dev": "vite",
     "build": "npm run build:web",
-    "build:web": "tsc -b && vite build",
+    "build:web": "node scripts/sync-brand.mjs && tsc -b && vite build",
     "build:tizen": "node scripts/build-tizen.mjs",
+    "build:webos": "node scripts/build-webos.mjs",
+    "build:tauri:web": "node scripts/sync-brand.mjs && tsc -b && vite build --config vite.tauri.config.ts",
+    "dev:tauri": "tauri dev",
+    "build:tauri": "tauri build",
+    "brand:sync": "node scripts/sync-brand.mjs",
+    "brand:icons": "node scripts/generate-icons.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
@@ -20,14 +26,18 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-opener": "^2.5.4",
     "hls.js": "^1.6.15",
     "qrcode-generator": "^2.0.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "react-icons": "^5.5.0"
+    "react-icons": "^5.5.0",
+    "react-window": "^2.3.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@tauri-apps/cli": "^2.11.4",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.5",
@@ -40,6 +50,7 @@
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
     "jsdom": "^29.1.1",
+    "rollup-plugin-visualizer": "^7.1.1",
     "terser": "^5.44.1",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.4",

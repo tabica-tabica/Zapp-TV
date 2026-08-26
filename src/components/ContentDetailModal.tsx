@@ -1,13 +1,14 @@
 ﻿// ContentDetailModal.tsx - Premium modal matching original NeoStream app
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { FaStar, FaTheaterMasks, FaLayerGroup, FaBookmark, FaRegBookmark, FaHeart, FaRegHeart } from 'react-icons/fa';
 import { api } from '../services/api';
 import { storage } from '../services/storage';
 import { searchMovieByName, searchSeriesByName, fetchMovieDetails, fetchSeriesDetails, getImageUrl, formatGenres, type TMDBMovieDetails, type TMDBSeriesDetails, IMAGE_SIZE_FICHA, IMAGE_SIZE_FUNDO } from '../services/tmdb';
 import { useTVNavigation } from '../hooks/useTVNavigation';
 import { fetchColecao } from '../services/tmdb';
 import { indexarCatalogo, cruzarComCatalogo } from '../services/tmdbMatch';
-import { abrirExterno, podeAbrirExterno } from '../services/tizenApp';
+import { abrirExterno, podeAbrirExterno, naTV } from '../services/platformApp';
 import { TrailerOverlay } from './TrailerOverlay';
 import { extrairChaveYoutube } from '../services/trailer';
 import { progressService } from '../services/progressService';
@@ -149,8 +150,9 @@ export function ContentDetailModal({
     }, [contentData.youtubeTrailer, tmdbData]);
 
     // Na TV o botão só existe se a TV souber abrir um app externo — ver a nota
-    // em services/tizenApp.abrirExterno. No navegador o embed sempre serve.
-    const naTv = typeof __BUILD_TARGET__ === 'string' && __BUILD_TARGET__ === 'tizen';
+    // em services/tizenApp.abrirExterno / webosApp.abrirExterno. No navegador
+    // o embed sempre serve.
+    const naTv = naTV();
     const hasTrailer = !!trailerKey && (!naTv || podeAbrirExterno());
 
     // ---- Elenco (item 34, versão reduzida) ----
@@ -333,16 +335,10 @@ export function ContentDetailModal({
         }, 250);
     }, [onClose]);
 
-    // Close on escape key
-    useEffect(() => {
-        const handleEscape = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') handleClose();
-        };
-        if (isOpen) {
-            window.addEventListener('keydown', handleEscape);
-        }
-        return () => window.removeEventListener('keydown', handleEscape);
-    }, [isOpen, handleClose]);
+    // Escape fecha o modal via useTVNavigation (TV_KEYS.BACK inclui
+    // 'Escape') — handleBack, mais abaixo, já chama handleClose(). Um
+    // handler bespoke aqui duplicava o listener e ignorava o gate de
+    // trailerAberto que o hook compartilhado já respeita.
 
     // Close when clicking outside
     const handleBackdropClick = (e: React.MouseEvent) => {
@@ -636,7 +632,7 @@ export function ContentDetailModal({
                     <div className="modal-meta">
                         {rating && (
                             <span className="meta-badge rating-badge">
-                                <span className="star">★</span>
+                                <span className="star"><FaStar /></span>
                                 {rating}
                             </span>
                         )}
@@ -675,7 +671,7 @@ export function ContentDetailModal({
                         nota em `elenco`. Sem `<button>`, sem zona de D-pad. */}
                     {elencoVisivel.length > 0 && (
                         <div className="modal-cast">
-                            <span className="modal-cast-label">🎭 Elenco</span>
+                            <span className="modal-cast-label"><FaTheaterMasks /> Elenco</span>
                             <div className="cast-row">
                                 {elencoVisivel.map(pessoa => (
                                     <div className="cast-card" key={pessoa.id} title={pessoa.name}>
@@ -708,7 +704,7 @@ export function ContentDetailModal({
                     {hasCollection && saga && (
                         <div className="modal-saga">
                             <span className="modal-saga-label">
-                                📚 {saga.nome} · {saga.itens.length} na sua lista
+                                <FaLayerGroup /> {saga.nome} · {saga.itens.length} na sua lista
                             </span>
                             <div className="saga-row" ref={collectionRowRef}>
                                 {saga.itens.map((filme, index) => (
@@ -858,7 +854,7 @@ export function ContentDetailModal({
                                 setRefresh(r => r + 1);
                             }}
                         >
-                            {storage.isInWatchLater(contentId, contentType) ? '✓' : '+'}
+                            {storage.isInWatchLater(contentId, contentType) ? <FaBookmark /> : <FaRegBookmark />}
                             {storage.isInWatchLater(contentId, contentType) ? 'Salvo' : 'Assistir Depois'}
                         </button>
 
@@ -871,7 +867,7 @@ export function ContentDetailModal({
                             }}
                             title={storage.isFavorite(contentId, contentType) ? 'Remover dos Favoritos' : 'Adicionar aos Favoritos'}
                         >
-                            {storage.isFavorite(contentId, contentType) ? '♥' : '♡'}
+                            {storage.isFavorite(contentId, contentType) ? <FaHeart /> : <FaRegHeart />}
                         </button>
 
                         {/* Trailer (item 18). A MESMA expressão `hasTrailer`

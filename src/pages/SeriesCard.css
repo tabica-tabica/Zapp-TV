@@ -1,0 +1,136 @@
+/* Card de série. .series-card-cell recebe position/top/left/width/height via
+   style inline (o react-window injeta isso na célula); o card visível ocupa
+   calc(100% - gap) dentro dela, mesmo truque do CatalogCard (MyList/Favorites). */
+
+.series-card-cell {
+    /* posicionamento vem inteiramente do style inline */
+}
+
+.series-card {
+    box-sizing: border-box;
+    width: calc(100% - var(--series-card-gap, 16px));
+    height: calc(100% - var(--series-card-gap, 16px));
+    cursor: pointer;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    animation: seriesFadeIn 0.4s ease backwards;
+}
+
+@keyframes seriesFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(15px) scale(0.95);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.series-card.stagger-0 { animation-delay: 0s; }
+.series-card.stagger-1 { animation-delay: 0.03s; }
+.series-card.stagger-2 { animation-delay: 0.06s; }
+.series-card.stagger-3 { animation-delay: 0.09s; }
+.series-card.stagger-4 { animation-delay: 0.12s; }
+.series-card.stagger-5 { animation-delay: 0.15s; }
+.series-card.stagger-6 { animation-delay: 0.18s; }
+.series-card.stagger-7 { animation-delay: 0.21s; }
+
+.series-card:hover,
+.series-card.tv-focused {
+    transform: scale(1.08);
+    z-index: 10;
+}
+
+.series-card.tv-focused {
+    box-shadow: 0 0 0 3px rgba(var(--ns-accent-rgb), 0.5);
+    border-radius: 12px;
+}
+
+.series-card.selected {
+    transform: scale(1.05);
+}
+
+.series-card.selected .series-poster {
+    border-color: var(--ns-accent);
+    box-shadow: 0 0 0 2px rgba(var(--ns-accent-rgb), 0.4);
+}
+
+.series-poster {
+    position: relative;
+    aspect-ratio: 2/3;
+    border-radius: 12px;
+    overflow: hidden;
+    background: linear-gradient(135deg, rgba(31, 41, 55, 0.8) 0%, rgba(55, 65, 81, 0.6) 100%);
+    border: 2px solid transparent;
+    transition: all 0.3s ease;
+}
+
+.series-card:hover .series-poster {
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4),
+        0 0 40px rgba(var(--ns-accent-rgb), 0.15);
+}
+
+.series-poster img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.5s ease;
+}
+
+.series-card:hover .series-poster img {
+    transform: scale(1.05);
+}
+
+.poster-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 48px;
+    opacity: 0.5;
+}
+
+.series-rating {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: rgba(0, 0, 0, 0.75);
+    padding: 4px 8px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #fbbf24;
+    backdrop-filter: blur(8px);
+}
+
+.series-title {
+    padding: 10px 4px;
+    font-size: 13px;
+    font-weight: 500;
+    color: white;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.new-badge {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    background: linear-gradient(135deg, var(--ns-accent), var(--ns-accent-4));
+    color: #fff;
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    z-index: 2;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+.new-badge-episodes {
+    background: linear-gradient(135deg, #22c55e, #16a34a);
+}

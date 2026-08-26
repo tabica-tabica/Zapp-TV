@@ -1,4 +1,4 @@
-// TMDB API Service for NeoStream TV
+// TMDB API Service for Zapp TV
 import { storage } from './storage';
 
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';

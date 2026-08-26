@@ -28,6 +28,10 @@ const STORAGE_KEYS = {
     LAST_CHANNEL: 'neostream_last_channel',
     SETTINGS: 'neostream_settings',
     TMDB_API_KEY: 'neostream_tmdb_api_key',
+    OPENSUBTITLES_API_KEY: 'neostream_opensubtitles_api_key',
+    OPENSUBTITLES_CREDENTIALS: 'neostream_opensubtitles_credentials',
+    OPENSUBTITLES_TOKEN: 'neostream_opensubtitles_token',
+    SUBTITLE_LANGUAGE: 'neostream_subtitle_language',
 };
 
 // Chaves de DADO do usuário: cada perfil tem as suas (item 54). Credencial,
@@ -205,6 +209,72 @@ class StorageService {
 
     clearTmdbApiKey(): void {
         removeKey(STORAGE_KEYS.TMDB_API_KEY);
+    }
+
+    // OpenSubtitles.com — mesmo modelo do TMDB: chave própria do usuário, sem
+    // segredo global embutido no app. Usuário/senha são opcionais (aumentam a
+    // cota diária de download); o token de login é derivado, não editado.
+    getOpenSubtitlesApiKey(): string {
+        return localStorage.getItem(STORAGE_KEYS.OPENSUBTITLES_API_KEY) || '';
+    }
+
+    saveOpenSubtitlesApiKey(apiKey: string): void {
+        const trimmed = apiKey.trim();
+        if (trimmed) {
+            writeRaw(STORAGE_KEYS.OPENSUBTITLES_API_KEY, trimmed);
+        } else {
+            this.clearOpenSubtitlesApiKey();
+        }
+    }
+
+    clearOpenSubtitlesApiKey(): void {
+        removeKey(STORAGE_KEYS.OPENSUBTITLES_API_KEY);
+    }
+
+    getOpenSubtitlesCredentials(): { username: string; password: string } | null {
+        try {
+            const data = localStorage.getItem(STORAGE_KEYS.OPENSUBTITLES_CREDENTIALS);
+            return data ? JSON.parse(data) : null;
+        } catch {
+            return null;
+        }
+    }
+
+    saveOpenSubtitlesCredentials(credentials: { username: string; password: string }): void {
+        writeJson(STORAGE_KEYS.OPENSUBTITLES_CREDENTIALS, credentials);
+    }
+
+    clearOpenSubtitlesCredentials(): void {
+        removeKey(STORAGE_KEYS.OPENSUBTITLES_CREDENTIALS);
+        // Token de login pertence à credencial que o gerou — não pode sobreviver a ela
+        this.clearOpenSubtitlesToken();
+    }
+
+    getOpenSubtitlesToken(): { token: string; expiresAt: number } | null {
+        try {
+            const data = localStorage.getItem(STORAGE_KEYS.OPENSUBTITLES_TOKEN);
+            return data ? JSON.parse(data) : null;
+        } catch {
+            return null;
+        }
+    }
+
+    saveOpenSubtitlesToken(token: string, expiresAt: number): void {
+        writeJson(STORAGE_KEYS.OPENSUBTITLES_TOKEN, { token, expiresAt });
+    }
+
+    clearOpenSubtitlesToken(): void {
+        removeKey(STORAGE_KEYS.OPENSUBTITLES_TOKEN);
+    }
+
+    // Idioma de busca de legenda: cai pro idioma da interface se nada foi salvo
+    getSubtitleLanguage(): string {
+        const saved = localStorage.getItem(STORAGE_KEYS.SUBTITLE_LANGUAGE);
+        return saved || this.getSettings().language;
+    }
+
+    saveSubtitleLanguage(lang: string): void {
+        writeRaw(STORAGE_KEYS.SUBTITLE_LANGUAGE, lang.trim().toLowerCase());
     }
 
     // Clear all data

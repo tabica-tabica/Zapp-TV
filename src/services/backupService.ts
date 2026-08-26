@@ -32,11 +32,16 @@ export interface BackupPayload {
  * pra outra TV. `series_lastmod` acumula uma entrada por série seguida.
  */
 const FORA_DO_QR = ['neostream_series_lastmod'];
+/** Mesma ideia, mas pra famílias de chave com sufixo dinâmico (por playlist):
+ *  o baseline de "conteúdo novo" guarda um id por canal/filme/série visto. */
+const FORA_DO_QR_PREFIXOS = ['neostream_content_snapshot_'];
 
 export function buildBackup(): string {
     const data: Record<string, string> = {};
     for (const key of keysOfGroup('preferencias')) {
-        if (FORA_DO_QR.includes(key.split('__p_')[0])) continue;
+        const base = key.split('__p_')[0];
+        if (FORA_DO_QR.includes(base)) continue;
+        if (FORA_DO_QR_PREFIXOS.some(prefix => base.startsWith(prefix))) continue;
         const value = localStorage.getItem(key);
         if (value === null) continue;
         data[key.startsWith(PREFIX) ? key.slice(PREFIX.length) : key] = value;

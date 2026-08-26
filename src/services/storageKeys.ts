@@ -18,6 +18,9 @@ export const KEYS_CONTA = [
     'neostream_expiry_snooze',
     'neostream_settings',
     'neostream_tmdb_api_key',
+    'neostream_opensubtitles_api_key',
+    'neostream_opensubtitles_credentials',
+    'neostream_opensubtitles_token',
     // Flags DA PLAYLIST ativa: o playlistService as reescreve a cada troca
     'includeTV',
     'includeVOD',
@@ -27,6 +30,9 @@ export const KEYS_CONTA = [
     'neostream_scope_migrated',
     'neostream_scope_migrated_v2',
     'neostream_schema_version',
+    // Flag curta "checar conteúdo novo no próximo boot" — vive só entre o
+    // clique em "Recarregar lista" e o boot seguinte, nunca preferência
+    'neostream_content_check_pending',
 ] as const;
 
 /**
@@ -71,7 +77,9 @@ export const KEYS_PREFERENCIAS = [
     'neostream_quality_by_content',
     'neostream_quality_cap',
     'neostream_subtitle_size',
+    'neostream_subtitle_language',
     'neostream_player_stats',
+    'neostream_player_volume',
     'neostream_playback_prefs',
     'neostream_aspect_prefs',
     'neostream_live_only_epg',
@@ -82,6 +90,10 @@ export const KEYS_PREFERENCIAS = [
     // BASELINE de "novos episódios": não é cache, perdê-la faz o app achar
     // que tudo é novidade
     'neostream_series_lastmod',
+    // Liga/desliga o aviso de "conteúdo novo" no reload da playlist — a
+    // checagem em si (newContentService) respeita esta chave antes de gastar
+    // fetch
+    'neostream_notify_new_content',
 ] as const;
 
 // Só entra aqui o que volta sozinho de graça. O catálogo e o TMDB vêm por
@@ -93,6 +105,22 @@ export const PREFIXOS_PREFERENCIAS = [
     'neostream_sort_',
     'neostream_filters_',
     'neostream_epg_offset_',
+    // Quais afiliadas/praças regionais o usuário quer ver, por playlist
+    // (RedeTV! Guará/Imperial/Paraná etc.) — dado do CATÁLOGO do provedor,
+    // não de quem assiste, por isso leva a playlist no nome, não o perfil.
+    'neostream_regional_prefs_',
+    // Categorias "ruído" (curiosidades/treino/câmeras/rádios/shows/24h etc.)
+    // detectadas dinamicamente e canais individuais que o usuário
+    // desocultou/ocultou — mesmo motivo do regional_prefs acima: dado do
+    // catálogo do provedor, por playlist.
+    'neostream_curated_unhidden_categories_',
+    'neostream_curated_channel_overrides_',
+    // BASELINE de "conteúdo novo" por playlist (ids de canais/filmes/séries
+    // já vistos) — mesmo tipo de dado que `neostream_series_lastmod`: não é
+    // cache (perdê-la faz o próximo reload achar que tudo é novidade), e
+    // cresce demais pra caber no QR de backup (ver FORA_DO_QR_PREFIXOS em
+    // backupService.ts)
+    'neostream_content_snapshot_',
 ] as const;
 
 export const PREFIXOS_CACHE = [

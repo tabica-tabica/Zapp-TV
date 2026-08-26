@@ -1,0 +1,10 @@
+{
+  "name": "m3u-transformer",
+  "private": true,
+  "type": "module",
+  "description": "Standalone CLI — normalizes an IPTV M3U list into consistent groups/names. No relation to the Zapp TV app; see README.md.",
+  "scripts": {
+    "transform": "node --experimental-strip-types transform.ts",
+    "test": "node --experimental-strip-types --test __tests__/*.test.ts"
+  }
+}

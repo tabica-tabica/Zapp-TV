@@ -3,6 +3,8 @@
 // ficha. Acessível pela sidebar (🔍) — a página atrás fica com foco 'overlay'.
 
 import { useState, useEffect, useRef, useMemo } from 'react';
+import type { IconType } from 'react-icons';
+import { FaSearch, FaTimes, FaBroadcastTower, FaFilm, FaTv } from 'react-icons/fa';
 import { loadSearchCatalog, searchIn, type SearchCatalogData } from '../services/searchCatalog';
 import { useTVNavigation } from '../hooks/useTVNavigation';
 import { useWatchSession } from '../hooks/useWatchSession';
@@ -146,17 +148,17 @@ export function GlobalSearch({ onClose }: GlobalSearchProps) {
         },
     });
 
-    const resultLabel = (item: ResultItem): { icon: string; name: string; type: string } => {
-        if (item.kind === 'channel') return { icon: '📺', name: item.channel.name, type: 'Canal' };
-        if (item.kind === 'movie') return { icon: '🎬', name: item.movie.name, type: 'Filme' };
-        return { icon: '🎞', name: item.series.name, type: 'Série' };
+    const resultLabel = (item: ResultItem): { icon: IconType; name: string; type: string } => {
+        if (item.kind === 'channel') return { icon: FaBroadcastTower, name: item.channel.name, type: 'Canal' };
+        if (item.kind === 'movie') return { icon: FaFilm, name: item.movie.name, type: 'Filme' };
+        return { icon: FaTv, name: item.series.name, type: 'Série' };
     };
 
     return (
         <div className="gs-overlay">
             <div className="gs-panel">
                 <div className="gs-header">
-                    <span className="gs-icon">🔍</span>
+                    <span className="gs-icon"><FaSearch /></span>
                     <input
                         ref={inputRef}
                         className="gs-input"
@@ -170,7 +172,7 @@ export function GlobalSearch({ onClose }: GlobalSearchProps) {
                         spellCheck={false}
                         onBlur={() => { lastInputBlurAtRef.current = Date.now(); }}
                     />
-                    <button className="gs-close" onClick={onClose}>✕</button>
+                    <button className="gs-close" onClick={onClose}><FaTimes /></button>
                 </div>
 
                 <div ref={listRef} className="gs-results">
@@ -194,7 +196,7 @@ export function GlobalSearch({ onClose }: GlobalSearchProps) {
                                 className={`gs-result ${safeIndex === index ? 'tv-focused' : ''}`}
                                 onClick={() => activateResult(item)}
                             >
-                                <span className="gs-result-icon">{label.icon}</span>
+                                <span className="gs-result-icon"><label.icon /></span>
                                 <span className="gs-result-name">{label.name}</span>
                                 <span className="gs-result-type">{label.type}</span>
                             </div>

@@ -1,10 +1,18 @@
 // Sidebar Navigation Component - Matching NeoStream Desktop Design
 
 import { useState, useMemo } from 'react';
+import type { IconType } from 'react-icons';
+import {
+    FaSearch, FaHome, FaBroadcastTower, FaFilm, FaTv, FaBookmark, FaHeart, FaCog,
+    FaUserCircle, FaSignOutAlt, FaSync,
+} from 'react-icons/fa';
 import { useTVNavigation } from '../../hooks/useTVNavigation';
 import { useFocusZone } from '../../contexts/FocusContext';
 import { useTranslation } from '../../hooks/useTranslation';
 import type { TranslationKey } from '../../i18n';
+import { reloadActivePlaylist } from '../../services/reloadPlaylist';
+import { contentFlags } from '../../services/contentFlags';
+import { BrandLogo } from '../BrandLogo';
 import './Sidebar.css';
 
 interface SidebarProps {
@@ -20,21 +28,21 @@ interface SidebarProps {
 interface MenuItem {
     id: string;
     label: string;
-    emoji: string;
+    icon: IconType;
     gradient: string;
     requiresTV?: boolean;
     requiresVOD?: boolean;
 }
 
 const allMenuItems: MenuItem[] = [
-    { id: 'search', label: 'Buscar', emoji: '🔍', gradient: 'linear-gradient(135deg, #64748b, #475569)' },
-    { id: 'home', label: 'Início', emoji: '🏠', gradient: 'linear-gradient(135deg, #f59e0b, #d97706)' },
-    { id: 'live', label: 'TV ao Vivo', emoji: '📺', gradient: 'linear-gradient(135deg, #a855f7, #7c3aed)', requiresTV: true },
-    { id: 'movies', label: 'Filmes', emoji: '🎬', gradient: 'linear-gradient(135deg, #3b82f6, #1d4ed8)', requiresVOD: true },
-    { id: 'series', label: 'Séries', emoji: '📺', gradient: 'linear-gradient(135deg, #ec4899, #db2777)', requiresVOD: true },
-    { id: 'mylist', label: 'Minha Lista', emoji: '📑', gradient: 'linear-gradient(135deg, #14b8a6, #0891b2)' },
-    { id: 'favorites', label: 'Favoritos', emoji: '❤️', gradient: 'linear-gradient(135deg, #ef4444, #dc2626)' },
-    { id: 'settings', label: 'Configurações', emoji: '⚙️', gradient: 'linear-gradient(135deg, #6b7280, #4b5563)' },
+    { id: 'search', label: 'Buscar', icon: FaSearch, gradient: 'linear-gradient(135deg, #64748b, #475569)' },
+    { id: 'home', label: 'Início', icon: FaHome, gradient: 'linear-gradient(135deg, #f59e0b, #d97706)' },
+    { id: 'live', label: 'TV ao Vivo', icon: FaBroadcastTower, gradient: 'linear-gradient(135deg, #2563eb, #1e3a8a)', requiresTV: true },
+    { id: 'movies', label: 'Filmes', icon: FaFilm, gradient: 'linear-gradient(135deg, #3b82f6, #1d4ed8)', requiresVOD: true },
+    { id: 'series', label: 'Séries', icon: FaTv, gradient: 'linear-gradient(135deg, #22d3ee, #0891b2)', requiresVOD: true },
+    { id: 'mylist', label: 'Minha Lista', icon: FaBookmark, gradient: 'linear-gradient(135deg, #14b8a6, #0891b2)' },
+    { id: 'favorites', label: 'Favoritos', icon: FaHeart, gradient: 'linear-gradient(135deg, #ef4444, #dc2626)' },
+    { id: 'settings', label: 'Configurações', icon: FaCog, gradient: 'linear-gradient(135deg, #6b7280, #4b5563)' },
 ];
 
 export function Sidebar({ activeItem, onItemSelect, onLogout, onProfileClick, focused = false , onBack}: SidebarProps) {
@@ -42,8 +50,8 @@ export function Sidebar({ activeItem, onItemSelect, onLogout, onProfileClick, fo
     const { t } = useTranslation();
 
     // Get include preferences from localStorage
-    const includeTV = localStorage.getItem('includeTV') !== 'false';
-    const includeVOD = localStorage.getItem('includeVOD') !== 'false';
+    const includeTV = contentFlags.includeTV();
+    const includeVOD = contentFlags.includeVOD();
 
     // Filter menu items based on preferences
     const menuItems = useMemo(() => {
@@ -63,7 +71,7 @@ export function Sidebar({ activeItem, onItemSelect, onLogout, onProfileClick, fo
         if (direction === 'up') {
             setFocusedIndex(prev => Math.max(0, prev - 1));
         } else if (direction === 'down') {
-            setFocusedIndex(prev => Math.min(menuItems.length + 1, prev + 1)); // +1 profile, +1 logout
+            setFocusedIndex(prev => Math.min(menuItems.length + 2, prev + 1)); // +1 recarregar, +1 perfil, +1 sair
         } else if (direction === 'right') {
             // Move focus to content area
             setFocusZone('content');
@@ -71,12 +79,15 @@ export function Sidebar({ activeItem, onItemSelect, onLogout, onProfileClick, fo
     };
 
     const handleEnter = () => {
-        if (focusedIndex === menuItems.length + 1) {
+        if (focusedIndex === menuItems.length + 2) {
             // Logout button
             onLogout();
-        } else if (focusedIndex === menuItems.length) {
+        } else if (focusedIndex === menuItems.length + 1) {
             // Profile button - open profile manager
             onProfileClick();
+        } else if (focusedIndex === menuItems.length) {
+            // Recarregar lista - limpa o cache e recarrega o app
+            reloadActivePlaylist();
         } else {
             const item = menuItems[focusedIndex];
             if (item) {
@@ -110,19 +121,7 @@ export function Sidebar({ activeItem, onItemSelect, onLogout, onProfileClick, fo
                 {/* Logo */}
                 <div className="logo-container">
                     <div className="logo-wrapper">
-                        <svg className="logo-svg" width="44" height="44" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-                            <defs>
-                                <linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                                    <stop offset="0%" stopColor="#a855f7" />
-                                    <stop offset="100%" stopColor="#ec4899" />
-                                </linearGradient>
-                            </defs>
-                            <path d="M 10,10 L 10,90 L 90,50 Z" fill="none" stroke="url(#logoGradient)" strokeWidth="6" strokeLinejoin="round" />
-                            <rect className="bar bar-1" x="35" y="35" width="6" height="30" fill="url(#logoGradient)" rx="3" />
-                            <rect className="bar bar-2" x="45" y="25" width="6" height="50" fill="url(#logoGradient)" rx="3" />
-                            <rect className="bar bar-3" x="55" y="40" width="6" height="20" fill="url(#logoGradient)" rx="3" />
-                        </svg>
-                        <div className="logo-ring" />
+                        <BrandLogo size={44} />
                     </div>
                 </div>
 
@@ -155,7 +154,7 @@ export function Sidebar({ activeItem, onItemSelect, onLogout, onProfileClick, fo
 
                                 {/* Icon */}
                                 <div className="item-icon-wrapper">
-                                    <span className="item-icon">{item.emoji}</span>
+                                    <span className="item-icon"><item.icon /></span>
                                 </div>
 
                                 {/* Active Indicator */}
@@ -167,7 +166,7 @@ export function Sidebar({ activeItem, onItemSelect, onLogout, onProfileClick, fo
 
                                 {/* Tooltip */}
                                 <div className={`tooltip ${isFocused || isHovered ? 'visible' : ''}`}>
-                                    <span className="tooltip-emoji">{item.emoji}</span>
+                                    <span className="tooltip-emoji"><item.icon /></span>
                                     <span className="tooltip-label">{t(`sidebar_${item.id}` as TranslationKey)}</span>
                                 </div>
                             </button>
@@ -177,13 +176,29 @@ export function Sidebar({ activeItem, onItemSelect, onLogout, onProfileClick, fo
 
                 {/* Bottom Section */}
                 <div className="bottom-section">
+                    {/* Recarregar lista */}
+                    <button
+                        className={`reload-btn ${focused && focusedIndex === menuItems.length ? 'tv-focused' : ''}`}
+                        onClick={reloadActivePlaylist}
+                        onMouseEnter={() => setHoveredItem('reload')}
+                        onMouseLeave={() => setHoveredItem(null)}
+                        onFocus={() => setFocusedIndex(menuItems.length)}
+                        data-focusable="true"
+                    >
+                        <FaSync className="reload-icon" size={20} />
+                        <div className={`tooltip ${(focused && focusedIndex === menuItems.length) || hoveredItem === 'reload' ? 'visible' : ''}`}>
+                            <span className="tooltip-emoji"><FaSync /></span>
+                            <span className="tooltip-label">Recarregar lista</span>
+                        </div>
+                    </button>
+
                     {/* Profile Button */}
                     <button
-                        className={`profile-btn ${focused && focusedIndex === menuItems.length ? 'tv-focused' : ''}`}
+                        className={`profile-btn ${focused && focusedIndex === menuItems.length + 1 ? 'tv-focused' : ''}`}
                         onClick={onProfileClick}
                         onMouseEnter={() => setHoveredItem('profile')}
                         onMouseLeave={() => setHoveredItem(null)}
-                        onFocus={() => setFocusedIndex(menuItems.length)}
+                        onFocus={() => setFocusedIndex(menuItems.length + 1)}
                         data-focusable="true"
                     >
                         <div className="profile-ring" />
@@ -191,8 +206,8 @@ export function Sidebar({ activeItem, onItemSelect, onLogout, onProfileClick, fo
                             <svg width="26" height="26" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
                                 <defs>
                                     <linearGradient id="profileGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                                        <stop offset="0%" stopColor="#a855f7" />
-                                        <stop offset="100%" stopColor="#ec4899" />
+                                        <stop offset="0%" stopColor={__BRAND_ACCENT_HEX__} />
+                                        <stop offset="100%" stopColor={__BRAND_ACCENT4_HEX__} />
                                     </linearGradient>
                                 </defs>
                                 <circle cx="50" cy="35" r="14" fill="none" stroke="url(#profileGrad)" strokeWidth="6" />
@@ -200,19 +215,19 @@ export function Sidebar({ activeItem, onItemSelect, onLogout, onProfileClick, fo
                             </svg>
                         </div>
                         {/* Profile Tooltip */}
-                        <div className={`tooltip ${(focused && focusedIndex === menuItems.length) || hoveredItem === 'profile' ? 'visible' : ''}`}>
-                            <span className="tooltip-emoji">👤</span>
+                        <div className={`tooltip ${(focused && focusedIndex === menuItems.length + 1) || hoveredItem === 'profile' ? 'visible' : ''}`}>
+                            <span className="tooltip-emoji"><FaUserCircle /></span>
                             <span className="tooltip-label">{t('sidebar_profile' as TranslationKey)}</span>
                         </div>
                     </button>
 
                     {/* Logout */}
                     <button
-                        className={`logout-btn ${focused && focusedIndex === menuItems.length + 1 ? 'tv-focused' : ''}`}
+                        className={`logout-btn ${focused && focusedIndex === menuItems.length + 2 ? 'tv-focused' : ''}`}
                         onClick={onLogout}
                         onMouseEnter={() => setHoveredItem('logout')}
                         onMouseLeave={() => setHoveredItem(null)}
-                        onFocus={() => setFocusedIndex(menuItems.length + 1)}
+                        onFocus={() => setFocusedIndex(menuItems.length + 2)}
                         data-focusable="true"
                     >
                         <svg className="logout-icon" viewBox="0 0 24 24" fill="none" width="22" height="22">
@@ -221,8 +236,8 @@ export function Sidebar({ activeItem, onItemSelect, onLogout, onProfileClick, fo
                             <path d="M21 12H9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                         </svg>
                         {/* Logout Tooltip */}
-                        <div className={`tooltip danger ${(focused && focusedIndex === menuItems.length + 1) || hoveredItem === 'logout' ? 'visible' : ''}`}>
-                            <span className="tooltip-emoji">🚪</span>
+                        <div className={`tooltip danger ${(focused && focusedIndex === menuItems.length + 2) || hoveredItem === 'logout' ? 'visible' : ''}`}>
+                            <span className="tooltip-emoji"><FaSignOutAlt /></span>
                             <span className="tooltip-label">{t('sidebar_logout')}</span>
                         </div>
                     </button>

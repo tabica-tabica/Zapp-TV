@@ -27,6 +27,16 @@ html.no-flex-gap .placeholder-page > * + * {
     margin-top: var(--spacing-md);
 }
 
+/* ---- components/CatalogCard/CatalogCard.css ---- */
+
+html.no-flex-gap .catalog-card-overlay > * + * {
+    margin-top: 12px;
+}
+
+html.no-flex-gap .catalog-card-meta > * + * {
+    margin-left: 12px;
+}
+
 /* ---- components/CategoryMenu.css ---- */
 
 html.no-flex-gap .category-toggle-btn > * + * {

@@ -1,0 +1,125 @@
+/* Card de canal. .channel-card-cell recebe position/top/left/width/height via
+   style inline (o react-window injeta isso na célula); o card visível ocupa
+   calc(100% - gap) dentro dela, mesmo truque do CatalogCard/SeriesCard. */
+
+.channel-card-cell {
+    /* posicionamento vem inteiramente do style inline */
+}
+
+.channel-card {
+    box-sizing: border-box;
+    width: calc(100% - var(--channel-card-gap, 12px));
+    height: calc(100% - var(--channel-card-gap, 12px));
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 16px;
+    background: linear-gradient(135deg, rgba(31, 41, 55, 0.8) 0%, rgba(55, 65, 81, 0.9) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    animation: channelFadeIn 0.4s ease backwards;
+}
+
+@keyframes channelFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.channel-card.stagger-0 { animation-delay: 0s; }
+.channel-card.stagger-1 { animation-delay: 0.03s; }
+.channel-card.stagger-2 { animation-delay: 0.06s; }
+.channel-card.stagger-3 { animation-delay: 0.09s; }
+.channel-card.stagger-4 { animation-delay: 0.12s; }
+.channel-card.stagger-5 { animation-delay: 0.15s; }
+.channel-card.stagger-6 { animation-delay: 0.18s; }
+.channel-card.stagger-7 { animation-delay: 0.21s; }
+
+.channel-card:hover,
+.channel-card.tv-focused {
+    transform: translateY(-4px) scale(1.02);
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(31, 41, 55, 0.95) 100%);
+    border-color: rgba(59, 130, 246, 0.4);
+    box-shadow: 0 15px 40px -10px rgba(59, 130, 246, 0.35);
+    z-index: 1;
+}
+
+.channel-card.selected {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.3) 0%, rgba(55, 65, 81, 1) 100%);
+    border-color: rgba(59, 130, 246, 0.5);
+}
+
+.channel-card.tv-focused {
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.4), 0 15px 40px -10px rgba(59, 130, 246, 0.35);
+}
+
+.channel-logo {
+    width: 48px;
+    height: 48px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.05);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    flex-shrink: 0;
+    transition: transform 0.3s ease;
+}
+
+.channel-card:hover .channel-logo {
+    transform: scale(1.1);
+}
+
+.channel-logo img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    padding: 4px;
+}
+
+.channel-placeholder {
+    font-size: 24px;
+    opacity: 0.5;
+}
+
+.channel-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.channel-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: white;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.channel-live-indicator {
+    width: 8px;
+    height: 8px;
+    background: #22c55e;
+    border-radius: 50%;
+    box-shadow: 0 0 8px rgba(34, 197, 94, 0.6);
+    flex-shrink: 0;
+}
+
+/* Estrela no card do canal favorito */
+.channel-fav {
+    color: #facc15;
+}
+
+/* Selo de catch-up no card (item 11) */
+.channel-catchup {
+    color: var(--ns-accent);
+    font-size: 13px;
+}

@@ -48,7 +48,7 @@
 .pm-orb-1 {
     width: 400px;
     height: 400px;
-    background: radial-gradient(circle, var(--ns-accent) 0%, transparent 70%);
+    background: radial-gradient(circle, var(--accent-primary) 0%, transparent 70%);
     top: -100px;
     left: -100px;
 }
@@ -56,7 +56,7 @@
 .pm-orb-2 {
     width: 350px;
     height: 350px;
-    background: radial-gradient(circle, #ec4899 0%, transparent 70%);
+    background: radial-gradient(circle, var(--accent-primary) 0%, transparent 70%);
     bottom: -50px;
     right: -50px;
     animation-delay: -5s;
@@ -219,13 +219,17 @@
     box-shadow: 0 20px 40px rgba(var(--ns-accent-rgb), 0.3);
 }
 
+/* --accent-primary (accent2), não --ns-accent: o indicador de perfil ATIVO
+   é chrome de marca, não destaque de tema — não pode piscar verde se o
+   usuário tiver "Verde" salvo em Configurações → Aparência de antes deste
+   rebrand. --accent-primary nunca é sobrescrito pelo picker de tema. */
 .pm-profile-card.active {
-    border-color: #10b981;
-    background: linear-gradient(145deg, rgba(16, 185, 129, 0.15), rgba(16, 185, 129, 0.05));
+    border-color: var(--accent-primary);
+    background: linear-gradient(145deg, rgba(var(--accent-primary-rgb), 0.15), rgba(var(--accent-primary-rgb), 0.05));
 }
 
 .pm-profile-card.active.focused {
-    box-shadow: 0 20px 40px rgba(16, 185, 129, 0.3);
+    box-shadow: 0 20px 40px rgba(var(--accent-primary-rgb), 0.3);
 }
 
 /* Active Badge */
@@ -237,20 +241,23 @@
     align-items: center;
     gap: 4px;
     padding: 4px 10px;
-    background: linear-gradient(135deg, #10b981, #059669);
+    background: var(--accent-primary);
     border-radius: 20px;
     font-size: 12px;
     font-weight: 600;
     color: white;
-    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+    box-shadow: 0 4px 12px rgba(var(--accent-primary-rgb), 0.4);
 }
 
-/* Avatar */
+/* Fundo do avatar: só --accent-primary (opacidade variando pra dar
+   profundidade), nunca --ns-accent — --ns-accent segue o tema escolhido em
+   Configurações → Aparência e pode estar salvo como "Verde" de antes deste
+   rebrand; --accent-primary nunca é sobrescrito pelo picker de tema. */
 .pm-avatar {
     width: 80px;
     height: 80px;
     border-radius: 50%;
-    background: linear-gradient(135deg, rgba(var(--ns-accent-rgb), 0.3), rgba(236, 72, 153, 0.3));
+    background: linear-gradient(135deg, rgba(var(--accent-primary-rgb), 0.45), rgba(var(--accent-primary-rgb), 0.2));
     display: flex;
     align-items: center;
     justify-content: center;
@@ -366,7 +373,7 @@
     width: 60px;
     height: 60px;
     border-radius: 50%;
-    background: linear-gradient(135deg, rgba(var(--ns-accent-rgb), 0.3), rgba(236, 72, 153, 0.3));
+    background: linear-gradient(135deg, rgba(var(--accent-primary-rgb), 0.45), rgba(var(--accent-primary-rgb), 0.2));
     display: flex;
     align-items: center;
     justify-content: center;
@@ -493,10 +500,11 @@
     transform: scale(1.1);
 }
 
+/* Persistente (não é hover), mesmo motivo do .pm-profile-card.active acima */
 .pm-avatar-option.selected {
-    border-color: #10b981;
-    background: rgba(16, 185, 129, 0.2);
-    box-shadow: 0 0 12px rgba(16, 185, 129, 0.4);
+    border-color: var(--accent-primary);
+    background: rgba(var(--accent-primary-rgb), 0.2);
+    box-shadow: 0 0 12px rgba(var(--accent-primary-rgb), 0.4);
 }
 
 /* Modal Buttons */
@@ -523,7 +531,7 @@
 }
 
 .pm-btn-save {
-    background: linear-gradient(135deg, var(--ns-accent), #ec4899);
+    background: var(--accent-primary);
     color: white;
     border: none;
     padding: 12px 24px;

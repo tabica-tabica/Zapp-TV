@@ -9,7 +9,7 @@
 // primeiro Voltar seguinte, sem aviso nenhum na tela.
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { exitApp } from '../services/tizenApp';
+import { exitApp } from '../services/platformApp';
 
 /** Quanto tempo o "aperte de novo" continua valendo. */
 const JANELA_MS = 4000;

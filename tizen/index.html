@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NeoStreamTV</title>
+  <title>ZappTV</title>
   <style>
     html,
     body,
@@ -66,7 +66,7 @@
       var boot = document.getElementById('boot-status');
       if (!boot) return;
       boot.className = '';
-      boot.innerHTML = '<div><strong>Erro ao carregar NeoStream</strong><span>' + message + '</span></div>';
+      boot.innerHTML = '<div><strong>Erro ao carregar Zapp</strong><span>' + message + '</span></div>';
     };
 
     window.onerror = function (message, source, line, column) {
@@ -85,7 +85,7 @@
 <body>
   <div id="boot-status">
     <div>
-      <strong>Carregando NeoStream</strong>
+      <strong>Carregando Zapp</strong>
       <span>Preparando o app para a TV...</span>
     </div>
   </div>

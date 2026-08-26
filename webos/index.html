@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ZappTV</title>
+  <style>
+    html,
+    body,
+    #root {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      background: #05070d;
+      color: #fff;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    #boot-status {
+      position: fixed;
+      /* 'inset' so existe no Chrome 87; esta e a tela que aparece quando o
+         app NAO carrega, entao ela precisa funcionar no Chromium 68 */
+      top: 0;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 48px;
+      box-sizing: border-box;
+      text-align: center;
+      background: #05070d;
+      color: #fff;
+      z-index: 999999;
+    }
+
+    #boot-status.ready {
+      display: none;
+    }
+
+    #boot-status strong {
+      display: block;
+      margin-bottom: 16px;
+      font-size: 40px;
+    }
+
+    #boot-status span {
+      display: block;
+      max-width: 900px;
+      color: #cbd5e1;
+      font-size: 24px;
+      line-height: 1.4;
+      word-break: break-word;
+    }
+  </style>
+  <script>
+    // Depois que o app sobe, quem trata erro e o AppErrorBoundary + a captura
+    // do diagnostico. Sem esta trava, QUALQUER rejeicao solta (ex.: AbortError
+    // de um play()) cobre um app que esta funcionando com a tela de erro do
+    // boot — que nao tem zona de foco e nao sai com tecla nenhuma.
+    window.__NEOSTREAM_BOOTED__ = false;
+    window.__NEOSTREAM_BOOT_ERROR__ = function (message) {
+      if (window.__NEOSTREAM_BOOTED__) return;
+      var boot = document.getElementById('boot-status');
+      if (!boot) return;
+      boot.className = '';
+      boot.innerHTML = '<div><strong>Erro ao carregar Zapp</strong><span>' + message + '</span></div>';
+    };
+
+    window.onerror = function (message, source, line, column) {
+      window.__NEOSTREAM_BOOT_ERROR__(String(message) + ' em ' + source + ':' + line + ':' + column);
+    };
+
+    window.onunhandledrejection = function (event) {
+      var reason = event && event.reason;
+      var message = reason && reason.message ? reason.message : String(reason);
+      window.__NEOSTREAM_BOOT_ERROR__(message);
+    };
+  </script>
+  <script src="./assets/polyfills.js"></script>
+</head>
+
+<body>
+  <div id="boot-status">
+    <div>
+      <strong>Carregando Zapp</strong>
+      <span>Preparando o app para a TV...</span>
+    </div>
+  </div>
+  <div id="root"></div>
+  <script>
+    var version = new Date().getTime();
+    var css = document.createElement('link');
+    css.rel = 'stylesheet';
+    css.href = './assets/style.css?v=' + version;
+    document.head.appendChild(css);
+
+    // O bundle e um IIFE unico (vite.webos.config.ts: format 'iife',
+    // renderLegacyChunks desligado). Nao ha mais SystemJS pra importar:
+    // e uma tag <script> comum, com onerror pra tela de erro do boot.
+    var app = document.createElement('script');
+    app.src = './assets/index.js?v=' + version;
+    app.onload = function () {
+      setTimeout(function () {
+        var boot = document.getElementById('boot-status');
+        if (boot && document.getElementById('root').children.length > 0) {
+          boot.className = 'ready';
+          window.__NEOSTREAM_BOOTED__ = true;
+        }
+      }, 300);
+    };
+    app.onerror = function () {
+      window.__NEOSTREAM_BOOT_ERROR__('Nao foi possivel carregar assets/index.js.');
+    };
+    document.body.appendChild(app);
+  </script>
+</body>
+
+</html>

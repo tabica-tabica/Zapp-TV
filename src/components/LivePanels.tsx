@@ -4,9 +4,12 @@
 // Ambos buscam EPG sob demanda, com teto de canais pra não estourar a TV.
 
 import { useState, useEffect, useRef } from 'react';
-import { epgService, type EpgProgram } from '../services/epgService';
+import { FaStar, FaTimes, FaFutbol, FaBell } from 'react-icons/fa';
+import { epgService, type ChannelEpg, type EpgProgram } from '../services/epgService';
+import { RemoteColorHint } from './RemoteColorHint';
 import { collectTodaysEvents, type SportsEvent } from '../services/liveDiscovery';
 import { useTVNavigation } from '../hooks/useTVNavigation';
+import { channelDisplayName } from '../services/channelVariants';
 import type { LiveStream } from '../types';
 import './LivePanels.css';
 
@@ -27,7 +30,7 @@ interface FavoritesNowPanelProps {
 }
 
 export function FavoritesNowPanel({ channels, onClose, onPlay, onMove }: FavoritesNowPanelProps) {
-    const [epgByChannel, setEpgByChannel] = useState<Map<number, EpgProgram | null>>(new Map());
+    const [epgByChannel, setEpgByChannel] = useState<Map<number, ChannelEpg | null>>(new Map());
     const [focusedIndex, setFocusedIndex] = useState(0);
     const [reordering, setReordering] = useState(false);
     const listRef = useRef<HTMLDivElement>(null);
@@ -41,7 +44,7 @@ export function FavoritesNowPanel({ channels, onClose, onPlay, onMove }: Favorit
                 if (cancelled) return;
                 const epg = await epgService.getChannelEpg(channel.stream_id);
                 if (cancelled) return;
-                setEpgByChannel(prev => new Map(prev).set(channel.stream_id, epg.now));
+                setEpgByChannel(prev => new Map(prev).set(channel.stream_id, epg));
             }
         })();
         return () => { cancelled = true; };
@@ -82,18 +85,20 @@ export function FavoritesNowPanel({ channels, onClose, onPlay, onMove }: Favorit
         <div className="live-panel-overlay">
             <div className="live-panel">
                 <div className="live-panel-header">
-                    <h2 className="live-panel-title">⭐ Agora nos favoritos</h2>
-                    <button className="live-panel-close" onClick={onClose}>✕</button>
+                    <h2 className="live-panel-title"><FaStar /> Agora nos favoritos</h2>
+                    <button className="live-panel-close" onClick={onClose}><FaTimes /></button>
                 </div>
 
                 <div ref={listRef} className="live-panel-list">
                     {visible.length === 0 && (
                         <div className="live-panel-empty">
-                            Nenhum canal favorito ainda. Marque canais com ⭐ na TV ao vivo.
+                            Nenhum canal favorito ainda. Marque canais com <FaStar /> na TV ao vivo.
                         </div>
                     )}
                     {visible.map((channel, index) => {
-                        const program = epgByChannel.get(channel.stream_id);
+                        const entry = epgByChannel.get(channel.stream_id);
+                        const program = entry?.now;
+                        const next = entry?.next;
                         const pct = program ? epgService.progressPct(program) ?? 0 : 0;
                         return (
                             <div
@@ -101,7 +106,7 @@ export function FavoritesNowPanel({ channels, onClose, onPlay, onMove }: Favorit
                                 className={`fav-now-row ${safeIndex === index ? 'tv-focused' : ''} ${reordering ? 'reordering' : ''}`}
                                 onClick={() => onPlay(channel)}
                             >
-                                <span className="fav-now-name">{channel.name}</span>
+                                <span className="fav-now-name">{channelDisplayName(channel.name)}</span>
                                 <span className="fav-now-program">
                                     {program ? program.title : (epgByChannel.has(channel.stream_id) ? 'Sem programação' : 'Carregando…')}
                                 </span>
@@ -115,6 +120,7 @@ export function FavoritesNowPanel({ channels, onClose, onPlay, onMove }: Favorit
                                         </span>
                                     </>
                                 )}
+                                {next && <span className="fav-now-next">A seguir: {next.title}</span>}
                                 {reordering && <span className="fav-now-move">↔</span>}
                             </div>
                         );
@@ -124,7 +130,9 @@ export function FavoritesNowPanel({ channels, onClose, onPlay, onMove }: Favorit
                 <div className="live-panel-hints">
                     <span>↑↓ Navegar</span>
                     <span>OK Assistir</span>
-                    {onMove && <span>{reordering ? '🟡 Sair de reordenar · ←→ Mover' : '🟡 Reordenar'}</span>}
+                    {onMove && (reordering
+                        ? <RemoteColorHint color="yellow" label="Sair de reordenar · ←→ Mover" />
+                        : <RemoteColorHint color="yellow" label="Reordenar" />)}
                     <span>← Fechar</span>
                 </div>
             </div>
@@ -195,8 +203,8 @@ export function SportsPanel({ channels, onClose, onPlay, onRemind, isReminded }:
         <div className="live-panel-overlay">
             <div className="live-panel">
                 <div className="live-panel-header">
-                    <h2 className="live-panel-title">⚽ Jogos de hoje</h2>
-                    <button className="live-panel-close" onClick={onClose}>✕</button>
+                    <h2 className="live-panel-title"><FaFutbol /> Jogos de hoje</h2>
+                    <button className="live-panel-close" onClick={onClose}><FaTimes /></button>
                 </div>
 
                 <div ref={listRef} className="live-panel-list">
@@ -217,11 +225,11 @@ export function SportsPanel({ channels, onClose, onPlay, onRemind, isReminded }:
                             >
                                 <span className="sports-time">{formatClock(event.program.start)}</span>
                                 <span className="sports-title">{event.program.title}</span>
-                                <span className="sports-channel">{event.channel.name}</span>
+                                <span className="sports-channel">{channelDisplayName(event.channel.name)}</span>
                                 {live
                                     ? <span className="sports-badge-live">NO AR</span>
                                     : reminded
-                                        ? <span className="sports-badge-bell">🔔 Lembrete</span>
+                                        ? <span className="sports-badge-bell"><FaBell /> Lembrete</span>
                                         : <span className="sports-badge-hint">OK lembrar</span>}
                             </div>
                         );

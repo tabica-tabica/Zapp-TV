@@ -3,6 +3,7 @@
 // (catch-up) tocam via timeshift; o atual mostra NO AR.
 
 import { useState, useEffect, useRef } from 'react';
+import { FaClipboardList, FaTimes, FaBell, FaHistory } from 'react-icons/fa';
 import { epgService, type EpgProgram } from '../services/epgService';
 import { useTVNavigation } from '../hooks/useTVNavigation';
 import type { LiveStream } from '../types';
@@ -91,8 +92,8 @@ export function ChannelAgendaOverlay({ channel, onClose, onPlayArchive, onToggle
         <div className="agenda-overlay">
             <div className="agenda-panel">
                 <div className="agenda-header">
-                    <h2 className="agenda-title">📋 {channel.name}</h2>
-                    <button className="agenda-close" onClick={onClose}>✕</button>
+                    <h2 className="agenda-title"><FaClipboardList /> {channel.name}</h2>
+                    <button className="agenda-close" onClick={onClose}><FaTimes /></button>
                 </div>
 
                 <div ref={listRef} className="agenda-list">
@@ -117,10 +118,10 @@ export function ChannelAgendaOverlay({ channel, onClose, onPlayArchive, onToggle
                                 </span>
                                 <span className="agenda-name">{program.title}</span>
                                 {isCurrent && <span className="agenda-badge-live">NO AR</span>}
-                                {playable && !isCurrent && <span className="agenda-badge-replay">⏮ Replay</span>}
+                                {playable && !isCurrent && <span className="agenda-badge-replay"><FaHistory /> Replay</span>}
                                 {program.start > now && onToggleReminder && (
                                     <span className="agenda-badge-bell">
-                                        {isReminded?.(program) ? '🔔 Lembrete' : 'OK lembrar'}
+                                        {isReminded?.(program) ? <><FaBell /> Lembrete</> : 'OK lembrar'}
                                     </span>
                                 )}
                             </div>
@@ -130,7 +131,7 @@ export function ChannelAgendaOverlay({ channel, onClose, onPlayArchive, onToggle
 
                 <div className="agenda-hints">
                     <span>↑↓ Navegar</span>
-                    <span>OK Replay / 🔔 Lembrete</span>
+                    <span>OK Replay / <FaBell /> Lembrete</span>
                     <span>← Fechar</span>
                 </div>
             </div>

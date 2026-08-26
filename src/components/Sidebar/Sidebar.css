@@ -67,12 +67,16 @@
 .logo-svg {
     position: relative;
     z-index: 2;
-    filter: drop-shadow(0 0 8px rgba(var(--ns-accent-rgb), 0.5));
+    /* --accent-primary (accent2), não --ns-accent: --ns-accent é o destaque
+       de TEMA, trocável em Configurações → Aparência (inclusive pra "Verde")
+       — a marca não pode seguir essa escolha, senão o logo muda de cor
+       sozinho. --accent-primary nunca é sobrescrito pelo picker de tema. */
+    filter: drop-shadow(0 0 8px rgba(var(--accent-primary-rgb), 0.5));
     transition: filter 0.3s ease;
 }
 
 .logo-wrapper:hover .logo-svg {
-    filter: drop-shadow(0 0 15px rgba(var(--ns-accent-rgb), 0.8)) drop-shadow(0 0 30px rgba(var(--ns-accent-rgb), 0.5));
+    filter: drop-shadow(0 0 15px rgba(var(--accent-primary-rgb), 0.8)) drop-shadow(0 0 30px rgba(var(--accent-primary-rgb), 0.5));
     animation: logoGlow 2s ease-in-out infinite;
 }
 
@@ -80,72 +84,11 @@
 
     0%,
     100% {
-        filter: drop-shadow(0 0 15px rgba(var(--ns-accent-rgb), 0.8)) drop-shadow(0 0 30px rgba(var(--ns-accent-rgb), 0.5));
+        filter: drop-shadow(0 0 15px rgba(var(--accent-primary-rgb), 0.8)) drop-shadow(0 0 30px rgba(var(--accent-primary-rgb), 0.5));
     }
 
     50% {
-        filter: drop-shadow(0 0 25px rgba(var(--ns-accent-rgb), 1)) drop-shadow(0 0 50px rgba(var(--ns-accent-rgb), 0.7));
-    }
-}
-
-.logo-ring {
-    position: absolute;
-    top: -8px;
-    right: -8px;
-    bottom: -8px;
-    left: -8px;
-    border-radius: 50%;
-    border: 2px solid rgba(var(--ns-accent-rgb), 0.3);
-    opacity: 0;
-    transition: all 0.3s ease;
-}
-
-.logo-wrapper:hover .logo-ring {
-    opacity: 1;
-    animation: ringPulse 2s ease-in-out infinite;
-}
-
-@keyframes ringPulse {
-
-    0%,
-    100% {
-        transform: scale(1);
-        opacity: 0.5;
-    }
-
-    50% {
-        transform: scale(1.2);
-        opacity: 1;
-    }
-}
-
-/* Animated Bars in Logo */
-.bar {
-    animation: barBounce 1.2s ease-in-out infinite;
-    transform-origin: center;
-}
-
-.bar-1 {
-    animation-delay: 0s;
-}
-
-.bar-2 {
-    animation-delay: 0.2s;
-}
-
-.bar-3 {
-    animation-delay: 0.4s;
-}
-
-@keyframes barBounce {
-
-    0%,
-    100% {
-        transform: scaleY(1);
-    }
-
-    50% {
-        transform: scaleY(0.6);
+        filter: drop-shadow(0 0 25px rgba(var(--accent-primary-rgb), 1)) drop-shadow(0 0 50px rgba(var(--accent-primary-rgb), 0.7));
     }
 }
 
@@ -231,12 +174,21 @@
 
 .item-icon {
     font-size: 24px;
+    /* Sem isto o ícone herdava a cor padrão de botão do navegador (geralmente
+       escura) em vez de clara — quase invisível no fundo escuro da sidebar. */
+    color: rgba(255, 255, 255, 0.75);
     transition: all 0.3s ease;
 }
 
 .nav-item:hover .item-icon,
 .nav-item.tv-focused .item-icon {
     transform: scale(1.15);
+}
+
+.nav-item.active .item-icon,
+.nav-item:hover .item-icon,
+.nav-item.tv-focused .item-icon {
+    color: #fff;
 }
 
 /* Active Indicator */
@@ -349,7 +301,12 @@
     bottom: -3px;
     left: -3px;
     border-radius: 50%;
-    background: linear-gradient(135deg, var(--ns-accent), #ec4899);
+    /* --accent-primary (accent2), não --ns-accent: --ns-accent segue o
+       destaque de TEMA escolhido em Configurações → Aparência (pode estar
+       salvo como "Verde" de antes deste rebrand) — a marca não pode piscar
+       verde por causa de uma preferência antiga. --accent-primary nunca é
+       sobrescrito pelo picker de tema, então fica sempre azul de verdade. */
+    background: var(--accent-primary);
     opacity: 0.8;
     transition: all 0.3s ease;
 }
@@ -387,6 +344,47 @@
 
 .profile-btn.tv-focused {
     outline: none;
+}
+
+/* Recarregar lista */
+.reload-btn {
+    position: relative;
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.reload-btn:hover,
+.reload-btn.tv-focused {
+    background: rgba(var(--ns-accent-rgb), 0.12);
+    transform: scale(1.1);
+    color: var(--ns-accent);
+}
+
+.reload-btn.tv-focused {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(var(--ns-accent-rgb), 0.6);
+}
+
+.reload-btn:active {
+    transform: scale(0.95);
+}
+
+.reload-btn:active .reload-icon {
+    animation: reloadSpin 0.5s ease;
+}
+
+@keyframes reloadSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(180deg); }
 }
 
 /* Logout Button */

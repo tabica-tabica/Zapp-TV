@@ -1,0 +1,35 @@
+<!--
+    Fonte vetorial do ícone do app — mesma marca ("Z" em fita dobrada, 3
+    painéis retos + 2 cunhas de sombra na dobra) desenhada em
+    src/components/BrandLogo.tsx, mas com fundo OPACO (ícone de plataforma
+    não pode ter alpha — Tizen/webOS não compõem transparência na home
+    screen) e os 3 painéis em branco (não nos 3 tons de azul do app: pouco
+    contraste entre eles vira ruído cinza num favicon de 16×16 — o fundo
+    colorido já carrega a marca, o glifo só precisa ser legível).
+
+    {{ACCENT}} e {{ACCENT2}} são substituídos por scripts/generate-icons.mjs
+    com os valores de brand.config.mjs antes de rasterizar. Não edite os
+    hexadecimais aqui à mão — troque brand.config.mjs e rode
+    `npm run brand:icons`.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+    <defs>
+        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="{{ACCENT}}" />
+            <stop offset="100%" stop-color="{{ACCENT2}}" />
+        </linearGradient>
+    </defs>
+    <rect width="512" height="512" fill="url(#bg)" />
+    <!-- Mesmas coordenadas 0-100 do BrandLogo.tsx, só escaladas/centralizadas
+         no canvas — os 3 painéis do "Z" em branco sólido (cantos superior
+         direito e inferior esquerdo cortados em diagonal), com as 2 cunhas de
+         sombra da dobra por cima, pra manter a leitura de profundidade mesmo
+         sem os 3 tons de azul. -->
+    <g transform="translate(76,76) scale(3.6)">
+        <polygon points="14,14 72,14 86,28 86,32 14,32" fill="#ffffff" />
+        <polygon points="86,28 72,14 62,14 14,72 28,86 38,86" fill="#ffffff" />
+        <polygon points="14,68 86,68 86,86 28,86 14,72" fill="#ffffff" />
+        <polygon points="62,14 72,14 86,28 74,32 50,32" fill="#000000" opacity="0.18" />
+        <polygon points="26,68 50,68 38,86 28,86 14,72" fill="#000000" opacity="0.18" />
+    </g>
+</svg>

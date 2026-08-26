@@ -1,19 +1,66 @@
 // MyList Page - Watch Later List - Matching NeoStream Desktop Style
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+    FaChild, FaBookmark, FaFilm, FaTv, FaTrashAlt, FaPlus, FaCheckSquare, FaRegSquare,
+} from 'react-icons/fa';
+import { Grid, type CellComponentProps } from 'react-window';
+import { RemoteColorHint } from '../components/RemoteColorHint';
 import { storage, type WatchLaterItem } from '../services/storage';
 import { useTVNavigation } from '../hooks/useTVNavigation';
+import { useVirtualGridNavigation } from '../hooks/useVirtualGridNavigation';
+import { useMeasuredColumns } from '../hooks/useMeasuredColumns';
 import { useFocusZone } from '../contexts/FocusContext';
 import { kidsFilter } from '../services/kidsFilter';
 import { listsService, NOMES_SUGERIDOS, MAX_LISTAS, type ListaNomeada } from '../services/listsService';
 import { ContentDetailModal } from '../components/ContentDetailModal';
 import { MoviePlayer } from '../components/MoviePlayer';
 import { SeriesQueuePlayer } from '../components/SeriesQueuePlayer';
+import { CatalogCard } from '../components/CatalogCard/CatalogCard';
 import { buildEpisodeQueue, type EpisodeQueue } from '../services/seriesPlayback';
 import './MyList.css';
 
 interface MyListProps {
     onNavigate?: (page: string) => void;
+}
+
+// Card visível 200x(200*1.5)px + a faixa de título/nota embaixo. Gap 24px:
+// mesma folga do grid antigo. `columnWidth` que sai do useMeasuredColumns já
+// é o PITCH da coluna (o card, mais o gap) — ver o hook pra detalhe.
+const CARD_WIDTH = 200;
+const CARD_GAP = 24;
+const CARD_INFO_HEIGHT = 76;
+
+interface MyListCellProps {
+    items: WatchLaterItem[];
+    columns: number;
+    focusedIndex: number;
+    removingId: string | null;
+    gap: number;
+    onSelect: (item: WatchLaterItem) => void;
+    onRemove: (item: WatchLaterItem) => void;
+    onPlay: (item: WatchLaterItem) => void;
+}
+
+function MyListCell({
+    rowIndex, columnIndex, style, items, columns, focusedIndex, removingId, gap, onSelect, onRemove, onPlay,
+}: CellComponentProps<MyListCellProps>) {
+    const index = rowIndex * columns + columnIndex;
+    const item = items[index];
+    if (!item) return null;
+    return (
+        <CatalogCard
+            item={item}
+            index={index}
+            focused={index === focusedIndex}
+            removing={removingId === item.id}
+            onSelect={onSelect}
+            onRemove={onRemove}
+            onPlay={onPlay}
+            style={style}
+            gap={gap}
+        />
+    );
 }
 
 export function MyList({ onNavigate }: MyListProps) {
@@ -36,6 +83,9 @@ export function MyList({ onNavigate }: MyListProps) {
     // junto, o realce sai da area visivel e o usuario navega as cegas
     const destinosRef = useRef<HTMLDivElement>(null);
     const abasRef = useRef<HTMLDivElement>(null);
+    const { containerRef: gridContainerRef, columns, columnWidth } = useMeasuredColumns({
+        cardWidth: CARD_WIDTH, gap: CARD_GAP, minColumns: 3, maxColumns: 8,
+    });
     const [removingId, setRemovingId] = useState<string | null>(null);
     const { focusZone, setFocusZone } = useFocusZone();
     const [kidsActive] = useState(() => kidsFilter.isKidsActive());
@@ -51,7 +101,6 @@ export function MyList({ onNavigate }: MyListProps) {
     // Configurações): apagar a lista inteira sem confirmar seria cruel
     const [clearArmed, setClearArmed] = useState(false);
     const [focusedTabIndex, setFocusedTabIndex] = useState(0);
-    const [focusedItemIndex, setFocusedItemIndex] = useState(0);
     const [emptyFocusIndex, setEmptyFocusIndex] = useState(0);
 
     useEffect(() => {
@@ -71,19 +120,6 @@ export function MyList({ onNavigate }: MyListProps) {
         setItems(saved);
     }, []);
 
-    const removeItem = (item: WatchLaterItem) => {
-        setRemovingId(item.id);
-        setTimeout(() => {
-            storage.removeWatchLater(item.id, item.type);
-            loadItems();
-            setRemovingId(null);
-            // Reancora o indice REAL no saneado: sem isto, apagar itens do fim
-            // deixava focusedItemIndex alem da lista e as setas ficavam mortas
-            // por varios toques ate o numero voltar ao range
-            setFocusedItemIndex(prev => Math.max(0, Math.min(prev, displayItems.length - 2)));
-        }, 300);
-    };
-
     const clearAll = () => {
         storage.clearWatchLater();
         loadItems();
@@ -99,9 +135,6 @@ export function MyList({ onNavigate }: MyListProps) {
         : activeTab === 'all' ? items
         : activeTab === 'movies' ? movies
         : series;
-
-    // Indice focado sempre no range (a lista encolhe ao remover itens)
-    const safeItemIndex = Math.min(focusedItemIndex, Math.max(0, displayItems.length - 1));
 
     // Abas ancoradas por ID, nunca por posição: as listas nomeadas entram e
     // saem, e índice posicional com item condicional é o defeito que já mandou
@@ -127,18 +160,32 @@ export function MyList({ onNavigate }: MyListProps) {
     if (focusArea === 'items' && displayItems.length === 0) setFocusArea('tabs');
 
     // Abrir item: ambos os tipos abrem a ficha (o modal resolve episódios)
-    const openItem = (item: WatchLaterItem) => {
+    const openItem = useCallback((item: WatchLaterItem) => {
         setModalItem(item);
-    };
+    }, []);
+
+    const {
+        focusedIndex, setFocusedIndex, gridRef, handleNavigate: handleGridNavigate, handleSelect: handleGridSelect,
+    } = useVirtualGridNavigation({
+        itemCount: displayItems.length,
+        columns,
+        enabled: focusArea === 'items',
+        onExitUp: () => setFocusArea('tabs'),
+        onExitLeft: () => setFocusZone('sidebar'),
+        onSelect: (index) => {
+            const item = displayItems[index];
+            if (item) openItem(item);
+        },
+    });
 
     // Play direto do card: filme toca na hora; série abre a ficha
-    const playItem = async (item: WatchLaterItem) => {
+    const playItem = useCallback((item: WatchLaterItem) => {
         if (item.type === 'movie') {
             setPlayingMovie(item);
         } else if (item.type === 'series') {
             openItem(item);
         }
-    };
+    }, [openItem]);
 
     const playSeriesEpisode = async (item: WatchLaterItem, season?: number, episode?: number) => {
         try {
@@ -152,17 +199,30 @@ export function MyList({ onNavigate }: MyListProps) {
         }
     };
 
+    const removeItem = useCallback((item: WatchLaterItem) => {
+        setRemovingId(item.id);
+        setTimeout(() => {
+            storage.removeWatchLater(item.id, item.type);
+            loadItems();
+            setRemovingId(null);
+            // Reancora o indice REAL no saneado: sem isto, apagar itens do fim
+            // deixava o foco alem da lista e as setas ficavam mortas por
+            // varios toques ate o numero voltar ao range
+            setFocusedIndex(Math.max(0, Math.min(focusedIndex, displayItems.length - 2)));
+        }, 300);
+    }, [loadItems, focusedIndex, setFocusedIndex, displayItems.length]);
+
     // Remove o item da VISTA atual: dentro de uma lista nomeada, 🔴 tira dali
     // — apagar da lista padrão seria destruir o que a pessoa não pediu
-    const removerDaVista = (item: WatchLaterItem) => {
+    const removerDaVista = useCallback((item: WatchLaterItem) => {
         if (listaAtiva) {
             listsService.toggleItem(listaAtiva.id, item);
             recarregarListas();
-            setFocusedItemIndex(prev => Math.max(0, Math.min(prev, listaAtiva.itens.length - 2)));
+            setFocusedIndex(Math.max(0, Math.min(focusedIndex, listaAtiva.itens.length - 2)));
             return;
         }
         removeItem(item);
-    };
+    }, [listaAtiva, removeItem, focusedIndex, setFocusedIndex]);
 
     // TV Navigation
     const handleNavigate = (direction: 'up' | 'down' | 'left' | 'right') => {
@@ -204,26 +264,10 @@ export function MyList({ onNavigate }: MyListProps) {
                 setFocusedTabIndex(prev => Math.min(headerSlots - 1, prev + 1));
             } else if (direction === 'down') {
                 setFocusArea('items');
-                setFocusedItemIndex(0);
+                setFocusedIndex(0);
             }
         } else if (focusArea === 'items') {
-            const cols = 6;
-            const total = displayItems.length;
-
-            if (direction === 'up') {
-                if (focusedItemIndex < cols) {
-                    setFocusArea('tabs');
-                } else {
-                    setFocusedItemIndex(prev => Math.max(0, prev - cols));
-                }
-            } else if (direction === 'down') {
-                setFocusedItemIndex(prev => Math.min(total - 1, prev + cols));
-            } else if (direction === 'left') {
-                if (focusedItemIndex % cols === 0) setFocusZone('sidebar');
-                else setFocusedItemIndex(prev => Math.max(0, prev - 1));
-            } else if (direction === 'right') {
-                setFocusedItemIndex(prev => Math.min(total - 1, prev + 1));
-            }
+            handleGridNavigate(direction);
         }
     };
 
@@ -278,8 +322,7 @@ export function MyList({ onNavigate }: MyListProps) {
             }
             setActiveTab(aba);
         } else if (focusArea === 'items') {
-            const item = displayItems[safeItemIndex];
-            if (item) openItem(item);
+            handleGridSelect();
         }
     };
 
@@ -307,7 +350,7 @@ export function MyList({ onNavigate }: MyListProps) {
                 if (!alvo) return;
                 if (excluirArmado !== id) {
                     setExcluirArmado(id);
-                    setAviso('🔵 de novo apaga a lista "' + alvo.nome + '".');
+                    setAviso('Toque azul de novo apaga a lista "' + alvo.nome + '".');
                     return;
                 }
                 listsService.remove(id);
@@ -319,7 +362,7 @@ export function MyList({ onNavigate }: MyListProps) {
                 return;
             }
             if (focusArea !== 'items') return;
-            const item = displayItems[safeItemIndex];
+            const item = displayItems[focusedIndex];
             if (!item) return;
             // 🔴 remove o item em foco — mesma convenção do resto do app
             if (action === 'red') {
@@ -327,7 +370,7 @@ export function MyList({ onNavigate }: MyListProps) {
             } else if (action === 'yellow') {
                 // 🟡 adicionar a uma lista nomeada (item 30)
                 if (listas.length === 0) {
-                    setAviso('Crie uma lista primeiro no botão ＋.');
+                    setAviso('Crie uma lista primeiro em "Nova lista".');
                     return;
                 }
                 setAddIndex(0);
@@ -337,6 +380,21 @@ export function MyList({ onNavigate }: MyListProps) {
         enabled: focusZone === 'content' && !modalItem && !playingMovie && !seriesQueue,
     });
 
+    // Altura da linha: pôster 2:3 (a mesma proporção do CSS) + a faixa de
+    // título/nota embaixo do card + o gap visual entre linhas.
+    const cardHeight = Math.round((columnWidth - CARD_GAP) * 1.5) + CARD_INFO_HEIGHT + CARD_GAP;
+    const rowCount = Math.max(1, Math.ceil(displayItems.length / columns));
+    const myListCellProps = useMemo<MyListCellProps>(() => ({
+        items: displayItems,
+        columns,
+        focusedIndex: focusArea === 'items' ? focusedIndex : -1,
+        removingId,
+        gap: CARD_GAP,
+        onSelect: openItem,
+        onRemove: removerDaVista,
+        onPlay: playItem,
+    }), [displayItems, columns, focusArea, focusedIndex, removingId, openItem, removerDaVista, playItem]);
+
     // Perfil Kids: listas sao globais do aparelho e podem conter conteudo
     // adulto salvo por outros perfis — bloqueadas no modo Kids
     if (kidsActive) {
@@ -345,7 +403,7 @@ export function MyList({ onNavigate }: MyListProps) {
                 <div className="mylist-backdrop" />
                 <div className="empty-state">
                     <div className="empty-icon-container">
-                        <div className="empty-icon">👶</div>
+                        <div className="empty-icon"><FaChild /></div>
                         <div className="empty-icon-glow" />
                     </div>
                     <h2 className="empty-title">Indisponível no perfil Kids</h2>
@@ -366,7 +424,7 @@ export function MyList({ onNavigate }: MyListProps) {
                 <div className="mylist-backdrop" />
                 <div className="empty-state">
                     <div className="empty-icon-container">
-                        <div className="empty-icon">📑</div>
+                        <div className="empty-icon"><FaBookmark /></div>
                         <div className="empty-icon-glow" />
                     </div>
                     <h2 className="empty-title">Sua lista está vazia</h2>
@@ -379,14 +437,14 @@ export function MyList({ onNavigate }: MyListProps) {
                             className={`suggestion-btn ${emptyFocusIndex === 0 ? 'tv-focused' : ''}`}
                             onClick={() => onNavigate?.('movies')}
                         >
-                            <span>🎬</span>
+                            <span><FaFilm /></span>
                             <span>Explorar Filmes</span>
                         </button>
                         <button
                             className={`suggestion-btn ${emptyFocusIndex === 1 ? 'tv-focused' : ''}`}
                             onClick={() => onNavigate?.('series')}
                         >
-                            <span>📺</span>
+                            <span><FaTv /></span>
                             <span>Explorar Séries</span>
                         </button>
                     </div>
@@ -402,7 +460,7 @@ export function MyList({ onNavigate }: MyListProps) {
             {/* Header */}
             <header className="mylist-header">
                 <div className="header-title">
-                    <div className="title-icon">📑</div>
+                    <div className="title-icon"><FaBookmark /></div>
                     <div>
                         <h1>Minha Lista</h1>
                         <p className="subtitle">
@@ -417,7 +475,7 @@ export function MyList({ onNavigate }: MyListProps) {
                         className={`clear-btn ${focusArea === 'tabs' && focusedTabIndex >= tabs.length ? 'tv-focused' : ''} ${clearArmed ? 'armed' : ''}`}
                         onClick={clearAll}
                     >
-                        <span>🗑️</span>
+                        <span><FaTrashAlt /></span>
                         <span>{clearArmed ? 'OK de novo apaga' : 'Limpar Tudo'}</span>
                     </button>
                 )}
@@ -436,14 +494,14 @@ export function MyList({ onNavigate }: MyListProps) {
                     className={`tab ${activeTab === 'movies' ? 'active' : ''} ${focusArea === 'tabs' && focusedTabIndex === 1 ? 'tv-focused' : ''}`}
                     onClick={() => setActiveTab('movies')}
                 >
-                    <span>🎬 Filmes</span>
+                    <span><FaFilm /> Filmes</span>
                     <span className="tab-count">{movies.length}</span>
                 </button>
                 <button
                     className={`tab ${activeTab === 'series' ? 'active' : ''} ${focusArea === 'tabs' && focusedTabIndex === 2 ? 'tv-focused' : ''}`}
                     onClick={() => setActiveTab('series')}
                 >
-                    <span>📺 Séries</span>
+                    <span><FaTv /> Séries</span>
                     <span className="tab-count">{series.length}</span>
                 </button>
 
@@ -456,7 +514,7 @@ export function MyList({ onNavigate }: MyListProps) {
                             className={`tab ${activeTab === aba ? 'active' : ''} ${focusArea === 'tabs' && tabs[focusedTabIndex] === aba ? 'tv-focused' : ''}`}
                             onClick={() => setActiveTab(aba)}
                         >
-                            <span>📌 {lista.nome}</span>
+                            <span><FaBookmark /> {lista.nome}</span>
                             <span className="tab-count">{lista.itens.length}</span>
                         </button>
                     );
@@ -466,7 +524,7 @@ export function MyList({ onNavigate }: MyListProps) {
                         className={`tab ${focusArea === 'tabs' && tabs[focusedTabIndex] === 'new' ? 'tv-focused' : ''}`}
                         onClick={() => { setSugestaoIndex(0); setCriandoLista(true); }}
                     >
-                        <span>＋ Nova lista</span>
+                        <span><FaPlus /> Nova lista</span>
                     </button>
                 )}
             </div>
@@ -511,8 +569,8 @@ export function MyList({ onNavigate }: MyListProps) {
                                     <span>
                                         {lista.itens.some(guardado =>
                                             guardado.id === addAlvo.id && guardado.type === addAlvo.type
-                                        ) ? '☑' : '☐'}
-                                        {' '}📌 {lista.nome}
+                                        ) ? <FaCheckSquare /> : <FaRegSquare />}
+                                        {' '}<FaBookmark /> {lista.nome}
                                     </span>
                                     <span className="tab-count">{lista.itens.length}</span>
                                 </button>
@@ -522,65 +580,31 @@ export function MyList({ onNavigate }: MyListProps) {
                 </div>
             )}
 
-            {/* Cards Grid */}
-            <div className="cards-grid">
-                {displayItems.map((item, index) => (
-                    <div
-                        key={`${item.type}-${item.id}`}
-                        className={`card ${removingId === item.id ? 'removing' : ''} ${focusArea === 'items' && safeItemIndex === index ? 'tv-focused' : ''}`}
-                        style={{ animationDelay: `${index * 0.05}s` }}
-                        onClick={() => openItem(item)}
-                    >
-                        <div className="card-poster">
-                            {item.poster ? (
-                                <img decoding="async" src={item.poster} alt={item.title} />
-                            ) : (
-                                <div className="poster-placeholder">
-                                    {item.type === 'movie' ? '🎬' : '📺'}
-                                </div>
-                            )}
-                            <div className="card-type">
-                                {item.type === 'movie' ? '🎬' : '📺'}
-                            </div>
-                            <div className="card-overlay">
-                                <button
-                                    className="remove-btn"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        removeItem(item);
-                                    }}
-                                >
-                                    🗑️
-                                </button>
-                                <button
-                                    className="play-btn"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        void playItem(item);
-                                    }}
-                                >
-                                    ▶️
-                                </button>
-                            </div>
-                        </div>
-                        <div className="card-info">
-                            <h3 className="card-title">{item.title}</h3>
-                            <div className="card-meta">
-                                {item.year && <span>{item.year}</span>}
-                                {item.rating && <span>⭐ {item.rating}</span>}
-                            </div>
-                        </div>
-                    </div>
-                ))}
+            {/* Cards Grid — virtualizado (react-window): a lista pode ter
+                centenas de itens salvos, e só a janela visível+overscan
+                fica montada no DOM. */}
+            <div className="cards-grid" ref={gridContainerRef}>
+                <Grid
+                    className="cards-grid-viewport"
+                    gridRef={gridRef}
+                    cellComponent={MyListCell}
+                    cellProps={myListCellProps}
+                    columnCount={columns}
+                    columnWidth={columnWidth}
+                    rowCount={rowCount}
+                    rowHeight={cardHeight}
+                    overscanCount={1}
+                    style={{ height: '100%', width: '100%' }}
+                />
             </div>
 
             {/* Footer Hints */}
             <div className="mylist-hints">
                 <span>↑↓←→ Navegar</span>
                 <span>OK Selecionar</span>
-                <span className="hint-red">🔴 Remover</span>
-                <span className="hint-yellow">🟡 Adicionar a uma lista</span>
-                <span className="hint-blue">🔵 Apagar lista</span>
+                <RemoteColorHint color="red" label="Remover" />
+                <RemoteColorHint color="yellow" label="Adicionar a uma lista" />
+                <RemoteColorHint color="blue" label="Apagar lista" />
                 <span>← Voltar</span>
             </div>
 

@@ -34,7 +34,7 @@
     left: -150px;
     width: 400px;
     height: 400px;
-    background: radial-gradient(circle, rgba(139, 92, 246, 0.08) 0%, transparent 70%);
+    background: radial-gradient(circle, rgba(var(--accent-secondary-rgb), 0.08) 0%, transparent 70%);
 }
 
 /* Header */
@@ -163,18 +163,21 @@
 }
 
 .stat-card-series {
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(139, 92, 246, 0.05) 100%);
-    border: 1px solid rgba(139, 92, 246, 0.2) !important;
+    background: linear-gradient(135deg, rgba(var(--accent-secondary-rgb), 0.15) 0%, rgba(var(--accent-secondary-rgb), 0.05) 100%);
+    border: 1px solid rgba(var(--accent-secondary-rgb), 0.2) !important;
 }
 
 .stat-card-series:hover,
 .stat-card-series.tv-focused {
-    box-shadow: 0 20px 40px rgba(139, 92, 246, 0.2);
+    box-shadow: 0 20px 40px rgba(var(--accent-secondary-rgb), 0.2);
 }
 
 .stat-icon {
     font-size: 28px;
     margin-bottom: 8px;
+    /* Ícone do react-icons usa fill="currentColor" — sem isto ele herdava a
+       cor de texto padrão do <button> (preta) em vez do branco da página */
+    color: rgba(255, 255, 255, 0.9);
 }
 
 .stat-value {
@@ -198,7 +201,19 @@
 }
 
 .stat-card-series .stat-label {
-    color: rgba(139, 92, 246, 0.9);
+    color: rgba(var(--accent-secondary-rgb), 0.9);
+}
+
+.stat-card-live .stat-icon {
+    color: rgba(239, 68, 68, 0.9);
+}
+
+.stat-card-vod .stat-icon {
+    color: rgba(59, 130, 246, 0.9);
+}
+
+.stat-card-series .stat-icon {
+    color: rgba(var(--accent-secondary-rgb), 0.9);
 }
 
 /* Content Sections */
@@ -217,6 +232,12 @@
     margin-bottom: 16px;
     padding-left: 12px;
     /* Align with content row padding */
+}
+
+.section-title-icon {
+    margin-right: 8px;
+    vertical-align: -2px;
+    color: rgba(var(--ns-accent-rgb), 0.9);
 }
 
 .content-row {
@@ -278,6 +299,16 @@
     object-fit: cover;
 }
 
+.card-image-fallback {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #666;
+    font-size: 32px;
+}
+
 .card-title {
     padding: 10px;
     font-size: 12px;
@@ -324,6 +355,9 @@
     display: block;
     font-size: 24px;
     margin-bottom: 6px;
+    /* Mesmo motivo do .stat-icon: sem cor explícita herdava o preto padrão
+       do <button> em vez do branco da página */
+    color: rgba(255, 255, 255, 0.9);
 }
 
 .quick-label {
@@ -429,6 +463,11 @@
     font-size: 14px;
     white-space: nowrap;
     margin-left: 18px;
+}
+
+.home-expiry-icon {
+    margin-right: 6px;
+    vertical-align: -1px;
 }
 
 /* Falha ao carregar o catálogo (antes a Home só mostrava zeros) */

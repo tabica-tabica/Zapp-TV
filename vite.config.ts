@@ -1,16 +1,18 @@
 import { defineConfig } from 'vite'
-import pkg from './package.json'
 import react from '@vitejs/plugin-react'
+import { visualizer } from 'rollup-plugin-visualizer'
+import { brandDefine } from './vite.define.ts'
 
 // Modern web build used for browser preview/development.
 export default defineConfig({
-  // Versao exposta no bundle: a tela de diagnostico (item 59) precisa
-  // dizer qual build esta rodando na TV
-  define: {
-    __APP_VERSION__: JSON.stringify(pkg.version),
-    __BUILD_TARGET__: JSON.stringify('web'),
-  },
-  plugins: [react()],
+  define: brandDefine('web'),
+  plugins: [
+    react(),
+    // Inspecao humana ad hoc da composicao do bundle: `ANALYZE=true npm run build:web`.
+    // Nao substitui scripts/check-bundle-budget.mjs (que mede gzip real e falha o CI) —
+    // este e so pra abrir o treemap e olhar o que esta pesando.
+    ...(process.env.ANALYZE ? [visualizer({ open: true, gzipSize: true, brotliSize: true })] : []),
+  ],
   build: {
     minify: 'terser',
     chunkSizeWarningLimit: 650,
@@ -25,7 +27,8 @@ export default defineConfig({
     },
     terserOptions: {
       compress: {
-        drop_console: false,
+        drop_console: true,
+        passes: 2,
       },
     },
   },

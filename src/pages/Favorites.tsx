@@ -1,20 +1,70 @@
 // Favorites Page - Matching NeoStream Desktop Style
 
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+import { FaChild, FaHeart } from 'react-icons/fa';
+import { Grid, type CellComponentProps } from 'react-window';
+import { RemoteColorHint } from '../components/RemoteColorHint';
 import { storage, type FavoriteItem } from '../services/storage';
 import { api } from '../services/api';
 import { useTVNavigation } from '../hooks/useTVNavigation';
+import { useVirtualGridNavigation } from '../hooks/useVirtualGridNavigation';
+import { useMeasuredColumns } from '../hooks/useMeasuredColumns';
 import { useFocusZone } from '../contexts/FocusContext';
 import { kidsFilter } from '../services/kidsFilter';
 import { ContentDetailModal } from '../components/ContentDetailModal';
 import { MoviePlayer } from '../components/MoviePlayer';
 import { SeriesQueuePlayer } from '../components/SeriesQueuePlayer';
 import { VideoPlayer } from '../components/VideoPlayer';
+import { CatalogCard } from '../components/CatalogCard/CatalogCard';
 import { buildEpisodeQueue, type EpisodeQueue } from '../services/seriesPlayback';
 import './Favorites.css';
 
 interface FavoritesProps {
     onNavigate?: (page: string) => void;
+}
+
+const CARD_WIDTH = 200;
+const CARD_GAP = 24;
+const CARD_INFO_HEIGHT = 76;
+// Vermelho — tema original do Favorites (o do MyList é teal, o default do CatalogCard).
+const ACCENT_RGB = '239, 68, 68';
+
+function rotuloDoTipo(type: FavoriteItem['type']): string {
+    if (type === 'movie') return 'Filme';
+    if (type === 'series') return 'Série';
+    return 'Canal';
+}
+
+interface FavoritesCellProps {
+    items: FavoriteItem[];
+    columns: number;
+    focusedIndex: number;
+    removingId: string | null;
+    gap: number;
+    onSelect: (item: FavoriteItem) => void;
+    onRemove: (item: FavoriteItem) => void;
+}
+
+function FavoritesCell({
+    rowIndex, columnIndex, style, items, columns, focusedIndex, removingId, gap, onSelect, onRemove,
+}: CellComponentProps<FavoritesCellProps>) {
+    const index = rowIndex * columns + columnIndex;
+    const item = items[index];
+    if (!item) return null;
+    return (
+        <CatalogCard
+            item={item}
+            index={index}
+            focused={index === focusedIndex}
+            removing={removingId === item.id}
+            onSelect={onSelect}
+            onRemove={onRemove}
+            style={style}
+            gap={gap}
+            accentRgb={ACCENT_RGB}
+            typeBadge={rotuloDoTipo}
+        />
+    );
 }
 
 export function Favorites({ onNavigate }: FavoritesProps) {
@@ -36,22 +86,15 @@ export function Favorites({ onNavigate }: FavoritesProps) {
     // Configurações): apagar a lista inteira sem confirmar seria cruel
     const [clearArmed, setClearArmed] = useState(false);
     const [focusedTabIndex, setFocusedTabIndex] = useState(0);
-    const [focusedItemIndex, setFocusedItemIndex] = useState(0);
     const [emptyFocusIndex, setEmptyFocusIndex] = useState(0);
+    const { containerRef: gridContainerRef, columns, columnWidth } = useMeasuredColumns({
+        cardWidth: CARD_WIDTH, gap: CARD_GAP, minColumns: 3, maxColumns: 8,
+    });
 
     const loadItems = useCallback(() => {
         const saved = storage.getFavorites();
         setItems(saved);
     }, []);
-
-    const removeItem = (item: FavoriteItem) => {
-        setRemovingId(item.id);
-        setTimeout(() => {
-            storage.removeFavorite(item.id, item.type);
-            loadItems();
-            setRemovingId(null);
-        }, 300);
-    };
 
     const clearAll = () => {
         storage.clearFavorites();
@@ -66,22 +109,42 @@ export function Favorites({ onNavigate }: FavoritesProps) {
         activeTab === 'movies' ? movies :
             activeTab === 'series' ? series : channels;
 
-    // Indice focado sempre no range (a lista encolhe ao remover itens)
-    const safeItemIndex = Math.min(focusedItemIndex, Math.max(0, displayItems.length - 1));
-
     const tabs = ['all', 'movies', 'series', 'channels'] as const;
     // Slots da faixa do cabeçalho: as abas + "Limpar Tudo" (que só existe
     // quando há algo pra limpar — slot invisível vira parada morta do D-pad)
     const headerSlots = tabs.length + (items.length > 0 ? 1 : 0);
 
     // Abrir item: canal toca direto; filme/série abrem a ficha
-    const openItem = (item: FavoriteItem) => {
+    const openItem = useCallback((item: FavoriteItem) => {
         if (item.type === 'channel') {
             setPlayingChannel(item);
         } else {
             setModalItem(item);
         }
-    };
+    }, []);
+
+    const {
+        focusedIndex, setFocusedIndex, gridRef, handleNavigate: handleGridNavigate, handleSelect: handleGridSelect,
+    } = useVirtualGridNavigation({
+        itemCount: displayItems.length,
+        columns,
+        enabled: focusArea === 'items',
+        onExitUp: () => setFocusArea('tabs'),
+        onExitLeft: () => setFocusZone('sidebar'),
+        onSelect: (index) => {
+            const item = displayItems[index];
+            if (item) openItem(item);
+        },
+    });
+
+    const removeItem = useCallback((item: FavoriteItem) => {
+        setRemovingId(item.id);
+        setTimeout(() => {
+            storage.removeFavorite(item.id, item.type);
+            loadItems();
+            setRemovingId(null);
+        }, 300);
+    }, [loadItems]);
 
     const playSeriesEpisode = async (item: FavoriteItem, season?: number, episode?: number) => {
         try {
@@ -122,26 +185,10 @@ export function Favorites({ onNavigate }: FavoritesProps) {
                 setFocusedTabIndex(prev => Math.min(headerSlots - 1, prev + 1));
             } else if (direction === 'down') {
                 setFocusArea('items');
-                setFocusedItemIndex(0);
+                setFocusedIndex(0);
             }
         } else if (focusArea === 'items') {
-            const cols = 6;
-            const total = displayItems.length;
-
-            if (direction === 'up') {
-                if (focusedItemIndex < cols) {
-                    setFocusArea('tabs');
-                } else {
-                    setFocusedItemIndex(prev => Math.max(0, prev - cols));
-                }
-            } else if (direction === 'down') {
-                setFocusedItemIndex(prev => Math.min(total - 1, prev + cols));
-            } else if (direction === 'left') {
-                if (focusedItemIndex % cols === 0) setFocusZone('sidebar');
-                else setFocusedItemIndex(prev => Math.max(0, prev - 1));
-            } else if (direction === 'right') {
-                setFocusedItemIndex(prev => Math.min(total - 1, prev + 1));
-            }
+            handleGridNavigate(direction);
         }
     };
 
@@ -165,8 +212,7 @@ export function Favorites({ onNavigate }: FavoritesProps) {
             }
             setActiveTab(tabs[focusedTabIndex]);
         } else if (focusArea === 'items') {
-            const item = displayItems[safeItemIndex];
-            if (item) openItem(item);
+            handleGridSelect();
         }
     };
 
@@ -181,11 +227,24 @@ export function Favorites({ onNavigate }: FavoritesProps) {
         onAction: (action) => {
             // 🔴 remove o item em foco — mesma convenção do resto do app
             if (action !== 'red' || focusArea !== 'items') return;
-            const item = displayItems[safeItemIndex];
+            const item = displayItems[focusedIndex];
             if (item) removeItem(item);
         },
         enabled: focusZone === 'content' && !modalItem && !playingMovie && !playingChannel && !seriesQueue,
     });
+
+    // Altura da linha: pôster 2:3 + a faixa de título/nota + o gap entre linhas.
+    const cardHeight = Math.round((columnWidth - CARD_GAP) * 1.5) + CARD_INFO_HEIGHT + CARD_GAP;
+    const rowCount = Math.max(1, Math.ceil(displayItems.length / columns));
+    const favoritesCellProps = useMemo<FavoritesCellProps>(() => ({
+        items: displayItems,
+        columns,
+        focusedIndex: focusArea === 'items' ? focusedIndex : -1,
+        removingId,
+        gap: CARD_GAP,
+        onSelect: openItem,
+        onRemove: removeItem,
+    }), [displayItems, columns, focusArea, focusedIndex, removingId, openItem, removeItem]);
 
     // Perfil Kids: listas sao globais do aparelho e podem conter conteudo
     // adulto salvo por outros perfis — bloqueadas no modo Kids
@@ -195,7 +254,7 @@ export function Favorites({ onNavigate }: FavoritesProps) {
                 <div className="favorites-backdrop" />
                 <div className="empty-state">
                     <div className="empty-icon-container">
-                        <div className="empty-icon">👶</div>
+                        <div className="empty-icon"><FaChild /></div>
                         <div className="empty-icon-glow" />
                     </div>
                     <h2 className="empty-title">Indisponível no perfil Kids</h2>
@@ -214,7 +273,7 @@ export function Favorites({ onNavigate }: FavoritesProps) {
                 <div className="favorites-backdrop" />
                 <div className="empty-state">
                     <div className="empty-icon-container">
-                        <div className="empty-icon">♥</div>
+                        <div className="empty-icon"><FaHeart /></div>
                         <div className="empty-icon-glow" />
                     </div>
                     <h2 className="empty-title">Nenhum favorito ainda</h2>
@@ -250,7 +309,7 @@ export function Favorites({ onNavigate }: FavoritesProps) {
             {/* Header */}
             <header className="favorites-header">
                 <div className="header-title">
-                    <div className="title-icon">♥</div>
+                    <div className="title-icon"><FaHeart /></div>
                     <div>
                         <h1>Meus Favoritos</h1>
                         <p className="subtitle">{items.length} itens salvos</p>
@@ -299,54 +358,27 @@ export function Favorites({ onNavigate }: FavoritesProps) {
                 </button>
             </div>
 
-            {/* Cards Grid */}
-            <div className="cards-grid">
-                {displayItems.map((item, index) => (
-                    <div
-                        key={`${item.type}-${item.id}`}
-                        className={`card ${removingId === item.id ? 'removing' : ''} ${focusArea === 'items' && safeItemIndex === index ? 'tv-focused' : ''}`}
-                        style={{ animationDelay: `${index * 0.05}s` }}
-                        onClick={() => openItem(item)}
-                    >
-                        <div className="card-poster">
-                            {item.poster ? (
-                                <img decoding="async" src={item.poster} alt={item.title} />
-                            ) : (
-                                <div className="poster-placeholder">
-                                    {item.type === 'movie' ? 'Filme' : item.type === 'series' ? 'Série' : 'Canal'}
-                                </div>
-                            )}
-                            <div className="card-type">
-                                {item.type === 'movie' ? 'Filme' : item.type === 'series' ? 'Série' : 'Canal'}
-                            </div>
-                            <div className="card-overlay">
-                                <button
-                                    className="remove-btn"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        removeItem(item);
-                                    }}
-                                >
-                                    Excluir
-                                </button>
-                            </div>
-                        </div>
-                        <div className="card-info">
-                            <h3 className="card-title">{item.title}</h3>
-                            <div className="card-meta">
-                                {item.year && <span>{item.year}</span>}
-                                {item.rating && <span>★ {item.rating}</span>}
-                            </div>
-                        </div>
-                    </div>
-                ))}
+            {/* Cards Grid — virtualizado (react-window), mesmo padrão do MyList. */}
+            <div className="cards-grid" ref={gridContainerRef}>
+                <Grid
+                    className="cards-grid-viewport"
+                    gridRef={gridRef}
+                    cellComponent={FavoritesCell}
+                    cellProps={favoritesCellProps}
+                    columnCount={columns}
+                    columnWidth={columnWidth}
+                    rowCount={rowCount}
+                    rowHeight={cardHeight}
+                    overscanCount={1}
+                    style={{ height: '100%', width: '100%' }}
+                />
             </div>
 
             {/* Footer Hints */}
             <div className="favorites-hints">
                 <span>Setas Navegar</span>
                 <span>OK Selecionar</span>
-                <span className="hint-red">🔴 Remover</span>
+                <RemoteColorHint color="red" label="Remover" />
                 <span>Voltar</span>
             </div>
 

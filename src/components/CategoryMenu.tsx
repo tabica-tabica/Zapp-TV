@@ -3,9 +3,11 @@
 // TV: painel navegável por D-pad (↑↓ move, OK seleciona, Voltar fecha);
 // ref.open() abre; onOpenChange avisa a página pra desabilitar o hook dela.
 
-import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
+import { useState, useRef, useEffect, forwardRef, useImperativeHandle, type ReactNode } from 'react';
+import { FaStar, FaEyeSlash, FaLock, FaTimes } from 'react-icons/fa';
 import type { Category } from '../types';
 import { useTVNavigation } from '../hooks/useTVNavigation';
+import { RemoteColorHint } from './RemoteColorHint';
 import './CategoryMenu.css';
 
 export interface CategoryMenuHandle {
@@ -26,6 +28,8 @@ interface CategoryMenuProps {
     /** Categorias ocultas (item 16) — 🔵 alterna na categoria focada */
     hiddenCategoryIds?: Set<string>;
     onToggleHideCategory?: (categoryId: string) => void;
+    /** Categorias detectadas como adulto — só selo visual, quem trava é o onSelectCategory da página */
+    lockedCategoryIds?: Set<string>;
 }
 
 export const CategoryMenu = forwardRef<CategoryMenuHandle, CategoryMenuProps>(
@@ -39,6 +43,7 @@ export const CategoryMenu = forwardRef<CategoryMenuHandle, CategoryMenuProps>(
         extraCategories = [],
         hiddenCategoryIds,
         onToggleHideCategory,
+        lockedCategoryIds,
     }, ref) {
         const [isOpen, setIsOpen] = useState(false);
         const [isClosing, setIsClosing] = useState(false);
@@ -131,7 +136,7 @@ export const CategoryMenu = forwardRef<CategoryMenuHandle, CategoryMenuProps>(
             focused?.scrollIntoView({ block: 'nearest' });
         }, [focusedIndex, isOpen]);
 
-        const getCategoryIcon = (name: string): string => {
+        const getCategoryIcon = (name: string): ReactNode => {
             const lower = name.toLowerCase();
             if (lower.includes('ação') || lower.includes('action')) return 'Ação';
             if (lower.includes('aventura') || lower.includes('adventure')) return 'Aventura';
@@ -150,7 +155,7 @@ export const CategoryMenu = forwardRef<CategoryMenuHandle, CategoryMenuProps>(
             if (lower.includes('guerra') || lower.includes('war')) return 'Guerra';
             if (lower.includes('esporte') || lower.includes('sport')) return 'Esporte';
             if (lower.includes('música') || lower.includes('music')) return 'Música';
-            if (lower.includes('favorito')) return '⭐';
+            if (lower.includes('favorito')) return <FaStar />;
             if (type === 'live') return 'TV';
             return type === 'vod' ? 'Filme' : 'Série';
         };
@@ -192,10 +197,10 @@ export const CategoryMenu = forwardRef<CategoryMenuHandle, CategoryMenuProps>(
                         <div className="category-panel-header">
                             <div className="header-content">
                                 <h2>Categorias</h2>
-                                <p>Explore por gênero{onToggleHideCategory ? ' · 🔵 oculta/mostra' : ''}</p>
+                                <p>Explore por gênero{onToggleHideCategory && <> · <RemoteColorHint color="blue" label="oculta/mostra" /></>}</p>
                             </div>
                             <button className="close-btn" onClick={handleClose}>
-                                X
+                                <FaTimes />
                             </button>
                         </div>
 
@@ -206,7 +211,7 @@ export const CategoryMenu = forwardRef<CategoryMenuHandle, CategoryMenuProps>(
                                 return (
                                     <button
                                         key={cat.category_id}
-                                        className={`category-item ${selectedCategory === cat.category_id ? 'selected' : ''} ${focusedIndex === index ? 'tv-focused' : ''} ${hiddenCategoryIds?.has(cat.category_id) ? 'category-hidden' : ''}`}
+                                        className={`category-item ${selectedCategory === cat.category_id ? 'selected' : ''} ${focusedIndex === index ? 'tv-focused' : ''} ${hiddenCategoryIds?.has(cat.category_id) ? 'category-hidden' : ''} ${lockedCategoryIds?.has(cat.category_id) ? 'category-locked' : ''}`}
                                         style={isAll ? undefined : { animationDelay: `${0.1 + index * 0.03}s` }}
                                         onClick={() => handleSelectCategory(cat.category_id)}
                                     >
@@ -225,8 +230,11 @@ export const CategoryMenu = forwardRef<CategoryMenuHandle, CategoryMenuProps>(
                                                     onToggleHideCategory(cat.category_id);
                                                 }}
                                             >
-                                                🙈
+                                                <FaEyeSlash />
                                             </span>
+                                        )}
+                                        {lockedCategoryIds?.has(cat.category_id) && (
+                                            <span className="category-lock-badge" title="Categoria bloqueada por PIN"><FaLock /></span>
                                         )}
                                         {selectedCategory === cat.category_id && <div className="selected-dot" />}
                                     </button>

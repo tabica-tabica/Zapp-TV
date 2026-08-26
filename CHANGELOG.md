@@ -8,6 +8,31 @@ Created by **Rakjsu**.
 
 ### Added
 
+- `react-window` virtualization on every large grid (Live TV, Movies, Series, My List, Favorites):
+  only the visible window mounts, instead of the whole catalog. Landed alongside a shared
+  `useVirtualGridNavigation` hook that centralizes the D-pad row/column math five pages used to
+  duplicate, and `useMeasuredColumns`, which replaces the hardcoded 6-column grids with a column
+  count computed from the real container width.
+- `React.memo` card components (`CatalogCard`, `SeriesCard`, `ChannelCard`, `MovieCard`, `HomeCard`)
+  extracted from inline JSX that used to live in each page's `.map()`. Memoization only works because
+  the per-item `onClick` closures became stable `useCallback`s and the old per-index inline
+  `animationDelay` style objects became fixed `stagger-N` CSS classes — either alone would have made
+  the `memo` a no-op.
+- `useBrokenImages`: the `Set<number>` + fallback-icon pattern that Live TV, Movies, and Series each
+  copy-pasted is now one hook.
+- `loading="lazy"` on the Live TV channel grid and all seven Home rows, which had no lazy-loading hint
+  at all.
+- LG webOS build pipeline: `vite.webos.config.ts`, `scripts/build-webos.mjs` (mirrors
+  `build-tizen.mjs`'s clean-copy-then-validate steps), `webos/appinfo.json` + `webos/index.html`,
+  `src/services/webosApp.ts`, and a `platformApp.ts` dispatcher so `useExitPrompt` and the trailer
+  button in `ContentDetailModal` work on both TV platforms without an `if` at every call site. Targets
+  webOS 5.x (Chromium ~68+), not the spec's literal webOS 3.x floor — that engine predates the
+  Proxy/ES2015 baseline React 19 assumes. `npm run build:webos` and a new `webos` CI job mirror the
+  existing Tizen ones. Store submission itself (LG account, physical-device testing, signed `.ipk`)
+  is not part of this — see `docs/CHECKLIST_WEBOS.md`, `docs/LG_UX_SCENARIO.md`, and
+  `docs/LG_SELF_CHECKLIST.md`.
+- `rollup-plugin-visualizer`, opt-in via `ANALYZE=true npm run build:web`, for ad-hoc bundle
+  inspection alongside the existing (and stricter) `check-bundle-budget.mjs` gate.
 - Genre filter on the movie and series catalogs, derived from the provider's own category names.
   TMDB is deliberately not used for this: the key is optional and most people do not have one, and
   the metadata cache holds 120 entries against catalogs of thousands. Only genres the provider
@@ -40,6 +65,17 @@ Created by **Rakjsu**.
 
 ### Fixed
 
+- `useMeasuredColumns` measured the grid container through a plain `useRef`, whose identity never
+  changes — so on pages where the grid only mounts after an async fetch (Live TV, Movies, Series),
+  the very first (and only) measurement ran against a container that didn't exist yet, and the column
+  count silently stuck at its 3-column fallback forever. Fixed by having the hook own a callback ref
+  instead of accepting a `RefObject`, so a newly-attached DOM node reliably re-triggers the
+  measurement. My List and Favorites happened not to trigger it, since their grid is present on the
+  very first render.
+- Home's mixed-type rows ("because you watched X", Top 10, Recommendations) keyed cards by
+  `getId(item)` alone — a movie and a series can share the same numeric id, since they're independent
+  id spaces on the provider, and React warned about duplicate keys the moment a mixed row actually hit
+  one. The "Continue Watching" row already prefixed its keys by kind; the other three now do too.
 - The minimum-rating filter was dead: `matchesFilters` filtered by it and no screen ever wrote it,
   behind a comment promising that left/right adjusted it. It now has its own button.
 - The content detail modal had no race guard on its TMDB fetch, so switching versions could let the

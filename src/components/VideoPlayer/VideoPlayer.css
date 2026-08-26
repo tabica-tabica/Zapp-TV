@@ -139,7 +139,7 @@
     height: 70%;
     top: 15%;
     left: 15%;
-    border-right-color: #ec4899;
+    border-right-color: var(--ns-accent-4);
     animation: spinRing 1s linear infinite reverse;
 }
 
@@ -148,7 +148,7 @@
     height: 40%;
     top: 30%;
     left: 30%;
-    border-bottom-color: #6366f1;
+    border-bottom-color: var(--accent-primary);
     animation: spinRing 0.8s linear infinite;
 }
 
@@ -182,7 +182,7 @@
 .central-play-icon {
     width: 100px;
     height: 100px;
-    background: linear-gradient(135deg, rgba(var(--ns-accent-rgb), 0.9), rgba(236, 72, 153, 0.9));
+    background: linear-gradient(135deg, rgba(var(--ns-accent-rgb), 0.9), rgba(var(--ns-accent-4-rgb), 0.9));
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -208,7 +208,7 @@
     }
 
     50% {
-        box-shadow: 0 8px 60px rgba(var(--ns-accent-rgb), 0.8), 0 0 100px rgba(236, 72, 153, 0.3);
+        box-shadow: 0 8px 60px rgba(var(--ns-accent-rgb), 0.8), 0 0 100px rgba(var(--ns-accent-4-rgb), 0.3);
     }
 }
 
@@ -335,7 +335,7 @@
     top: 0;
     left: 0;
     height: 100%;
-    background: linear-gradient(90deg, var(--ns-accent), #ec4899);
+    background: linear-gradient(90deg, var(--ns-accent), var(--ns-accent-4));
     border-radius: 3px;
     transition: width 0.1s ease;
 }
@@ -413,9 +413,12 @@
     background: rgba(255, 255, 255, 0.3);
     border-radius: 3px;
     outline: none;
+    /* Só mostra o nível — quem ajusta é o D-pad (adjustVolume), não o mouse */
+    pointer-events: none;
 }
 
-.volume-control:hover .volume-slider {
+.volume-control:hover .volume-slider,
+.volume-control.active .volume-slider {
     width: 80px;
     opacity: 1;
 }
@@ -592,7 +595,7 @@
 
 .quality-menu-item:hover,
 .quality-menu-item.focused {
-    background: linear-gradient(90deg, rgba(var(--ns-accent-rgb), 0.3), rgba(236, 72, 153, 0.3));
+    background: linear-gradient(90deg, rgba(var(--ns-accent-rgb), 0.3), rgba(var(--ns-accent-4-rgb), 0.3));
     border-left: 3px solid var(--ns-accent);
 }
 
@@ -721,6 +724,62 @@
     font-size: 13px;
     color: rgba(255, 255, 255, 0.45);
     border-top: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+/* Prévia muda do canal destacado na lista de zapping — painel à parte,
+   colado na borda direita de .zap-overlay (380px + esse gap). Assume a
+   largura FIXA de 380px, que é o que sempre vale em qualquer resolução de
+   TV de verdade (o max-width em vw daquele elemento só entraria numa
+   janela de navegador artificialmente estreita, cenário só de dev). */
+.zap-peek {
+    position: absolute;
+    top: 24px;
+    left: 404px;
+    width: 280px;
+    z-index: 40;
+    background: rgba(10, 10, 20, 0.92);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.zap-peek-placeholder {
+    aspect-ratio: 16 / 9;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #000;
+    color: rgba(255, 255, 255, 0.35);
+    font-size: 32px;
+}
+
+.zap-peek-placeholder img {
+    max-width: 70%;
+    max-height: 70%;
+    object-fit: contain;
+}
+
+.zap-peek-name {
+    padding: 8px 12px;
+    color: #fff;
+    font-size: 15px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Componente compartilhado (LiveChannelPreview.tsx) — className fixo
+   (`.live-channel-preview-video`), mas ESCOPADO em `.zap-peek` de
+   propósito: VideoPlayer.tsx é filho de LiveTV.tsx, então VideoPlayer.css
+   e LiveTV.css convivem na mesma tela ao mesmo tempo — uma regra SOLTA
+   pra essa classe aqui vazaria pro painel de ficha da própria LiveTV.tsx
+   (que já estiliza a mesma classe do jeito dele, via wrapper com
+   aspect-ratio, não aspect-ratio no <video>). Escopar evita a colisão. */
+.zap-peek .live-channel-preview-video {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    background: #000;
 }
 
 /* Mini-EPG no player ao vivo */
@@ -905,6 +964,60 @@
 .radio-hint {
     color: rgba(255, 255, 255, 0.4);
     font-size: 15px;
+}
+
+/* Zapping (CH+/CH−): só a imagem troca a cada tecla — o HLS de verdade só
+   troca quando o usuário PARA (ZAP_SETTLE_MS). Mesma estrutura do
+   .radio-stage, semi-transparente (não some o vídeo real por baixo, só
+   avisa que ele vai trocar assim que parar de zapear). */
+.zap-preview-stage {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    background: rgba(5, 5, 15, 0.88);
+    z-index: 59;
+}
+
+.zap-preview-logo {
+    width: 180px;
+    height: 180px;
+    object-fit: contain;
+    border-radius: 20px;
+}
+
+.zap-preview-logo-fallback {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 90px;
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.zap-preview-name {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    color: #fff;
+    font-size: 26px;
+    font-weight: 700;
+    max-width: calc(70 * var(--ns-vw));
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.zap-preview-num {
+    color: var(--ns-accent);
+    font-size: 30px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
 }
 
 /* ===== R5: legendas pra 3 metros (item 41) ===== */

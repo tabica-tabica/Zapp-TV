@@ -1,6 +1,7 @@
 ﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import { storage } from '../services/storage';
 import { useTranslation } from '../hooks/useTranslation';
+import { BrandLogo } from '../components/BrandLogo';
 import './LanguageSelection.css';
 
 interface LanguageSelectionProps {
@@ -59,12 +60,8 @@ export function LanguageSelection({ onComplete }: LanguageSelectionProps) {
 
                 <div className="language-selection-content">
                     <div className="language-selection-header">
-                        <svg viewBox="0 0 24 24" fill="none" width="64" height="64" className="language-logo">
-                            <path d="M4 5C4 4.44772 4.44772 4 5 4H19C19.5523 4 20 4.44772 20 5V15C20 15.5523 19.5523 16 19 16H5C4.44772 16 4 15.5523 4 15V5Z" stroke="currentColor" strokeWidth="2" />
-                            <path d="M8 20H16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                            <path d="M12 16V20" stroke="currentColor" strokeWidth="2" />
-                        </svg>
-                        <h1 className="language-title">NeoStream</h1>
+                        <BrandLogo size={64} className="language-logo" />
+                        <h1 className="language-title">{__BRAND_NAME__}</h1>
                         <p className="language-subtitle">{t('language_selection_title')}</p>
                     </div>
 

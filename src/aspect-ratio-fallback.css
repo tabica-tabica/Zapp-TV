@@ -23,7 +23,8 @@
     .mylist-page .card-poster,
     .movie-poster,
     .series-poster,
-    .skeleton-poster {
+    .skeleton-poster,
+    .catalog-card-poster {
         height: 0;
         padding-top: 150%;
     }
@@ -38,7 +39,9 @@
     .movie-poster > img,
     .movie-poster > .poster-placeholder,
     .series-poster > img,
-    .series-poster > .poster-placeholder {
+    .series-poster > .poster-placeholder,
+    .catalog-card-poster > img,
+    .catalog-card-poster > .catalog-card-poster-placeholder {
         position: absolute;
         top: 0;
         left: 0;

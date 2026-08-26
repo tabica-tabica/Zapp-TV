@@ -81,11 +81,23 @@ describe('OK e Voltar', () => {
         expect(onEnter).toHaveBeenCalled();
     });
 
-    it.each(['Backspace', 8, 10009, 461, 'XF86Back'])('%s é Voltar', (valor) => {
+    it.each([10009, 461, 'XF86Back', 'Escape'])('%s é Voltar', (valor) => {
         const onBack = vi.fn();
         render(<Sonda onBack={onBack} />);
         tecla(valor);
         expect(onBack).toHaveBeenCalled();
+    });
+
+    // BUG REAL: Backspace solto fechava campo/tela em qualquer build. Um
+    // teclado de verdade (desktop, ou bluetooth numa TV) usa Backspace pra
+    // apagar caractere — interceptar isso como "Voltar" tornava impossível
+    // corrigir um typo digitando. Fora de build de TV, Backspace/tecla 8
+    // soltos não fazem mais nada aqui.
+    it.each(['Backspace', 8])('%s solto NÃO é Voltar fora de build de TV', (valor) => {
+        const onBack = vi.fn();
+        render(<Sonda onBack={onBack} />);
+        tecla(valor);
+        expect(onBack).not.toHaveBeenCalled();
     });
 
     it('OK também chega em onAction', () => {
@@ -109,6 +121,37 @@ describe('teclas coloridas e de mídia', () => {
         render(<Sonda onAction={onAction} />);
         tecla(valor);
         expect(onAction).toHaveBeenCalledWith(acao);
+    });
+
+    // Fallback de teclado pras cores do controle: um teclado comum não tem
+    // tecla física de vermelho/verde/amarelo/azul.
+    it.each([
+        ['1', 'red'], ['2', 'green'], ['3', 'yellow'], ['4', 'blue'],
+    ])('%s (fallback de teclado) vira %s', (valor, acao) => {
+        const onAction = vi.fn();
+        render(<Sonda onAction={onAction} />);
+        tecla(valor);
+        expect(onAction).toHaveBeenCalledWith(acao);
+    });
+});
+
+// O caminho legado só existe pra controle remoto de verdade — não pode
+// vazar pra build web/desktop (é o bug que o teste acima cobre).
+describe('Backspace legado só em build de TV', () => {
+    it('Backspace vira Voltar quando naTV() diz que é TV', async () => {
+        vi.doMock('../services/platformApp', () => ({ naTV: () => true }));
+        vi.resetModules();
+        const { useTVNavigation: useTVNavigationTV } = await import('./useTVNavigation');
+        function SondaTV({ onBack }: { onBack: () => void }) {
+            useTVNavigationTV({ onBack });
+            return <div />;
+        }
+        const onBack = vi.fn();
+        render(<SondaTV onBack={onBack} />);
+        tecla('Backspace');
+        expect(onBack).toHaveBeenCalled();
+        vi.doUnmock('../services/platformApp');
+        vi.resetModules();
     });
 });
 
@@ -196,6 +239,26 @@ describe('dentro de um campo de texto (IME do Tizen)', () => {
         const onBack = vi.fn();
         const campo = comCampo({ onBack });
         tecla(10009, campo);
+        expect(onBack).toHaveBeenCalled();
+        expect(document.activeElement).not.toBe(campo);
+    });
+
+    // BUG REAL: Backspace dentro do campo fechava o campo inteiro em vez de
+    // apagar um caractere — corrigir um typo era impossível com teclado de
+    // verdade. Backspace precisa continuar com foco no campo pro navegador
+    // apagar o caractere normalmente.
+    it('Backspace apaga caractere, não fecha o campo', () => {
+        const onBack = vi.fn();
+        const campo = comCampo({ onBack });
+        tecla('Backspace', campo);
+        expect(onBack).not.toHaveBeenCalled();
+        expect(document.activeElement).toBe(campo);
+    });
+
+    it('Escape sai do campo (padrão de desktop)', () => {
+        const onBack = vi.fn();
+        const campo = comCampo({ onBack });
+        tecla('Escape', campo);
         expect(onBack).toHaveBeenCalled();
         expect(document.activeElement).not.toBe(campo);
     });

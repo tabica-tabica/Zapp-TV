@@ -1,6 +1,10 @@
 // VideoPlayer Component - Premium player with HLS support for TV
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { FaPlay, FaPause, FaCog, FaStepForward, FaStepBackward, FaListUl, FaMoon, FaExpand } from 'react-icons/fa';
+import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from 'react';
+import {
+    FaPlay, FaPause, FaCog, FaStepForward, FaStepBackward, FaListUl, FaMoon, FaExpand,
+    FaVolumeUp, FaVolumeDown, FaVolumeMute, FaTimes, FaBroadcastTower, FaSync,
+    FaExclamationTriangle, FaHeadphones,
+} from 'react-icons/fa';
 import { useHls, type StreamErrorCause } from '../../hooks/useHls';
 import {
     MAX_RECONNECT_ATTEMPTS, isTerminalCause, reconnectDelayMs,
@@ -15,10 +19,15 @@ import {
     qualityCap,
     subtitleSize as subtitleSizePref,
     statsOverlay,
+    playerVolume,
     SUBTITLE_SIZES,
     SUBTITLE_SIZE_LABELS,
     type SubtitleSize,
 } from '../../services/playerPrefs';
+import { storage } from '../../services/storage';
+import { searchSubtitles, resolveSubtitleTrack, type SubtitleResult } from '../../services/openSubtitles';
+import { api } from '../../services/api';
+import { LiveChannelPreview } from '../LiveChannelPreview';
 import './VideoPlayer.css';
 
 export interface PlayerChannel {
@@ -26,6 +35,8 @@ export interface PlayerChannel {
     name: string;
     num?: number;
     stream_icon?: string;
+    /** Só pra prévia muda do overlay de zapping — mesma preferência de LiveTV.tsx (direct_source > URL montada). */
+    direct_source?: string;
 }
 
 export interface VideoPlayerProps {
@@ -81,10 +92,20 @@ export interface VideoPlayerProps {
      * episódio), e um contador interno voltaria a zero toda vez.
      */
     autoAdvanceCountRef?: React.MutableRefObject<number>;
+    /** Variantes de qualidade (URLs diferentes) do canal ATUAL, se houver 2+. */
+    qualityVariants?: Array<{ id: string; label: string; selected: boolean }>;
+    /** Usuário escolheu uma variante no menu — troca de URL via o dono (LiveTV). */
+    onSelectQualityVariant?: (id: string) => void;
+    /**
+     * Identidade pro OpenSubtitles. Ausente = grupo "OpenSubtitles" nunca
+     * aparece no menu de legendas — é assim que TV ao vivo fica de fora sem
+     * código extra lá.
+     */
+    subtitleQuery?: { title: string; year?: string; season?: number; episode?: number; imdbId?: string };
 }
 
-// Control buttons: close, prev, play, next, options, channels, sleep, aspect
-type ControlButton = 'close' | 'prev' | 'play' | 'golive' | 'next' | 'options' | 'channels' | 'sleep' | 'aspect';
+// Control buttons: close, prev, play, next, options, channels, volume, sleep, aspect
+type ControlButton = 'close' | 'prev' | 'play' | 'golive' | 'next' | 'options' | 'channels' | 'volume' | 'sleep' | 'aspect';
 // 'seekbar' = barra de progresso focada (seek por D-pad, item 37)
 type PlayerFocus = 'controls' | 'menu' | 'zap-list' | 'seekbar';
 // Uma tela por vez; 'root' lista as seções (item 39/40/41/48)
@@ -94,6 +115,8 @@ interface MenuEntry {
     label: string;
     hint?: string;
     selected?: boolean;
+    /** Só setado quando o menu mistura 2+ fontes lógicas (ex.: variante de canal + ABR). */
+    group?: string;
     run: () => void;
 }
 
@@ -109,6 +132,10 @@ const AUTO_EPISODE_LIMIT = 3;
 const STILL_WATCHING_TIMEOUT_MS = 90000;
 const DIGIT_TIMEOUT_MS = 1400;
 const ZAP_WINDOW = 9; // linhas visíveis no overlay de zapping
+// Zapar rápido (CH+/CH−) só troca o HLS de verdade depois de parado por
+// isto — cada tecla nesse intervalo só troca a IMAGEM de preview, sem
+// destruir/recriar o player a cada canal que a pessoa só passou de raspão.
+const ZAP_SETTLE_MS = 550;
 
 const STALL_LIMIT_MS = 12000; // watchdog: tempo parado antes de reconectar
 
@@ -191,7 +218,10 @@ export function VideoPlayer({
     autoAdvanceCountRef,
     navEnabled = true,
     autoAdvance,
-    isOverlayOwner = false
+    isOverlayOwner = false,
+    qualityVariants,
+    onSelectQualityVariant,
+    subtitleQuery,
 }: VideoPlayerProps) {
     // Um overlay do App (o aviso de lembrete) toma as teclas mudando a zona
     // pra 'overlay'. Sem consultar isso aqui, o MESMO OK pausava o vídeo por
@@ -203,6 +233,13 @@ export function VideoPlayer({
     const progressRef = useRef<HTMLDivElement>(null);
     const resumeAppliedRef = useRef(false);
     const digitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const zapSettleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // Canal-alvo do zap em andamento — base pro PRÓXIMO CH+/CH− durante a
+    // janela de assentamento, já que currentChannelId (prop) só muda quando o
+    // switch de verdade é commitado. Sem isto, zapar duas vezes rápido
+    // recalculava a partir do canal REAL parado (ainda não trocou) e as duas
+    // teclas apontavam pro mesmo canal em vez de avançar dois.
+    const zapPreviewChannelRef = useRef<PlayerChannel | null>(null);
 
     const isLiveContent = isLive || contentType === 'live';
     const canZap = isLiveContent && !!channelList?.length && !!onSwitchChannel;
@@ -227,6 +264,52 @@ export function VideoPlayer({
     // Preferências persistidas do player (itens 41 e 48)
     const [subSize, setSubSize] = useState<SubtitleSize>(() => subtitleSizePref.get());
     const [showStats, setShowStats] = useState(() => statsOverlay.get());
+
+    // Legendas por busca (OpenSubtitles) — busca preguiçosa, uma vez por instância
+    // do player (MoviePlayer/SeriesQueuePlayer remontam por key a cada conteúdo)
+    const [osResults, setOsResults] = useState<SubtitleResult[]>([]);
+    const [osStatus, setOsStatus] = useState<'idle' | 'loading' | 'error' | 'done'>('idle');
+    const [osDownloadFailed, setOsDownloadFailed] = useState(false);
+    const [activeTrack, setActiveTrack] = useState<{ blobUrl: string; label: string; lang: string } | null>(null);
+
+    // Volume do elemento <video> (independente do volume de hardware da TV)
+    const [volume, setVolume] = useState<number>(() => playerVolume.get().volume);
+    const [muted, setMuted] = useState<boolean>(() => playerVolume.get().muted);
+    // Mostra a barra em foco e por um instante depois de ajustar (sem :hover na TV)
+    const [volumeActive, setVolumeActive] = useState(false);
+    const volumeActiveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    useEffect(() => {
+        if (videoRef.current) {
+            videoRef.current.volume = volume;
+            videoRef.current.muted = muted;
+        }
+        playerVolume.set(volume, muted);
+    }, [volume, muted]);
+
+    const flashVolumeActive = useCallback(() => {
+        setVolumeActive(true);
+        if (volumeActiveTimeoutRef.current) clearTimeout(volumeActiveTimeoutRef.current);
+        volumeActiveTimeoutRef.current = setTimeout(() => setVolumeActive(false), 1800);
+    }, []);
+
+    useEffect(() => () => {
+        if (volumeActiveTimeoutRef.current) clearTimeout(volumeActiveTimeoutRef.current);
+    }, []);
+
+    const toggleMute = useCallback(() => {
+        setMuted(prev => !prev);
+        flashVolumeActive();
+    }, [flashVolumeActive]);
+
+    const adjustVolume = useCallback((delta: number) => {
+        setVolume(prev => {
+            const next = Math.max(0, Math.min(1, prev + delta));
+            if (next > 0) setMuted(false);
+            return next;
+        });
+        flashVolumeActive();
+    }, [flashVolumeActive]);
     const [stats, setStats] = useState<{
         bitrate: number; width: number; height: number; dropped: number; buffer: number;
     } | null>(null);
@@ -252,6 +335,18 @@ export function VideoPlayer({
     const [zapEpg, setZapEpg] = useState<{ id: number; title: string } | null>(null);
     // Banner "onde eu caí": aparece por alguns segundos a cada troca de canal
     const [zapBanner, setZapBanner] = useState<{ num?: number; name: string } | null>(null);
+    // Canal-alvo do CH+/CH− ainda não commitado — enquanto existir, só a
+    // imagem troca (ver .zap-preview-stage); o HLS de verdade só troca
+    // quando isto volta a null (ZAP_SETTLE_MS depois do último aperto)
+    const [zapPreview, setZapPreview] = useState<PlayerChannel | null>(null);
+    // Prévia MUDA de vídeo do canal destacado no overlay da LISTA (↑↓) —
+    // diferente de zapPreview acima (aquele é do CH+/CH− e eventualmente
+    // troca o HLS de verdade; este nunca troca nada, é só um painel ao
+    // lado da lista — onSwitchChannel continua sendo o único jeito real de
+    // trocar de canal, disparado pelo OK, nunca por aqui).
+    const [zapPeekChannel, setZapPeekChannel] = useState<PlayerChannel | null>(null);
+    const [zapPeekSrc, setZapPeekSrc] = useState<string | null>(null);
+    const [zapPeekFailed, setZapPeekFailed] = useState(false);
 
     useEffect(() => {
         if (playerFocus !== 'zap-list' || !channelList) return;
@@ -269,6 +364,29 @@ export function VideoPlayer({
             cancelled = true;
             clearTimeout(timeout);
         };
+    }, [playerFocus, zapIndex, channelList]);
+
+    // Mesmo debounce de 400ms do efeito acima — só abre a conexão de
+    // prévia quando o destaque fica parado numa linha, nunca a cada passo
+    // de ↑↓ (a conta de provedor real usada nesta sessão tem um teto de
+    // conexões simultâneas — abrir uma a cada tecla estouraria isso à toa).
+    // Sair da lista (ou trocar de canal de verdade) limpa tudo aqui mesmo,
+    // desmontando a LiveChannelPreview e encerrando a conexão na hora.
+    useEffect(() => {
+        if (playerFocus !== 'zap-list' || !channelList) {
+            setZapPeekChannel(null);
+            setZapPeekSrc(null);
+            setZapPeekFailed(false);
+            return;
+        }
+        const channel = channelList[zapIndex];
+        if (!channel) return;
+        setZapPeekFailed(false);
+        const timeout = setTimeout(() => {
+            setZapPeekChannel(channel);
+            setZapPeekSrc(channel.direct_source || api.getLiveStreamUrl(channel.stream_id));
+        }, 400);
+        return () => clearTimeout(timeout);
     }, [playerFocus, zapIndex, channelList]);
 
     // O banner some sozinho
@@ -657,6 +775,7 @@ export function VideoPlayer({
         // áudio, legenda e estatísticas
         buttons.push('options');
         if (canZap) buttons.push('channels');
+        buttons.push('volume');
         buttons.push('sleep');
         buttons.push('aspect');
         return buttons;
@@ -670,10 +789,44 @@ export function VideoPlayer({
 
     const switchRelative = useCallback((delta: number) => {
         if (!canZap || !channelList || channelList.length === 0) return;
-        const base = currentChannelIndex >= 0 ? currentChannelIndex : 0;
+        // Base é o canal já pré-visualizado (se houver zap em andamento), não
+        // o currentChannelIndex real — esse só muda quando o switch commita.
+        const baseId = zapPreviewChannelRef.current?.stream_id;
+        const baseIndex = baseId != null ? channelList.findIndex(c => c.stream_id === baseId) : -1;
+        const base = baseIndex >= 0 ? baseIndex : (currentChannelIndex >= 0 ? currentChannelIndex : 0);
         const next = (base + delta + channelList.length) % channelList.length;
-        onSwitchChannel?.(channelList[next].stream_id);
+        const target = channelList[next];
+        zapPreviewChannelRef.current = target;
+        setZapPreview(target);
+        if (zapSettleTimeoutRef.current) clearTimeout(zapSettleTimeoutRef.current);
+        zapSettleTimeoutRef.current = setTimeout(() => {
+            zapSettleTimeoutRef.current = null;
+            zapPreviewChannelRef.current = null;
+            setZapPreview(null);
+            onSwitchChannel?.(target.stream_id);
+        }, ZAP_SETTLE_MS);
     }, [canZap, channelList, currentChannelIndex, onSwitchChannel]);
+
+    // Canal de verdade mudou (nosso commit acima ou outro caminho, tipo
+    // digit-jump/overlay de zapping) — nenhuma pré-visualização pendente
+    // continua fazendo sentido.
+    useEffect(() => {
+        if (zapSettleTimeoutRef.current) {
+            clearTimeout(zapSettleTimeoutRef.current);
+            zapSettleTimeoutRef.current = null;
+        }
+        zapPreviewChannelRef.current = null;
+        setZapPreview(null);
+    }, [currentChannelId]);
+
+    // Desmontagem com um zap em andamento não pode disparar onSwitchChannel
+    // num componente que já não existe mais (o efeito acima só limpa quando
+    // currentChannelId muda, não no unmount).
+    useEffect(() => {
+        return () => {
+            if (zapSettleTimeoutRef.current) clearTimeout(zapSettleTimeoutRef.current);
+        };
+    }, []);
 
     // Digit-jump: número digitado vira canal após pequena pausa
     useEffect(() => {
@@ -1140,12 +1293,62 @@ export function VideoPlayer({
         setMenu(id);
         setMenuIndex(0);
         setPlayerFocus('menu');
-    }, []);
+        // Busca preguiçosa: só na primeira vez que o menu de legendas abre,
+        // e só quando há identidade de conteúdo pra buscar (VOD, não ao vivo)
+        if (id === 'subs' && subtitleQuery && osStatus === 'idle') {
+            setOsStatus('loading');
+            searchSubtitles({ ...subtitleQuery, languages: storage.getSubtitleLanguage() })
+                .then(results => { setOsResults(results); setOsStatus('done'); })
+                .catch(() => setOsStatus('error'));
+        }
+    }, [subtitleQuery, osStatus]);
 
     const closeMenu = useCallback(() => {
         setMenu(null);
         setPlayerFocus('controls');
     }, []);
+
+    const deactivateOsTrack = useCallback(() => {
+        setActiveTrack(prev => {
+            if (prev) URL.revokeObjectURL(prev.blobUrl);
+            return null;
+        });
+    }, []);
+
+    const selectOpenSubtitle = useCallback(async (result: SubtitleResult) => {
+        setOsDownloadFailed(false);
+        const resolved = await resolveSubtitleTrack(result.fileId);
+        if (!resolved) {
+            setOsDownloadFailed(true);
+            return;
+        }
+        setActiveTrack(prev => {
+            if (prev) URL.revokeObjectURL(prev.blobUrl);
+            const blobUrl = URL.createObjectURL(new Blob([resolved.vtt], { type: 'text/vtt' }));
+            return { blobUrl, label: result.release, lang: result.lang };
+        });
+        setSubtitleTrack(-1); // desliga legenda embutida — mutuamente exclusivo
+        closeMenu();
+    }, [setSubtitleTrack, closeMenu]);
+
+    // Limpa o blob URL ativo quando o player desmonta (troca de conteúdo, fechar)
+    useEffect(() => () => {
+        setActiveTrack(prev => {
+            if (prev) URL.revokeObjectURL(prev.blobUrl);
+            return prev;
+        });
+    }, []);
+
+    // Um <track> recém-adicionado nem sempre respeita o atributo `default` em
+    // browsers de TV — força o modo explicitamente, e desliga qualquer outro
+    // TextTrack pra manter só uma legenda visível por vez.
+    useEffect(() => {
+        if (!videoRef.current) return;
+        const tracks = videoRef.current.textTracks;
+        for (let i = 0; i < tracks.length; i++) {
+            tracks[i].mode = activeTrack && tracks[i].label === activeTrack.label ? 'showing' : 'disabled';
+        }
+    }, [activeTrack]);
 
     const selectQuality = useCallback((index: number) => {
         if (index === -1) {
@@ -1168,7 +1371,9 @@ export function VideoPlayer({
     }, []);
 
     const currentAudioLabel = audioTracks.find(track => track.id === currentAudioTrack)?.label || '—';
-    const currentSubLabel = currentSubtitleTrack >= 0
+    const currentSubLabel = activeTrack
+        ? activeTrack.label
+        : currentSubtitleTrack >= 0
         ? (subtitleTracks.find(track => track.id === currentSubtitleTrack)?.label || 'Ligada')
         : 'Desligadas';
 
@@ -1177,18 +1382,26 @@ export function VideoPlayer({
     const menuEntries = useMemo<MenuEntry[]>(() => {
         if (menu === 'root') {
             const entries: MenuEntry[] = [];
-            if (qualityLevels.length > 0) {
+            // Canal sem .m3u8 (URL .ts crua, comum em provedor Xtream) nunca
+            // popula qualityLevels — sem o OR abaixo, HD/FHD/H265 (que vêm de
+            // qualityVariants, trocando a URL do canal, não o ABR do HLS.js)
+            // ficavam inalcançáveis mesmo estando corretos e populados.
+            if (qualityLevels.length > 0 || (qualityVariants && qualityVariants.length > 0)) {
                 entries.push({
                     label: 'Qualidade',
-                    hint: isAutoQuality ? 'Auto' : (qualityLevels.find(l => l.index === currentQualityIndex)?.label || 'Auto'),
+                    hint: qualityLevels.length > 0
+                        ? (isAutoQuality ? 'Auto' : (qualityLevels.find(l => l.index === currentQualityIndex)?.label || 'Auto'))
+                        : qualityVariants?.find(v => v.selected)?.label,
                     run: () => openMenu('quality'),
                 });
             }
             if (audioTracks.length > 1) {
                 entries.push({ label: 'Áudio', hint: currentAudioLabel, run: () => openMenu('audio') });
             }
-            if (subtitleTracks.length > 0) {
+            if (subtitleTracks.length > 0 || subtitleQuery) {
                 entries.push({ label: 'Legendas', hint: currentSubLabel, run: () => openMenu('subs') });
+            }
+            if (subtitleTracks.length > 0 || activeTrack) {
                 entries.push({
                     label: 'Tamanho da legenda',
                     hint: SUBTITLE_SIZE_LABELS[subSize],
@@ -1203,22 +1416,36 @@ export function VideoPlayer({
             return entries;
         }
         if (menu === 'quality') {
-            return [
+            const hasVariants = !!qualityVariants && qualityVariants.length > 0;
+            const variantEntries: MenuEntry[] = hasVariants
+                ? qualityVariants!.map(v => ({
+                      label: v.label,
+                      selected: v.selected,
+                      group: 'Fonte do canal',
+                      run: () => { onSelectQualityVariant?.(v.id); closeMenu(); },
+                  }))
+                : [];
+            // Sem níveis ABR (HLS.js nem rodou — URL .ts crua), não faz
+            // sentido oferecer "Auto"/bitrate: só as variantes de URL entram.
+            const abrEntries: MenuEntry[] = qualityLevels.length === 0 ? [] : [
                 {
                     label: 'Auto',
                     hint: isAutoQuality && currentQualityIndex >= 0
                         ? qualityLevels.find(l => l.index === currentQualityIndex)?.label
                         : undefined,
                     selected: isAutoQuality,
+                    group: hasVariants ? 'Resolução' : undefined,
                     run: () => selectQuality(-1),
                 },
                 ...qualityLevels.map(level => ({
                     label: level.label,
                     hint: `${Math.round(level.bitrate / 1000)} kbps`,
                     selected: !isAutoQuality && currentQualityIndex === level.index,
+                    group: hasVariants ? 'Resolução' : undefined,
                     run: () => selectQuality(level.index),
                 })),
             ];
+            return [...variantEntries, ...abrEntries];
         }
         if (menu === 'audio') {
             return audioTracks.map(track => ({
@@ -1229,19 +1456,41 @@ export function VideoPlayer({
             }));
         }
         if (menu === 'subs') {
-            return [
+            const hasOs = !!subtitleQuery;
+            const embeddedEntries: MenuEntry[] = [
                 {
                     label: 'Desligadas',
-                    selected: currentSubtitleTrack < 0,
-                    run: () => { setSubtitleTrack(-1); closeMenu(); },
+                    selected: currentSubtitleTrack < 0 && !activeTrack,
+                    group: hasOs && subtitleTracks.length > 0 ? 'Embutidas' : undefined,
+                    run: () => { setSubtitleTrack(-1); deactivateOsTrack(); closeMenu(); },
                 },
                 ...subtitleTracks.map(track => ({
                     label: track.label,
                     hint: track.lang,
-                    selected: track.id === currentSubtitleTrack,
-                    run: () => { setSubtitleTrack(track.id); closeMenu(); },
+                    selected: track.id === currentSubtitleTrack && !activeTrack,
+                    group: hasOs ? 'Embutidas' : undefined,
+                    run: () => { deactivateOsTrack(); setSubtitleTrack(track.id); closeMenu(); },
                 })),
             ];
+            if (!hasOs) return embeddedEntries;
+
+            const osEntries: MenuEntry[] = osStatus === 'loading'
+                ? [{ label: 'Buscando…', group: 'OpenSubtitles', run: () => {} }]
+                : osStatus === 'error'
+                ? [{ label: 'Falha ao buscar legendas', group: 'OpenSubtitles', run: () => {} }]
+                : osStatus === 'done' && osResults.length === 0
+                ? [{ label: 'Nenhuma legenda encontrada', group: 'OpenSubtitles', run: () => {} }]
+                : osResults.map(result => ({
+                      label: result.release,
+                      hint: result.lang,
+                      selected: activeTrack?.label === result.release,
+                      group: 'OpenSubtitles',
+                      run: () => { selectOpenSubtitle(result); },
+                  }));
+            if (osDownloadFailed) {
+                osEntries.push({ label: 'Falha ao baixar — tente outra', group: 'OpenSubtitles', run: () => {} });
+            }
+            return [...embeddedEntries, ...osEntries];
         }
         if (menu === 'subsize') {
             return SUBTITLE_SIZES.map(size => ({
@@ -1257,7 +1506,9 @@ export function VideoPlayer({
         return [];
     }, [menu, qualityLevels, isAutoQuality, currentQualityIndex, audioTracks, currentAudioTrack,
         subtitleTracks, currentSubtitleTrack, subSize, showStats, currentAudioLabel, currentSubLabel,
-        openMenu, selectQuality, setAudioTrack, setSubtitleTrack, closeMenu, toggleStats]);
+        openMenu, selectQuality, setAudioTrack, setSubtitleTrack, closeMenu, toggleStats,
+        qualityVariants, onSelectQualityVariant, subtitleQuery, osStatus, osResults, osDownloadFailed,
+        activeTrack, deactivateOsTrack, selectOpenSubtitle]);
 
     // As listas vêm do useHls, que as ESVAZIA em todo reload() (retry,
     // watchdog de travamento, volta do standby) — não só na troca de canal.
@@ -1309,6 +1560,9 @@ export function VideoPlayer({
             case 'channels':
                 openZapList();
                 break;
+            case 'volume':
+                toggleMute();
+                break;
             case 'sleep':
                 cycleSleep();
                 break;
@@ -1316,7 +1570,7 @@ export function VideoPlayer({
                 cycleAspect();
                 break;
         }
-    }, [focusedControl, handleClose, onPreviousEpisode, togglePlay, onNextEpisode, openMenu, openZapList, cycleSleep, cycleAspect, seekToLive]);
+    }, [focusedControl, handleClose, onPreviousEpisode, togglePlay, onNextEpisode, openMenu, openZapList, toggleMute, cycleSleep, cycleAspect, seekToLive]);
 
     // TV Navigation handler
     const handleNavigate = useCallback((direction: 'up' | 'down' | 'left' | 'right') => {
@@ -1351,6 +1605,13 @@ export function VideoPlayer({
                 setPlayerFocus('controls');
             }
         } else {
+            // Botão de volume focado: ↑↓ ajustam o nível em vez do gesto geral
+            // (subir pra barra de progresso) — só se aplica a ESTE botão, o
+            // resto do controle continua exatamente como antes.
+            if (focusedControl === 'volume' && (direction === 'up' || direction === 'down')) {
+                adjustVolume(direction === 'up' ? 0.1 : -0.1);
+                return;
+            }
             // ↑ sobe pra barra de progresso (só VOD tem barra)
             if (direction === 'up' && !isLiveContent && duration > 0) {
                 setPlayerFocus('seekbar');
@@ -1387,7 +1648,7 @@ export function VideoPlayer({
         }
     }, [playerFocus, menu, menuEntries.length, channelList?.length, focusedControl, getControlButtons,
         resetHideControlsTimer, closeZapList, openMenu, closeMenu, nudgeSeek, commitSeek, isLiveContent,
-        duration, stillWatching]);
+        duration, stillWatching, adjustVolume]);
 
     const handleEnter = useCallback(() => {
         if (stillWatching) {
@@ -1486,6 +1747,9 @@ export function VideoPlayer({
     };
 
     const getCurrentQualityLabel = (): string => {
+        if (qualityLevels.length === 0) {
+            return qualityVariants?.find(v => v.selected)?.label || 'Qualidade';
+        }
         if (isAutoQuality) {
             const current = qualityLevels.find(l => l.index === currentQualityIndex);
             return current ? `Auto (${current.label})` : 'Auto';
@@ -1506,7 +1770,7 @@ export function VideoPlayer({
                     className={`video-player-close ${focusedControl === 'close' && playerFocus === 'controls' ? 'focused' : ''}`}
                     onClick={handleClose}
                 >
-                    ✕
+                    <FaTimes />
                 </button>
             )}
 
@@ -1525,29 +1789,56 @@ export function VideoPlayer({
                     poster={isRadio ? undefined : poster}
                     onClick={togglePlay}
                     playsInline
-                />
+                >
+                    {activeTrack && (
+                        <track
+                            key={activeTrack.blobUrl}
+                            kind="subtitles"
+                            src={activeTrack.blobUrl}
+                            srcLang={activeTrack.lang || 'und'}
+                            label={activeTrack.label}
+                            default
+                        />
+                    )}
+                </video>
                 {/* Modo rádio (item 13): sem imagem no stream — logo + relógio */}
                 {isRadio && (
                     <div className="radio-stage">
                         {poster
                             ? <img decoding="async" className="radio-logo" src={poster} alt={title || 'Rádio'} />
-                            : <div className="radio-logo radio-logo-fallback">📻</div>}
+                            : <div className="radio-logo radio-logo-fallback"><FaHeadphones /></div>}
                         <div className="radio-name">{title}</div>
                         <RadioClock />
                         <div className="radio-hint">CH+ / CH− trocam de estação</div>
                     </div>
                 )}
+                {/* Zapando: só a imagem troca por cima do vídeo (que continua
+                    tocando por baixo, sem interrupção) até assentar em
+                    ZAP_SETTLE_MS — daí sim o HLS de verdade troca de canal. */}
+                {zapPreview && (
+                    <div className="zap-preview-stage">
+                        {zapPreview.stream_icon
+                            ? <img decoding="async" className="zap-preview-logo" src={zapPreview.stream_icon} alt={zapPreview.name} />
+                            : <div className="zap-preview-logo zap-preview-logo-fallback"><FaBroadcastTower /></div>}
+                        <div className="zap-preview-name">
+                            {zapPreview.num != null && <span className="zap-preview-num">{zapPreview.num}</span>}
+                            {zapPreview.name}
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Aviso "a seguir" perto do fim do programa (item 9) */}
-            {nextSoon && !showControls && liveEpg?.now && (
+            {nextSoon && !showControls && liveEpg?.now && !zapPreview && (
                 <div className="next-soon-banner">
                     Em {Math.max(1, Math.ceil((liveEpg.now.end - Date.now()) / 60000))} min: {nextSoon.title}
                 </div>
             )}
 
-            {/* Onde eu caí? (banner curto na troca de canal) */}
-            {canZap && zapBanner && !showControls && (
+            {/* Onde eu caí? (banner curto na troca de canal) — escondido
+                enquanto zap-preview está ativo pra não mostrar o canal ANTIGO
+                por cima da prévia do canal NOVO */}
+            {canZap && zapBanner && !showControls && !zapPreview && (
                 <div className="zap-banner">
                     {zapBanner.num != null && <span className="zap-banner-num">{zapBanner.num}</span>}
                     <span className="zap-banner-name">{zapBanner.name}</span>
@@ -1566,7 +1857,7 @@ export function VideoPlayer({
                 const visible = channelList.slice(start, start + ZAP_WINDOW);
                 return (
                     <div className="zap-overlay">
-                        <div className="zap-overlay-header">📺 Canais</div>
+                        <div className="zap-overlay-header"><FaBroadcastTower /> Canais</div>
                         <div className="zap-overlay-list">
                             {visible.map((channel, i) => {
                                 const realIndex = start + i;
@@ -1595,6 +1886,29 @@ export function VideoPlayer({
                     </div>
                 );
             })()}
+
+            {/* Prévia muda do canal destacado na lista acima — painel à
+                parte, NUNCA mexe no vídeo/áudio principal (que continua
+                tocando por baixo). Só troca de verdade quando o OK é
+                apertado (ver onClick/handleEnter do overlay acima). */}
+            {playerFocus === 'zap-list' && zapPeekChannel && (
+                <div className="zap-peek">
+                    {zapPeekSrc && !zapPeekFailed ? (
+                        <LiveChannelPreview
+                            key={zapPeekChannel.stream_id}
+                            src={zapPeekSrc}
+                            onError={() => setZapPeekFailed(true)}
+                        />
+                    ) : (
+                        <div className="zap-peek-placeholder">
+                            {zapPeekChannel.stream_icon
+                                ? <img decoding="async" src={zapPeekChannel.stream_icon} alt={zapPeekChannel.name} />
+                                : <FaBroadcastTower />}
+                        </div>
+                    )}
+                    <div className="zap-peek-name">{zapPeekChannel.name}</div>
+                </div>
+            )}
 
             {/* Ainda está assistindo? (item 51) */}
             {stillWatching && (
@@ -1652,21 +1966,21 @@ export function VideoPlayer({
             {/* Pausado no ao vivo (item 8) */}
             {pausedLiveSrc && !playing && (
                 <div className="paused-live-badge">
-                    ⏸ Pausado — retomar continua de onde parou
+                    <FaPause /> Pausado — retomar continua de onde parou
                 </div>
             )}
 
             {/* Reconectando (R1 item 44) */}
             {reconnecting && !error && (
                 <div className="reconnect-overlay">
-                    🔄 Reconectando… tentativa {reconnectAttempt}/{MAX_RECONNECT_ATTEMPTS}
+                    <FaSync /> Reconectando… tentativa {reconnectAttempt}/{MAX_RECONNECT_ATTEMPTS}
                 </div>
             )}
 
             {/* Error State */}
             {error && (
                 <div className="video-player-error">
-                    <p>⚠️ {error}</p>
+                    <p><FaExclamationTriangle /> {error}</p>
                     {onClose && <button onClick={handleClose}>Fechar</button>}
                 </div>
             )}
@@ -1679,14 +1993,20 @@ export function VideoPlayer({
                     </div>
                     <div className="quality-menu-items">
                         {menuEntries.map((entry, index) => (
-                            <div
-                                key={`${entry.label}-${index}`}
-                                className={`quality-menu-item ${menuIndex === index ? 'focused' : ''} ${entry.selected ? 'selected' : ''}`}
-                                onClick={entry.run}
-                            >
-                                {entry.label}
-                                {entry.hint && <span className="quality-bitrate">{entry.hint}</span>}
-                            </div>
+                            <Fragment key={`${entry.label}-${index}`}>
+                                {entry.group && entry.group !== menuEntries[index - 1]?.group && (
+                                    <div className="quality-menu-header">
+                                        <span>{entry.group}</span>
+                                    </div>
+                                )}
+                                <div
+                                    className={`quality-menu-item ${menuIndex === index ? 'focused' : ''} ${entry.selected ? 'selected' : ''}`}
+                                    onClick={entry.run}
+                                >
+                                    {entry.label}
+                                    {entry.hint && <span className="quality-bitrate">{entry.hint}</span>}
+                                </div>
+                            </Fragment>
                         ))}
                     </div>
                     <div className="quality-menu-hint">OK escolhe · ← Voltar</div>
@@ -1817,7 +2137,7 @@ export function VideoPlayer({
                             title="Opções"
                         >
                             <FaCog />
-                            {qualityLevels.length > 0 && (
+                            {(qualityLevels.length > 0 || (qualityVariants && qualityVariants.length > 0)) && (
                                 <span className="quality-label">{getCurrentQualityLabel()}</span>
                             )}
                         </button>
@@ -1832,6 +2152,27 @@ export function VideoPlayer({
                                 <FaListUl />
                             </button>
                         )}
+
+                        {/* Volume Control (item do elemento <video>, não da TV) */}
+                        <div className={`volume-control ${(focusedControl === 'volume' && playerFocus === 'controls') || volumeActive ? 'active' : ''}`}>
+                            <button
+                                className={`control-btn ${focusedControl === 'volume' && playerFocus === 'controls' ? 'focused' : ''}`}
+                                onClick={toggleMute}
+                                title="Volume"
+                            >
+                                {muted || volume === 0 ? <FaVolumeMute /> : volume < 0.5 ? <FaVolumeDown /> : <FaVolumeUp />}
+                            </button>
+                            <input
+                                type="range"
+                                className="volume-slider"
+                                min={0}
+                                max={1}
+                                step={0.01}
+                                value={muted ? 0 : volume}
+                                onChange={() => { /* só D-pad ajusta; ver adjustVolume */ }}
+                                tabIndex={-1}
+                            />
+                        </div>
 
                         {/* Sleep Timer Button */}
                         <button

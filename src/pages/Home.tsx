@@ -1,19 +1,28 @@
 // Home Page - Matching NeoStream Desktop
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import {
+    FaExclamationTriangle, FaClock, FaSync, FaBroadcastTower, FaFilm, FaTv, FaPlay,
+    FaListOl, FaCalendarPlus, FaLightbulb, FaBolt, FaHeart, FaCog, FaRandom,
+} from 'react-icons/fa';
 import { api } from '../services/api';
-import type { VODStream, Series } from '../types';
+import type { VODStream, Series, LiveStream } from '../types';
 import { useTVNavigation } from '../hooks/useTVNavigation';
 import { useFocusZone } from '../contexts/FocusContext';
 import { progressService, type MovieProgress, type SeriesProgress } from '../services/progressService';
 import { storage } from '../services/storage';
 import { categoryAffinity, scoreRecommendations, spinRoulette, newEpisodes, normalizeSearch } from '../services/catalogExtras';
 import { usageStats } from '../services/usageStats';
-import { kidsFilter } from '../services/kidsFilter';
+import { kidsFilter, isAdultCategoryName } from '../services/kidsFilter';
+import { parentalService } from '../services/parentalService';
+import { contentFlags } from '../services/contentFlags';
+import { computeDefaultVisibleChannels } from '../services/liveVisibility';
 import { ContentDetailModal } from '../components/ContentDetailModal';
 import { MoviePlayer } from '../components/MoviePlayer';
 import { SeriesQueuePlayer } from '../components/SeriesQueuePlayer';
 import { buildEpisodeQueue, type EpisodeQueue } from '../services/seriesPlayback';
+import { HomeCard } from './HomeCard';
+import { HomeChannelPreview, HomeChannelCoverRow } from './HomeChannelPreview';
 import './Home.css';
 import { accountService } from '../services/accountService';
 
@@ -81,6 +90,17 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
     const [newEpisodesList, setNewEpisodesList] = useState<Series[]>([]);
     const rouletteRef = useRef<{ pool: VODStream[]; affinity: Map<string, number> } | null>(null);
 
+    // Prévia de canal ao vivo (último assistido, ou sugestão aleatória
+    // dentre os visíveis por padrão — ver src/services/liveVisibility.ts),
+    // mais uma fileira de OUTROS canais candidatos só com a capa: clicar um
+    // deles troca qual canal toca na prévia grande (não navega); clicar de
+    // novo na prévia (o mesmo canal, agora já selecionado) é que abre o
+    // player. `lastWatchedId` fica separado pra decidir o rótulo da seção
+    // ("Continue assistindo" só quando o SELECIONADO é o último de verdade
+    // — escolher outro canal na fileira já deixa de ser "continuar").
+    const [channelPreviewPool, setChannelPreviewPool] = useState<{ lastWatchedId: number | null; channels: LiveStream[] } | null>(null);
+    const [selectedPreviewChannelId, setSelectedPreviewChannelId] = useState<number | null>(null);
+
     const refreshContinue = useCallback(() => {
         setContinueItems(kidsActive ? [] : progressService.getContinueWatching());
     }, [kidsActive]);
@@ -96,22 +116,43 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
         async function fetchData() {
             try {
                 setLoading(true);
-                let [streams, movies, series] = await Promise.all([
-                    api.getLiveStreams(),
-                    api.getVODStreams(),
-                    api.getSeries()
+                // "Incluir canais de TV"/"Incluir VOD" desmarcados no login:
+                // nem busca esse tipo — a fileira correspondente fica vazia
+                // sozinha, sem precisar mudar a renderização de cada uma.
+                const includeTV = contentFlags.includeTV();
+                const includeVOD = contentFlags.includeVOD();
+                // Categorias sempre juntas com os itens (não só pra kids): a
+                // Home não tem "selecionar a categoria pra provar o PIN" como
+                // Filmes/Séries/TV ao Vivo têm — aqui a categoria travada por
+                // PIN precisa sumir incondicionalmente de toda fileira, senão
+                // um filme "adulto" aparecia normal em Recentes/Recomendados/
+                // Surpreenda-me sem NUNCA pedir PIN.
+                const [rawStreams, rawMovies, rawSeries, liveCats, vodCats, seriesCats] = await Promise.all([
+                    includeTV ? api.getLiveStreams() : Promise.resolve([]),
+                    includeVOD ? api.getVODStreams() : Promise.resolve([]),
+                    includeVOD ? api.getSeries() : Promise.resolve([]),
+                    includeTV ? api.getLiveCategories() : Promise.resolve([]),
+                    includeVOD ? api.getVodCategories() : Promise.resolve([]),
+                    includeVOD ? api.getSeriesCategories() : Promise.resolve([])
                 ]);
+                let streams = rawStreams;
+                let movies = rawMovies;
+                let series = rawSeries;
 
-                // Gate do perfil Kids: precisa dos nomes das categorias
+                // Gate do perfil Kids (some com mais categoria que só a
+                // adulta) tem prioridade; perfil normal ainda assim não vê
+                // categoria travada por PIN nas fileiras da Home.
                 if (kidsFilter.isKidsActive()) {
-                    const [liveCats, vodCats, seriesCats] = await Promise.all([
-                        api.getLiveCategories(),
-                        api.getVodCategories(),
-                        api.getSeriesCategories()
-                    ]);
                     streams = kidsFilter.apply(streams, liveCats).items;
                     movies = kidsFilter.apply(movies, vodCats).items;
                     series = kidsFilter.apply(series, seriesCats).items;
+                } else if (parentalService.getGates().adultCategories) {
+                    const lockedLive = new Set(liveCats.filter(c => isAdultCategoryName(c.category_name || '')).map(c => c.category_id));
+                    const lockedVod = new Set(vodCats.filter(c => isAdultCategoryName(c.category_name || '')).map(c => c.category_id));
+                    const lockedSeries = new Set(seriesCats.filter(c => isAdultCategoryName(c.category_name || '')).map(c => c.category_id));
+                    streams = streams.filter(s => !lockedLive.has(s.category_id));
+                    movies = movies.filter(m => !lockedVod.has(m.category_id));
+                    series = series.filter(s => !lockedSeries.has(s.category_id));
                 }
 
                 setCounts({
@@ -119,6 +160,35 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                     vod: movies.length,
                     series: series.length
                 });
+
+                // Prévia de canal ao vivo: o último assistido (se ainda
+                // existir no catálogo já filtrado por Kids/adulto) puxa a
+                // prévia grande; senão sorteia 1 dentre os visíveis por
+                // padrão (mesma pipeline de curadoria/dedup de TV ao Vivo —
+                // ver liveVisibility.ts). Os DEMAIS canais visíveis (até 24)
+                // viram a fileira de capas ao lado, pra trocar a prévia sem
+                // sair da Home. `streams` aqui já vem vazio quando "Incluir
+                // canais de TV" está desligado, então a seção some sozinha.
+                if (streams.length > 0) {
+                    const visible = computeDefaultVisibleChannels(streams, liveCats);
+                    const lastChannelId = storage.getLastChannel();
+                    const lastChannel = lastChannelId
+                        ? streams.find(s => s.stream_id === lastChannelId)
+                        : undefined;
+                    const hero = lastChannel
+                        ?? (visible.length > 0 ? visible[Math.floor(Math.random() * visible.length)] : null);
+                    if (hero) {
+                        const others = visible.filter(c => c.stream_id !== hero.stream_id).slice(0, 24);
+                        setChannelPreviewPool({ lastWatchedId: lastChannel ? lastChannel.stream_id : null, channels: [hero, ...others] });
+                        setSelectedPreviewChannelId(hero.stream_id);
+                    } else {
+                        setChannelPreviewPool(null);
+                        setSelectedPreviewChannelId(null);
+                    }
+                } else {
+                    setChannelPreviewPool(null);
+                    setSelectedPreviewChannelId(null);
+                }
 
                 // Get recent items (newest first based on 'added' field)
                 const sortedMovies = [...movies].sort((a, b) =>
@@ -272,24 +342,14 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
         return 'Boa noite';
     };
 
-    // TV Navigation - seções dinâmicas ("continue"/"newepisodes" condicionais)
-    // A ORDEM aqui tem que ser a MESMA do DOM, senão ↓ move o foco pra cima na
-    // tela. E seção sem item nenhum não pode entrar: o foco sumia por três
-    // apertos de ↓ numa playlist só de canais.
-    const sections = [
-        { id: 'stats', items: 3 },
-        ...(continueItems.length > 0 ? [{ id: 'continue', items: continueItems.length }] : []),
-        ...(seedRow ? [{ id: 'seed', items: seedRow.itens.length }] : []),
-        ...(topItems.length > 0 ? [{ id: 'top10', items: topItems.length }] : []),
-        ...(newEpisodesList.length > 0 ? [{ id: 'newepisodes', items: newEpisodesList.length }] : []),
-        ...(recommendations.length > 0 ? [{ id: 'recommendations', items: recommendations.length }] : []),
-        ...(recentSeries.length > 0 ? [{ id: 'series', items: recentSeries.length }] : []),
-        ...(recentMovies.length > 0 ? [{ id: 'movies', items: recentMovies.length }] : []),
-        { id: 'quick', items: 6 }
-    ];
-
-    const sectionIndex = (id: string) => sections.findIndex(s => s.id === id);
-    const focusedSection = Math.max(0, sectionIndex(focusedSectionId));
+    // Cards de estatística e Acesso Rápido: ancorados por ARRAY, não por
+    // índice fixo — "Incluir canais de TV"/"Incluir VOD" desligados tiram um
+    // card, e um índice hardcoded (o padrão antigo) apontaria pro card
+    // errado. Mesmo defeito que já mandou o foco pro botão errado em
+    // Movies.tsx (toolbar ancorada por id, não por posição) — aqui a lição já
+    // vale desde o primeiro commit.
+    const includeTV = contentFlags.includeTV();
+    const includeVOD = contentFlags.includeVOD();
 
     // Roleta 🎲: filme não visto, ponderado pelas categorias que o usuário curte
     const surpriseMe = () => {
@@ -310,8 +370,55 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
         }
     };
 
+    // Canal selecionado na prévia (hero) + os demais candidatos, com o
+    // selecionado sempre removido da fileira de capas (ele já está grande,
+    // não faz sentido repetir pequeno do lado). Recalcular a cada render é
+    // barato (≤25 itens) e evita guardar essa relação duas vezes.
+    const previewChannels = channelPreviewPool?.channels ?? [];
+    const selectedPreviewChannel = previewChannels.find(c => c.stream_id === selectedPreviewChannelId) ?? null;
+    const otherPreviewChannels = selectedPreviewChannel
+        ? previewChannels.filter(c => c.stream_id !== selectedPreviewChannel.stream_id)
+        : previewChannels;
+    const isLastWatchedSelected = !!selectedPreviewChannel && selectedPreviewChannel.stream_id === channelPreviewPool?.lastWatchedId;
+
+    const statsCards = [
+        ...(includeTV ? [{ page: 'live', icon: FaBroadcastTower, value: counts.live, label: 'Canais', cls: 'stat-card-live' }] : []),
+        ...(includeVOD ? [{ page: 'movies', icon: FaFilm, value: counts.vod, label: 'Filmes', cls: 'stat-card-vod' }] : []),
+        ...(includeVOD ? [{ page: 'series', icon: FaTv, value: counts.series, label: 'Séries', cls: 'stat-card-series' }] : []),
+    ];
+    const quickItems = [
+        ...(includeTV ? [{ page: 'live', icon: FaBroadcastTower, label: 'TV ao Vivo', action: () => onNavigate?.('live') }] : []),
+        ...(includeVOD ? [{ page: 'movies', icon: FaFilm, label: 'Filmes', action: () => onNavigate?.('movies') }] : []),
+        ...(includeVOD ? [{ page: 'series', icon: FaTv, label: 'Séries', action: () => onNavigate?.('series') }] : []),
+        { page: 'favorites', icon: FaHeart, label: 'Favoritos', action: () => onNavigate?.('favorites') },
+        { page: 'settings', icon: FaCog, label: 'Configurações', action: () => onNavigate?.('settings') },
+        // "Surpreenda-me" sorteia um filme não visto — sem VOD não há pool
+        // nenhum, então o botão nem entra na lista quando includeVOD=false.
+        ...(includeVOD ? [{ page: 'roulette', icon: FaRandom, label: 'Surpreenda-me', action: surpriseMe }] : []),
+    ];
+
+    // TV Navigation - seções dinâmicas ("continue"/"newepisodes" condicionais)
+    // A ORDEM aqui tem que ser a MESMA do DOM, senão ↓ move o foco pra cima na
+    // tela. E seção sem item nenhum não pode entrar: o foco sumia por três
+    // apertos de ↓ numa playlist só de canais.
+    const sections = [
+        ...(statsCards.length > 0 ? [{ id: 'stats', items: statsCards.length }] : []),
+        ...(selectedPreviewChannel ? [{ id: 'channelpreview', items: 1 + otherPreviewChannels.length }] : []),
+        ...(continueItems.length > 0 ? [{ id: 'continue', items: continueItems.length }] : []),
+        ...(seedRow ? [{ id: 'seed', items: seedRow.itens.length }] : []),
+        ...(topItems.length > 0 ? [{ id: 'top10', items: topItems.length }] : []),
+        ...(newEpisodesList.length > 0 ? [{ id: 'newepisodes', items: newEpisodesList.length }] : []),
+        ...(recommendations.length > 0 ? [{ id: 'recommendations', items: recommendations.length }] : []),
+        ...(recentSeries.length > 0 ? [{ id: 'series', items: recentSeries.length }] : []),
+        ...(recentMovies.length > 0 ? [{ id: 'movies', items: recentMovies.length }] : []),
+        { id: 'quick', items: quickItems.length }
+    ];
+
+    const sectionIndex = (id: string) => sections.findIndex(s => s.id === id);
+    const focusedSection = Math.max(0, sectionIndex(focusedSectionId));
+
     /** Abre a ficha do título (mesmo caminho de Filmes, Séries e Favoritos). */
-    const openDetail = (item: VODStream | Series) => setDetailItem(item);
+    const openDetail = useCallback((item: VODStream | Series) => setDetailItem(item), []);
 
     /** Monta a fila de episódios a partir da ficha e começa a tocar. */
     const playSeriesFromDetail = async (serie: Series, season?: number, episode?: number) => {
@@ -332,7 +439,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
         }
     };
 
-    const playContinueItem = async (item: ContinueItem) => {
+    const playContinueItem = useCallback(async (item: ContinueItem) => {
         if (item.kind === 'movie') {
             setPlayingMovie(item.progress);
         } else {
@@ -349,7 +456,43 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 console.error('Error resuming series:', err);
             }
         }
-    };
+    }, []);
+
+    // Callbacks estáveis por FILEIRA (não por card) — é o que faz o
+    // React.memo do HomeCard funcionar. `onNavigate?.('stream_id' in item
+    // ? 'movies' : 'series')` se repete em Top10 e Recomendados: mesmo
+    // comportamento, uma função só.
+    const handleSelectContinue = useCallback((item: ContinueItem) => { void playContinueItem(item); }, [playContinueItem]);
+    const handleSelectCatalogNav = useCallback((item: VODStream | Series) => {
+        onNavigate?.('stream_id' in item ? 'movies' : 'series');
+    }, [onNavigate]);
+    const handleSelectNewEpisode = useCallback((s: Series) => {
+        // Marca como visto (o selo some) e vai pra Séries
+        newEpisodes.markSeen(String(s.series_id), s.last_modified || '0');
+        onNavigate?.('series');
+    }, [onNavigate]);
+    const handleSelectRecentSeries = useCallback(() => onNavigate?.('series'), [onNavigate]);
+    const handleSelectRecentMovie = useCallback(() => onNavigate?.('movies'), [onNavigate]);
+
+    // Mesmo padrão do fluxo "ligar e assistir" pós-login (App.tsx): grava o
+    // canal SELECIONADO (não necessariamente o último assistido de
+    // verdade — o usuário pode ter trocado clicando na fileira de capas)
+    // como último assistido, marca a flag de autoplay de uma vez só
+    // (LiveTV.tsx consome e apaga no mount) e troca de página — TV ao Vivo
+    // já nasce tocando esse canal, sem precisar selecionar de novo.
+    const handleWatchChannelPreview = useCallback(() => {
+        if (!selectedPreviewChannel) return;
+        storage.setLastChannel(selectedPreviewChannel.stream_id);
+        sessionStorage.setItem('neostream_autoplay_last', '1');
+        onNavigate?.('live');
+    }, [selectedPreviewChannel, onNavigate]);
+
+    // Clicar uma capa da fileira de "outros canais" só TROCA a prévia
+    // grande (nova seleção) — não navega. Clicar de novo na prévia (agora
+    // já mostrando esse canal) é que chama handleWatchChannelPreview.
+    const handleSelectOtherChannel = useCallback((channel: LiveStream) => {
+        setSelectedPreviewChannelId(channel.stream_id);
+    }, []);
 
     const handleNavigate = (direction: 'up' | 'down' | 'left' | 'right') => {
         onCancelExit(); // mexeu no controle: não estava saindo
@@ -375,8 +518,15 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
     const handleEnter = () => {
         const section = sections.find(s => s.id === focusedSectionId) || sections[0];
         if (section?.id === 'stats') {
-            const pages = ['live', 'movies', 'series'];
-            onNavigate?.(pages[focusedItem] || 'live');
+            const card = statsCards[focusedItem];
+            if (card) onNavigate?.(card.page);
+        } else if (section?.id === 'channelpreview') {
+            if (focusedItem === 0) {
+                handleWatchChannelPreview();
+            } else {
+                const channel = otherPreviewChannels[focusedItem - 1];
+                if (channel) handleSelectOtherChannel(channel);
+            }
         } else if (section?.id === 'continue') {
             const item = continueItems[focusedItem];
             if (item) void playContinueItem(item);
@@ -391,12 +541,8 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 openDetail(s);
             }
         } else if (section?.id === 'quick') {
-            if (focusedItem === 5) {
-                surpriseMe();
-                return;
-            }
-            const pages = ['live', 'movies', 'series', 'favorites', 'settings'];
-            onNavigate?.(pages[focusedItem] || 'live');
+            const item = quickItems[focusedItem];
+            if (item) item.action();
         } else if (section?.id === 'movies') {
             const item = recentMovies[focusedItem];
             if (item) openDetail(item);
@@ -475,6 +621,12 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
         return 'stream_id' in item ? item.stream_id : item.series_id;
     };
 
+    // Filme e série têm espaços de id INDEPENDENTES no provedor — um filme
+    // #6 e uma série #6 são coisas diferentes, mas `key={getId(item)}` sozinho
+    // colidia quando os dois apareciam na mesma fileira mista (seed/top10/
+    // recomendados). Mesmo prefixo que a fileira "Continuar Assistindo" já usava.
+    const getKey = (item: VODStream | Series) => `${'stream_id' in item ? 'm' : 's'}-${getId(item)}`;
+
     return (
         <div className="home-page">
             {/* Background decorations */}
@@ -485,13 +637,14 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
             {expiryWarning !== null && (
                 <div className={`home-expiry ${expiryWarning < 0 ? 'expired' : ''}`}>
                     <span className="home-expiry-text">
+                        <FaExclamationTriangle className="home-expiry-icon" />{' '}
                         {expiryWarning < 0
-                            ? '⚠️ Sua lista venceu — fale com o provedor pra renovar.'
+                            ? 'Sua lista venceu — fale com o provedor pra renovar.'
                             : expiryWarning === 0
-                                ? '⚠️ Sua lista vence hoje.'
-                                : `⚠️ Sua lista vence em ${expiryWarning} dia(s).`}
+                                ? 'Sua lista vence hoje.'
+                                : `Sua lista vence em ${expiryWarning} dia(s).`}
                     </span>
-                    <span className="home-expiry-hint">🔴 lembrar depois</span>
+                    <span className="home-expiry-hint"><FaClock className="home-expiry-icon" /> lembrar depois</span>
                 </div>
             )}
 
@@ -509,49 +662,62 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
 
             {loadError && (
                 <div className="home-load-error">
-                    <span className="home-load-error-text">⚠️ {loadError}</span>
+                    <span className="home-load-error-text"><FaExclamationTriangle className="home-expiry-icon" /> {loadError}</span>
                     <span className="home-load-error-hint">
-                        {expiryWarning !== null ? '🔴 adia o aviso acima' : '🔴 tentar de novo'}
+                        {expiryWarning !== null
+                            ? <><FaClock className="home-expiry-icon" /> adia o aviso acima</>
+                            : <><FaSync className="home-expiry-icon" /> tentar de novo</>}
                     </span>
                 </div>
             )}
 
             {/* Stats Cards */}
+            {statsCards.length > 0 && (
             <section id="home-stats" className="home-stats">
-                <button
-                    className={`stat-card stat-card-live ${focusedSection === 0 && focusedItem === 0 ? 'tv-focused' : ''}`}
-                    onClick={() => onNavigate?.('live')}
-                >
-                    <div className="stat-icon">📺</div>
-                    <div className="stat-value">{loading ? '...' : counts.live.toLocaleString()}</div>
-                    <div className="stat-label">Canais</div>
-                </button>
-
-                <button
-                    className={`stat-card stat-card-vod ${focusedSection === 0 && focusedItem === 1 ? 'tv-focused' : ''}`}
-                    onClick={() => onNavigate?.('movies')}
-                >
-                    <div className="stat-icon">🎬</div>
-                    <div className="stat-value">{loading ? '...' : counts.vod.toLocaleString()}</div>
-                    <div className="stat-label">Filmes</div>
-                </button>
-
-                <button
-                    className={`stat-card stat-card-series ${focusedSection === 0 && focusedItem === 2 ? 'tv-focused' : ''}`}
-                    onClick={() => onNavigate?.('series')}
-                >
-                    <div className="stat-icon">📺</div>
-                    <div className="stat-value">{loading ? '...' : counts.series.toLocaleString()}</div>
-                    <div className="stat-label">Séries</div>
-                </button>
+                {statsCards.map((card, index) => (
+                    <button
+                        key={card.page}
+                        className={`stat-card ${card.cls} ${focusedSection === sectionIndex('stats') && focusedItem === index ? 'tv-focused' : ''}`}
+                        onClick={() => onNavigate?.(card.page)}
+                    >
+                        <div className="stat-icon"><card.icon /></div>
+                        <div className="stat-value">{loading ? '...' : card.value.toLocaleString()}</div>
+                        <div className="stat-label">{card.label}</div>
+                    </button>
+                ))}
             </section>
+            )}
 
             {/* Content Rows - Matching Original App */}
             <section className="home-content">
+                {/* Prévia de canal ao vivo + fileira de outros canais (só capa) */}
+                {selectedPreviewChannel && (
+                    <div id="home-channelpreview" className="content-section home-channel-preview-section">
+                        <h2 className="section-title">
+                            {isLastWatchedSelected ? 'Continue assistindo ao vivo' : 'Prévia de canal ao vivo'}
+                        </h2>
+                        <div className="home-channel-preview-row">
+                            <HomeChannelPreview
+                                key={selectedPreviewChannel.stream_id}
+                                channel={selectedPreviewChannel}
+                                focused={focusedSection === sectionIndex('channelpreview') && focusedItem === 0}
+                                onWatch={handleWatchChannelPreview}
+                            />
+                            <HomeChannelCoverRow
+                                channels={otherPreviewChannels}
+                                focusedIndex={
+                                    focusedSection === sectionIndex('channelpreview') ? focusedItem - 1 : -1
+                                }
+                                onSelect={handleSelectOtherChannel}
+                            />
+                        </div>
+                    </div>
+                )}
+
                 {/* Continue Watching */}
                 {continueItems.length > 0 && (
                     <div id="home-continue" className="content-section">
-                        <h2 className="section-title">▶ Continuar Assistindo</h2>
+                        <h2 className="section-title"><FaPlay className="section-title-icon" /> Continuar Assistindo</h2>
                         <div className="content-row">
                             {continueItems.map((item, index) => {
                                 const isMovie = item.kind === 'movie';
@@ -564,26 +730,22 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                                     : 0;
                                 const key = isMovie ? `m-${item.progress.id}` : `s-${item.progress.seriesId}`;
                                 return (
-                                    <button
+                                    <HomeCard
                                         key={key}
-                                        className={`content-card ${focusedSection === sectionIndex('continue') && focusedItem === index ? 'tv-focused' : ''}`}
-                                        onClick={() => void playContinueItem(item)}
-                                    >
-                                        <div className="card-image card-image-poster">
-                                            <img decoding="async"
-                                                src={item.progress.poster || ''}
-                                                alt={title}
-                                                onError={(e) => { (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 150"><rect fill="%231a1a2e" width="100" height="150"/><text x="50" y="80" text-anchor="middle" fill="%23666" font-size="40">🎬</text></svg>'; }}
-                                            />
+                                        item={item}
+                                        index={index}
+                                        focused={focusedSection === sectionIndex('continue') && focusedItem === index}
+                                        title={title}
+                                        image={item.progress.poster || ''}
+                                        fallbackIcon={FaFilm}
+                                        onSelect={handleSelectContinue}
+                                        subtitle={subtitle && <span className="continue-episode"> · {subtitle}</span>}
+                                        imageOverlay={(
                                             <div className="continue-progress">
                                                 <div className="continue-progress-fill" style={{ width: `${pct}%` }} />
                                             </div>
-                                        </div>
-                                        <div className="card-title">
-                                            {title}
-                                            {subtitle && <span className="continue-episode"> · {subtitle}</span>}
-                                        </div>
-                                    </button>
+                                        )}
+                                    />
                                 );
                             })}
                         </div>
@@ -595,23 +757,19 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                     lista de foco vira uma fileira que o D-pad nunca alcança. */}
                 {seedRow && (
                     <div id="home-seed" className="content-section">
-                        <h2 className="section-title">▶ Porque você assistiu {seedRow.nome}</h2>
+                        <h2 className="section-title"><FaPlay className="section-title-icon" /> Porque você assistiu {seedRow.nome}</h2>
                         <div className="content-row">
                             {seedRow.itens.map((item, index) => (
-                                <button
-                                    key={getId(item)}
-                                    className={`content-card ${focusedSection === sectionIndex('seed') && focusedItem === index ? 'tv-focused' : ''}`}
-                                    onClick={() => openDetail(item)}
-                                >
-                                    <div className="card-image card-image-poster">
-                                        <img decoding="async"
-                                            src={getCover(item)}
-                                            alt={getName(item)}
-                                            onError={(e) => { (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 150"><rect fill="%231a1a2e" width="100" height="150"/><text x="50" y="80" text-anchor="middle" fill="%23666" font-size="40">🎬</text></svg>'; }}
-                                        />
-                                    </div>
-                                    <div className="card-title">{getName(item)}</div>
-                                </button>
+                                <HomeCard
+                                    key={getKey(item)}
+                                    item={item}
+                                    index={index}
+                                    focused={focusedSection === sectionIndex('seed') && focusedItem === index}
+                                    title={getName(item)}
+                                    image={getCover(item)}
+                                    fallbackIcon={FaFilm}
+                                    onSelect={openDetail}
+                                />
                             ))}
                         </div>
                     </div>
@@ -620,24 +778,20 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 {/* Top 10 (item 33) */}
                 {topItems.length > 0 && (
                     <div id="home-top10" className="content-section">
-                        <h2 className="section-title">🔟 Top 10 do seu aparelho</h2>
+                        <h2 className="section-title"><FaListOl className="section-title-icon" /> Top 10 do seu aparelho</h2>
                         <div className="content-row">
                             {topItems.map((item, index) => (
-                                <button
-                                    key={getId(item)}
-                                    className={`content-card top10-card ${focusedSection === sectionIndex('top10') && focusedItem === index ? 'tv-focused' : ''}`}
-                                    onClick={() => onNavigate?.('stream_id' in item ? 'movies' : 'series')}
-                                >
-                                    <span className="top10-rank">{index + 1}</span>
-                                    <div className="card-image card-image-poster">
-                                        <img decoding="async"
-                                            src={getCover(item)}
-                                            alt={getName(item)}
-                                            onError={(e) => { (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 150"><rect fill="%231a1a2e" width="100" height="150"/></svg>'; }}
-                                        />
-                                    </div>
-                                    <div className="card-title">{getName(item)}</div>
-                                </button>
+                                <HomeCard
+                                    key={getKey(item)}
+                                    item={item}
+                                    index={index}
+                                    focused={focusedSection === sectionIndex('top10') && focusedItem === index}
+                                    title={getName(item)}
+                                    image={getCover(item)}
+                                    onSelect={handleSelectCatalogNav}
+                                    cardClassName="top10-card"
+                                    rankBadge={<span className="top10-rank">{index + 1}</span>}
+                                />
                             ))}
                         </div>
                     </div>
@@ -646,27 +800,20 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 {/* Novos episódios de séries seguidas */}
                 {newEpisodesList.length > 0 && (
                     <div id="home-newepisodes" className="content-section">
-                        <h2 className="section-title">🆕 Novos Episódios</h2>
+                        <h2 className="section-title"><FaCalendarPlus className="section-title-icon" /> Novos Episódios</h2>
                         <div className="content-row">
                             {newEpisodesList.map((s, index) => (
-                                <button
+                                <HomeCard
                                     key={s.series_id}
-                                    className={`content-card ${focusedSection === sectionIndex('newepisodes') && focusedItem === index ? 'tv-focused' : ''}`}
-                                    onClick={() => {
-                                        newEpisodes.markSeen(String(s.series_id), s.last_modified || '0');
-                                        onNavigate?.('series');
-                                    }}
-                                >
-                                    <div className="card-image card-image-poster">
-                                        <img decoding="async"
-                                            src={s.cover}
-                                            alt={s.name}
-                                            onError={(e) => { (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 150"><rect fill="%231a1a2e" width="100" height="150"/><text x="50" y="80" text-anchor="middle" fill="%23666" font-size="40">📺</text></svg>'; }}
-                                        />
-                                        <div className="new-episodes-badge">NOVOS EPS</div>
-                                    </div>
-                                    <div className="card-title">{s.name}</div>
-                                </button>
+                                    item={s}
+                                    index={index}
+                                    focused={focusedSection === sectionIndex('newepisodes') && focusedItem === index}
+                                    title={s.name}
+                                    image={s.cover}
+                                    fallbackIcon={FaTv}
+                                    onSelect={handleSelectNewEpisode}
+                                    imageOverlay={<div className="new-episodes-badge">NOVOS EPS</div>}
+                                />
                             ))}
                         </div>
                     </div>
@@ -677,23 +824,19 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                     "Recomendados Para Você" com uma fileira vazia embaixo. */}
                 {recommendations.length > 0 && (
                 <div id="home-recommendations" className="content-section">
-                    <h2 className="section-title">💡 Recomendados Para Você</h2>
+                    <h2 className="section-title"><FaLightbulb className="section-title-icon" /> Recomendados Para Você</h2>
                     <div className="content-row">
                         {recommendations.map((item, index) => (
-                            <button
-                                key={getId(item)}
-                                className={`content-card ${focusedSection === sectionIndex('recommendations') && focusedItem === index ? 'tv-focused' : ''}`}
-                                onClick={() => onNavigate?.('stream_id' in item ? 'movies' : 'series')}
-                            >
-                                <div className="card-image card-image-poster">
-                                    <img decoding="async"
-                                        src={getCover(item)}
-                                        alt={getName(item)}
-                                        onError={(e) => { (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 150"><rect fill="%231a1a2e" width="100" height="150"/><text x="50" y="80" text-anchor="middle" fill="%23666" font-size="40">🎬</text></svg>'; }}
-                                    />
-                                </div>
-                                <div className="card-title">{getName(item)}</div>
-                            </button>
+                            <HomeCard
+                                key={getKey(item)}
+                                item={item}
+                                index={index}
+                                focused={focusedSection === sectionIndex('recommendations') && focusedItem === index}
+                                title={getName(item)}
+                                image={getCover(item)}
+                                fallbackIcon={FaFilm}
+                                onSelect={handleSelectCatalogNav}
+                            />
                         ))}
                     </div>
                 </div>
@@ -702,23 +845,19 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 {/* Recent Series — condicional IGUAL ao array `sections` */}
                 {recentSeries.length > 0 && (
                 <div id="home-series" className="content-section">
-                    <h2 className="section-title">🆕 Séries Recentes</h2>
+                    <h2 className="section-title"><FaCalendarPlus className="section-title-icon" /> Séries Recentes</h2>
                     <div className="content-row">
                         {recentSeries.map((series, index) => (
-                            <button
+                            <HomeCard
                                 key={series.series_id}
-                                className={`content-card ${focusedSection === sectionIndex('series') && focusedItem === index ? 'tv-focused' : ''}`}
-                                onClick={() => onNavigate?.('series')}
-                            >
-                                <div className="card-image card-image-poster">
-                                    <img decoding="async"
-                                        src={series.cover}
-                                        alt={series.name}
-                                        onError={(e) => { (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 150"><rect fill="%231a1a2e" width="100" height="150"/><text x="50" y="80" text-anchor="middle" fill="%23666" font-size="40">📺</text></svg>'; }}
-                                    />
-                                </div>
-                                <div className="card-title">{series.name}</div>
-                            </button>
+                                item={series}
+                                index={index}
+                                focused={focusedSection === sectionIndex('series') && focusedItem === index}
+                                title={series.name}
+                                image={series.cover}
+                                fallbackIcon={FaTv}
+                                onSelect={handleSelectRecentSeries}
+                            />
                         ))}
                     </div>
                 </div>
@@ -728,23 +867,19 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 {/* Recent Movies — condicional IGUAL ao array `sections` */}
                 {recentMovies.length > 0 && (
                 <div id="home-movies" className="content-section">
-                    <h2 className="section-title">🎬 Filmes Recentes</h2>
+                    <h2 className="section-title"><FaFilm className="section-title-icon" /> Filmes Recentes</h2>
                     <div className="content-row">
                         {recentMovies.map((movie, index) => (
-                            <button
+                            <HomeCard
                                 key={movie.stream_id}
-                                className={`content-card ${focusedSection === sectionIndex('movies') && focusedItem === index ? 'tv-focused' : ''}`}
-                                onClick={() => onNavigate?.('movies')}
-                            >
-                                <div className="card-image card-image-poster">
-                                    <img decoding="async"
-                                        src={movie.stream_icon || movie.cover}
-                                        alt={movie.name}
-                                        onError={(e) => { (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 150"><rect fill="%231a1a2e" width="100" height="150"/><text x="50" y="80" text-anchor="middle" fill="%23666" font-size="40">🎬</text></svg>'; }}
-                                    />
-                                </div>
-                                <div className="card-title">{movie.name}</div>
-                            </button>
+                                item={movie}
+                                index={index}
+                                focused={focusedSection === sectionIndex('movies') && focusedItem === index}
+                                title={movie.name}
+                                image={movie.stream_icon || movie.cover}
+                                fallbackIcon={FaFilm}
+                                onSelect={handleSelectRecentMovie}
+                            />
                         ))}
                     </div>
                 </div>
@@ -753,57 +888,25 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
 
             {/* Quick Access */}
             <section id="home-quick" className="home-quick-access">
-                <h2 className="section-title">⚡ Acesso Rápido</h2>
+                <h2 className="section-title"><FaBolt className="section-title-icon" /> Acesso Rápido</h2>
                 <div className="quick-grid">
-                    <button
-                        className={`quick-item ${focusedSection === sectionIndex('quick') && focusedItem === 0 ? 'tv-focused' : ''}`}
-                        onClick={() => onNavigate?.('live')}
-                    >
-                        <span className="quick-icon">🔴</span>
-                        <span className="quick-label">TV ao Vivo</span>
-                    </button>
-                    <button
-                        className={`quick-item ${focusedSection === sectionIndex('quick') && focusedItem === 1 ? 'tv-focused' : ''}`}
-                        onClick={() => onNavigate?.('movies')}
-                    >
-                        <span className="quick-icon">🎥</span>
-                        <span className="quick-label">Filmes</span>
-                    </button>
-                    <button
-                        className={`quick-item ${focusedSection === sectionIndex('quick') && focusedItem === 2 ? 'tv-focused' : ''}`}
-                        onClick={() => onNavigate?.('series')}
-                    >
-                        <span className="quick-icon">📺</span>
-                        <span className="quick-label">Séries</span>
-                    </button>
-                    <button
-                        className={`quick-item ${focusedSection === sectionIndex('quick') && focusedItem === 3 ? 'tv-focused' : ''}`}
-                        onClick={() => onNavigate?.('favorites')}
-                    >
-                        <span className="quick-icon">❤️</span>
-                        <span className="quick-label">Favoritos</span>
-                    </button>
-                    <button
-                        className={`quick-item ${focusedSection === sectionIndex('quick') && focusedItem === 4 ? 'tv-focused' : ''}`}
-                        onClick={() => onNavigate?.('settings')}
-                    >
-                        <span className="quick-icon">⚙️</span>
-                        <span className="quick-label">Configurações</span>
-                    </button>
-                    <button
-                        className={`quick-item ${focusedSection === sectionIndex('quick') && focusedItem === 5 ? 'tv-focused' : ''}`}
-                        onClick={surpriseMe}
-                    >
-                        <span className="quick-icon">🎲</span>
-                        <span className="quick-label">Surpreenda-me</span>
-                    </button>
+                    {quickItems.map((item, index) => (
+                        <button
+                            key={item.page}
+                            className={`quick-item ${focusedSection === sectionIndex('quick') && focusedItem === index ? 'tv-focused' : ''}`}
+                            onClick={item.action}
+                        >
+                            <span className="quick-icon"><item.icon /></span>
+                            <span className="quick-label">{item.label}</span>
+                        </button>
+                    ))}
                 </div>
             </section>
 
             {/* Footer */}
             <footer className="home-footer">
-                <span>NeoStream TV</span>
-                <span>v1.0.0</span>
+                <span>{__BRAND_FULL_NAME__}</span>
+                <span>v{__APP_VERSION__}</span>
             </footer>
 
             {/* Continue Watching: Movie Player */}

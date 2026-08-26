@@ -25,13 +25,14 @@ import { storage } from '../services/storage';
 import { setupWizard } from '../services/wizardState';
 import './SetupWizard.css';
 
-type StepId = 'fundo' | 'cor' | 'tamanho' | 'tmdb';
+type StepId = 'fundo' | 'cor' | 'tamanho' | 'tmdb' | 'legendas';
 
 const STEPS: Array<{ id: StepId; title: string; help: string }> = [
     { id: 'fundo', title: 'Fundo da tela', help: 'AMOLED deixa o preto realmente preto e economiza energia em telas OLED.' },
     { id: 'cor', title: 'Cor de destaque', help: 'É a cor do foco: o que mostra onde você está na tela.' },
     { id: 'tamanho', title: 'Tamanho da interface', help: 'Se você assiste de longe ou enxerga pouco, aumente aqui.' },
     { id: 'tmdb', title: 'Capas e sinopses (opcional)', help: 'Com uma chave do TMDB o app busca capas e sinopses melhores. Dá pra fazer depois nas Configurações.' },
+    { id: 'legendas', title: 'Legendas por busca (opcional)', help: 'Com uma chave do OpenSubtitles.com o player busca legendas pra filmes e séries sem legenda embutida. Dá pra fazer depois nas Configurações.' },
 ];
 
 interface SetupWizardProps {
@@ -71,9 +72,15 @@ export function SetupWizard({ onFinish }: SetupWizardProps) {
                 apply: () => { a11yService.setTextScale(scale); setTextScale(scale); },
             }));
         }
+        if (step.id === 'tmdb') {
+            return [
+                { label: 'Tenho uma chave — configuro depois', selected: false, apply: () => { } },
+                { label: 'Não vou usar TMDB', selected: !storage.getTmdbApiKey(), apply: () => { } },
+            ];
+        }
         return [
             { label: 'Tenho uma chave — configuro depois', selected: false, apply: () => { } },
-            { label: 'Não vou usar TMDB', selected: !storage.getTmdbApiKey(), apply: () => { } },
+            { label: 'Não vou usar legendas por busca', selected: !storage.getOpenSubtitlesApiKey(), apply: () => { } },
         ];
     }, [step.id, background, accent, textScale]);
 

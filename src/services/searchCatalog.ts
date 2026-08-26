@@ -3,8 +3,10 @@
 // numa TV). Ranking simples com normalização de acentos.
 
 import { api } from './api';
-import { kidsFilter } from './kidsFilter';
-import type { LiveStream, VODStream, Series } from '../types';
+import { kidsFilter, isAdultCategoryName } from './kidsFilter';
+import { contentFlags } from './contentFlags';
+import { parentalService } from './parentalService';
+import type { LiveStream, VODStream, Series, Category } from '../types';
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -14,7 +16,7 @@ export interface SearchCatalogData {
     series: Series[];
 }
 
-let cache: { at: number; kids: boolean; data: SearchCatalogData } | null = null;
+let cache: { at: number; kids: boolean; includeTV: boolean; includeVOD: boolean; adultGate: boolean; data: SearchCatalogData } | null = null;
 let inflight: Promise<SearchCatalogData> | null = null;
 
 export function normalizeText(value: string): string {
@@ -27,7 +29,15 @@ export function normalizeText(value: string): string {
 
 export async function loadSearchCatalog(): Promise<SearchCatalogData> {
     const kids = kidsFilter.isKidsActive();
-    if (cache && cache.kids === kids && Date.now() - cache.at < CACHE_TTL_MS) {
+    // "Incluir canais de TV"/"Incluir VOD" desmarcados no login: nem busca
+    // esse tipo — sem isto a busca global devolvia canal/filme/série que o
+    // usuário disse explicitamente que não queria nessa playlist.
+    const includeTV = contentFlags.includeTV();
+    const includeVOD = contentFlags.includeVOD();
+    const adultGate = parentalService.getGates().adultCategories;
+    if (cache && cache.kids === kids && cache.includeTV === includeTV
+        && cache.includeVOD === includeVOD && cache.adultGate === adultGate
+        && Date.now() - cache.at < CACHE_TTL_MS) {
         return cache.data;
     }
     if (inflight) return inflight;
@@ -35,19 +45,35 @@ export async function loadSearchCatalog(): Promise<SearchCatalogData> {
     inflight = (async () => {
         try {
             const [channels, movies, series, liveCats, vodCats, seriesCats] = await Promise.all([
-                api.getLiveStreams(),
-                api.getVODStreams(),
-                api.getSeries(),
-                api.getLiveCategories(),
-                api.getVodCategories(),
-                api.getSeriesCategories(),
+                includeTV ? api.getLiveStreams() : Promise.resolve([]),
+                includeVOD ? api.getVODStreams() : Promise.resolve([]),
+                includeVOD ? api.getSeries() : Promise.resolve([]),
+                includeTV ? api.getLiveCategories() : Promise.resolve([]),
+                includeVOD ? api.getVodCategories() : Promise.resolve([]),
+                includeVOD ? api.getSeriesCategories() : Promise.resolve([]),
             ]);
+            let gatedChannels = kidsFilter.apply(channels, liveCats).items;
+            let gatedMovies = kidsFilter.apply(movies, vodCats).items;
+            let gatedSeries = kidsFilter.apply(series, seriesCats).items;
+            // Fora do perfil Kids, a busca global ainda não pode devolver
+            // categoria travada por PIN — a busca não tem "selecionar a
+            // categoria" pra provar o PIN, então some incondicionalmente.
+            if (!kids && adultGate) {
+                const lockedIds = (cats: Category[]) =>
+                    new Set(cats.filter(c => isAdultCategoryName(c.category_name || '')).map(c => c.category_id));
+                const lockedLive = lockedIds(liveCats);
+                const lockedVod = lockedIds(vodCats);
+                const lockedSeries = lockedIds(seriesCats);
+                gatedChannels = gatedChannels.filter(c => !lockedLive.has(c.category_id));
+                gatedMovies = gatedMovies.filter(m => !lockedVod.has(m.category_id));
+                gatedSeries = gatedSeries.filter(s => !lockedSeries.has(s.category_id));
+            }
             const data: SearchCatalogData = {
-                channels: kidsFilter.apply(channels, liveCats).items,
-                movies: kidsFilter.apply(movies, vodCats).items,
-                series: kidsFilter.apply(series, seriesCats).items,
+                channels: gatedChannels,
+                movies: gatedMovies,
+                series: gatedSeries,
             };
-            cache = { at: Date.now(), kids, data };
+            cache = { at: Date.now(), kids, includeTV, includeVOD, adultGate, data };
             return data;
         } finally {
             inflight = null;

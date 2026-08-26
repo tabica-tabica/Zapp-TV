@@ -6,6 +6,7 @@ import { storage } from './storage';
 import { normalizarUrlDoServidor } from './api';
 import { scopedKey } from './profileScope';
 import { removeKey } from './safeStorage';
+import { contentFlags } from './contentFlags';
 import type { Credentials } from '../types';
 
 const KEY = 'neostream_playlists';
@@ -124,8 +125,8 @@ export const playlistService = {
             p => normalizarUrlDoServidor(p.url) === alvo && p.username === credentials.username
         );
         // Flags do Login (o app esconde TV/VOD por playlist)
-        const includeTV = localStorage.getItem('includeTV') !== 'false';
-        const includeVOD = localStorage.getItem('includeVOD') !== 'false';
+        const includeTV = contentFlags.includeTV();
+        const includeVOD = contentFlags.includeVOD();
         if (existing) {
             existing.url = alvo; // migra a entrada antiga pra URL limpa
             existing.password = credentials.password;

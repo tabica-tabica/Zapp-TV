@@ -19,9 +19,11 @@ export interface ParentalGates {
     settings: boolean;
     /** Pedir PIN pra sair de um perfil kids */
     leaveKids: boolean;
+    /** Pedir PIN pra abrir uma categoria detectada como adulta */
+    adultCategories: boolean;
 }
 
-const DEFAULT_GATES: ParentalGates = { settings: true, leaveKids: true };
+const DEFAULT_GATES: ParentalGates = { settings: true, leaveKids: true, adultCategories: true };
 
 // ---------------------------------------------------------------------------
 // Limite de tentativas.
@@ -179,5 +181,20 @@ export const parentalService = {
     /** O PIN é exigido pra esta porta agora? */
     requires(gate: keyof ParentalGates): boolean {
         return this.isSet() && this.getGates()[gate];
+    },
+
+    /**
+     * Provisiona o PIN "0000" na primeira vez que conteúdo adulto aparece NUM
+     * APARELHO SEM PIN NENHUM ainda — não-op se já existe PIN (definido pelo
+     * usuário ou por uma chamada anterior desta função). Liga só o portão
+     * adultCategories: settings e leaveKids ficam OFF de propósito, senão o
+     * efeito colateral de definir UM PIN qualquer ativaria os defaults de
+     * TODOS os portões (nascem true em DEFAULT_GATES) e passaria a exigir PIN
+     * pra abrir Configurações também — coisa que ninguém pediu.
+     */
+    async autoProvisionAdultLock(): Promise<void> {
+        if (this.isSet()) return;
+        await this.set('0000');
+        this.setGates({ settings: false, leaveKids: false, adultCategories: true });
     },
 };

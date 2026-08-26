@@ -3,7 +3,8 @@
 // Ambos são telas de leitura com poucas ações — o D-pad percorre uma lista
 // curta de botões e Voltar fecha.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { FaSatelliteDish, FaTachometerAlt, FaBroom, FaTimes, FaStethoscope, FaQrcode } from 'react-icons/fa';
 import qrcode from 'qrcode-generator';
 import { useTVNavigation } from '../hooks/useTVNavigation';
 import {
@@ -28,11 +29,11 @@ function formatWhen(at: number): string {
 
 type DiagAction = 'latency' | 'speed' | 'clear' | 'close';
 
-const ACTION_LABELS: Record<DiagAction, string> = {
-    latency: '📡 Medir latência',
-    speed: '⚡ Testar velocidade',
-    clear: '🧹 Limpar erros',
-    close: '✕ Fechar',
+const ACTION_LABELS: Record<DiagAction, ReactNode> = {
+    latency: <><FaSatelliteDish /> Medir latência</>,
+    speed: <><FaTachometerAlt /> Testar velocidade</>,
+    clear: <><FaBroom /> Limpar erros</>,
+    close: <><FaTimes /> Fechar</>,
 };
 
 interface DiagnosticsOverlayProps {
@@ -114,7 +115,7 @@ export function DiagnosticsOverlay({ onClose, speedTestStreamId }: DiagnosticsOv
     return (
         <div className="sysov-overlay">
             <div className="sysov-panel">
-                <h2 className="sysov-title">🩺 Diagnóstico</h2>
+                <h2 className="sysov-title"><FaStethoscope /> Diagnóstico</h2>
 
                 <div className="sysov-grid">
                     <div className="sysov-row"><span>Versão</span><b>{device.version} ({device.target})</b></div>
@@ -240,7 +241,7 @@ export function QrBackupOverlay({ onClose }: QrBackupOverlayProps) {
     return (
         <div className="sysov-overlay">
             <div className="sysov-panel sysov-panel-qr">
-                <h2 className="sysov-title">📱 Backup das preferências</h2>
+                <h2 className="sysov-title"><FaQrcode /> Backup das preferências</h2>
 
                 {result.error ? (
                     <p className="sysov-empty">{result.error}</p>

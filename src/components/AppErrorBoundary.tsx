@@ -2,6 +2,7 @@
 // preta numa TV — mostra recuperação amigável e OK reinicia o app.
 
 import { Component, type ReactNode } from 'react';
+import { FaExclamationCircle, FaSync } from 'react-icons/fa';
 
 interface AppErrorBoundaryProps {
     children: ReactNode;
@@ -49,7 +50,7 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
 
         return (
             <div className="app-crash">
-                <div className="app-crash-icon">😵</div>
+                <div className="app-crash-icon"><FaExclamationCircle /></div>
                 <h1 className="app-crash-title">Algo deu errado</h1>
                 <p className="app-crash-text">
                     O aplicativo encontrou um erro e precisa reiniciar.
@@ -57,7 +58,7 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
                 </p>
                 <p className="app-crash-detail">{this.state.message}</p>
                 <button className="app-offline-retry tv-focused" onClick={() => window.location.reload()}>
-                    🔄 Reiniciar (OK)
+                    <FaSync /> Reiniciar (OK)
                 </button>
             </div>
         );

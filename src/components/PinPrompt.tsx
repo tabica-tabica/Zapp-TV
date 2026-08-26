@@ -6,6 +6,7 @@
 // vivos ao mesmo tempo.
 
 import { useCallback, useEffect, useState } from 'react';
+import { FaLock } from 'react-icons/fa';
 import { useTVNavigation } from '../hooks/useTVNavigation';
 import { parentalService } from '../services/parentalService';
 import './PinPrompt.css';
@@ -148,7 +149,7 @@ export function PinPrompt({ title, hint, onSubmit, onCancel, confirmLabel, paren
     return (
         <div className="pin-overlay">
             <div className="pin-panel">
-                <div className="pin-title">🔒 {title}</div>
+                <div className="pin-title"><FaLock /> {title}</div>
                 {hint && <div className="pin-hint">{hint}</div>}
 
                 <div className="pin-dots">

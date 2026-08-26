@@ -1,0 +1,158 @@
+/* Gerenciar canais ocultos por padrão */
+
+.hg-overlay {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    background: rgba(5, 5, 15, 0.9);
+    z-index: 4000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.hg-panel {
+    width: 760px;
+    max-width: calc(92 * var(--ns-vw));
+    max-height: calc(84 * var(--ns-vh));
+    display: flex;
+    flex-direction: column;
+    background: rgba(20, 20, 35, 0.98);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 16px;
+    overflow: hidden;
+}
+
+.hg-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 24px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.hg-title {
+    color: #fff;
+    font-size: 24px;
+    margin: 0;
+}
+
+.hg-close {
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: #fff;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.hg-search {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 16px 24px 8px;
+    padding: 10px 16px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    flex-shrink: 0;
+}
+
+.hg-search.tv-focused {
+    border-color: var(--ns-accent);
+    box-shadow: 0 0 0 2px rgba(var(--ns-accent-rgb), 0.4);
+}
+
+.hg-search-icon {
+    color: rgba(255, 255, 255, 0.4);
+    flex-shrink: 0;
+}
+
+.hg-search-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #fff;
+    font-size: 15px;
+}
+
+.hg-search-input::placeholder {
+    color: rgba(255, 255, 255, 0.35);
+}
+
+.hg-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 0 16px;
+    min-height: 240px;
+}
+
+.hg-empty {
+    padding: 48px 24px;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.45);
+    font-size: 16px;
+}
+
+.hg-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 24px;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 16px;
+    cursor: pointer;
+}
+
+.hg-row.tv-focused {
+    background: rgba(var(--ns-accent-rgb), 0.3);
+    box-shadow: inset 3px 0 0 var(--ns-accent);
+}
+
+.hg-row-icon {
+    flex-shrink: 0;
+    color: var(--ns-accent);
+}
+
+.hg-row-label {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.hg-row-count {
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 14px;
+}
+
+.hg-row-state {
+    flex-shrink: 0;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.hg-more {
+    padding: 12px 24px;
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 13px;
+    font-style: italic;
+    text-align: center;
+}
+
+.hg-hints {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    padding: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 13px;
+}

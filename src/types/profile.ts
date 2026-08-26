@@ -1,4 +1,4 @@
-// Profile Types for NeoStream TV
+// Profile Types for Zapp TV
 
 export interface Profile {
     id: string;

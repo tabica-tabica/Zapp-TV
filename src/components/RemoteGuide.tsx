@@ -7,12 +7,17 @@
 // ATENÇÃO ao editar: as color keys mudam de significado por tela (LiveTV usa
 // as quatro; Filmes e Séries usam só a 🟡). Guia errado é pior que guia nenhum.
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
+import {
+    FaGamepad, FaPlay, FaPause, FaFastBackward, FaFastForward, FaStepBackward,
+    FaStepForward, FaStop,
+} from 'react-icons/fa';
 import { useTVNavigation } from '../hooks/useTVNavigation';
+import { RemoteColorHint } from './RemoteColorHint';
 import './RemoteGuide.css';
 
 interface KeyRow {
-    keys: string;
+    keys: ReactNode;
     what: string;
 }
 
@@ -27,23 +32,24 @@ const SECTIONS: GuideSection[] = [
         rows: [
             { keys: '▲ ▼ ◀ ▶', what: 'Navegar entre os itens' },
             { keys: 'OK', what: 'Abrir / confirmar o item em foco' },
-            { keys: 'VOLTAR', what: 'Fechar o que está aberto ou voltar' },
+            { keys: 'VOLTAR / Esc', what: 'Fechar o que está aberto ou voltar' },
             { keys: '◀ na borda', what: 'Abrir o menu lateral' },
+            { keys: '/', what: 'Abrir a busca (teclado)' },
         ],
     },
     {
         title: 'TV ao Vivo',
         rows: [
-            { keys: '🔴 Vermelho', what: 'Mostrar só canais com programação (EPG)' },
-            { keys: '🟢 Verde', what: 'Sortear um canal aleatório' },
-            { keys: '🟡 Amarelo', what: 'Favoritar o canal em foco' },
-            { keys: '🔵 Azul', what: 'Ocultar o canal em foco da lista' },
+            { keys: <RemoteColorHint color="red" label="Vermelho / 1" />, what: 'Mostrar só canais com programação (EPG)' },
+            { keys: <RemoteColorHint color="green" label="Verde / 2" />, what: 'Sortear um canal aleatório' },
+            { keys: <RemoteColorHint color="yellow" label="Amarelo / 3" />, what: 'Favoritar o canal em foco' },
+            { keys: <RemoteColorHint color="blue" label="Azul / 4" />, what: 'Ocultar o canal em foco da lista' },
         ],
     },
     {
         title: 'Filmes e Séries',
         rows: [
-            { keys: '🟡 Amarelo', what: 'Menu rápido do card, sem abrir a ficha' },
+            { keys: <RemoteColorHint color="yellow" label="Amarelo / 3" />, what: 'Menu rápido do card, sem abrir a ficha' },
         ],
     },
     {
@@ -52,17 +58,17 @@ const SECTIONS: GuideSection[] = [
             { keys: 'CH+ / CH−', what: 'Trocar de canal ao vivo (e de rádio)' },
             { keys: '0 – 9', what: 'Ir direto para o número do canal' },
             { keys: '▲ na barra', what: 'Focar a barra e pular com ◀ ▶ (10s → 30s → 1min)' },
-            { keys: '⏯ ⏸ ▶', what: 'Pausar e retomar' },
-            { keys: '⏪ ⏩', what: 'Voltar e avançar em filmes e episódios' },
-            { keys: '⏮ ⏭', what: 'Episódio anterior e próximo' },
-            { keys: '⏹', what: 'Parar e fechar o player' },
+            { keys: <><FaPlay /> <FaPause /></>, what: 'Pausar e retomar' },
+            { keys: <><FaFastBackward /> <FaFastForward /></>, what: 'Voltar e avançar em filmes e episódios' },
+            { keys: <><FaStepBackward /> <FaStepForward /></>, what: 'Episódio anterior e próximo' },
+            { keys: <FaStop />, what: 'Parar e fechar o player' },
         ],
     },
     {
         title: 'Configurações',
         rows: [
             { keys: '◀ ▶', what: 'Mudar o valor da linha em foco' },
-            { keys: '🔴 Vermelho', what: 'Remover a playlist em foco' },
+            { keys: <RemoteColorHint color="red" label="Vermelho / 1" />, what: 'Remover a playlist em foco' },
         ],
     },
 ];
@@ -91,7 +97,7 @@ export function RemoteGuide({ onClose }: RemoteGuideProps) {
         <div className="guide-overlay">
             <div className="guide-panel">
                 <div className="guide-header">
-                    <h2 className="guide-title">🎛 Guia do controle remoto</h2>
+                    <h2 className="guide-title"><FaGamepad /> Guia do controle remoto</h2>
                     <span className="guide-sub">▲▼ percorre · OK ou Voltar fecha</span>
                 </div>
 
@@ -106,7 +112,7 @@ export function RemoteGuide({ onClose }: RemoteGuideProps) {
                         >
                             <h3 className="guide-section-title">{section.title}</h3>
                             {section.rows.map(row => (
-                                <div key={row.keys + row.what} className="guide-row">
+                                <div key={row.what} className="guide-row">
                                     <span className="guide-key">{row.keys}</span>
                                     <span className="guide-what">{row.what}</span>
                                 </div>

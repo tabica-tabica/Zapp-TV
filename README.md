@@ -1,4 +1,4 @@
-# NeoStream TV
+# Zapp TV
 
 IPTV player for Samsung Tizen and LG webOS Smart TVs.
 
@@ -8,12 +8,12 @@ Created by **Rakjsu**.
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript)
 ![Vite](https://img.shields.io/badge/Vite-7-646CFF?logo=vite)
 ![License](https://img.shields.io/badge/License-MIT-green)
-![Tests](https://img.shields.io/badge/tests-226-brightgreen)
+![Tests](https://img.shields.io/badge/tests-396-brightgreen)
 ![Target](https://img.shields.io/badge/Tizen-5.5%2B%20(Chromium%2069)-1428A0?logo=samsung)
 
 ## Disclaimer
 
-**NeoStream TV is a player application only.** It does not provide, host, sell, or distribute channels, movies, series, playlists, streams, or media content.
+**Zapp TV is a player application only.** It does not provide, host, sell, or distribute channels, movies, series, playlists, streams, or media content.
 
 Users must provide their own IPTV subscription or playlist credentials and are solely responsible for the content they access through their provider.
 
@@ -79,6 +79,8 @@ Use at your own risk. The creator and contributors are not responsible for how t
 - Global search across channels, movies, and series from the sidebar.
 - Multi-playlist management: several Xtream accounts, switching, and removal.
 - Real Kids profile with adult-category filtering, PIN management, and profile switching.
+  Live, movie, and series categories detected as adult content are additionally locked
+  behind a PIN across all profiles (not just Kids) — see [Security Notes](#security-notes).
 - Themes: AMOLED background plus six accent colors, applied through CSS variables.
 - Usage statistics with a Wrapped-style recap.
 - Portuguese, English, and Spanish language resources.
@@ -86,6 +88,8 @@ Use at your own risk. The creator and contributors are not responsible for how t
 - Flexible Xtream server URL input, including bare domains, `http`, `https`, ports, and common
   Xtream endpoint paths.
 - Samsung Tizen build support with Vite legacy output.
+- LG webOS build support with Vite legacy output (build pipeline only — the store listing itself
+  is not live yet; see [LG webOS](#lg-webos)).
 
 ## Quick Start
 
@@ -105,6 +109,7 @@ npm run dev          # Start the Vite development server
 npm run build        # Alias for build:web
 npm run build:web    # Type-check and build the modern web app
 npm run build:tizen  # Type-check, build the Tizen bundle, and copy assets into tizen/
+npm run build:webos  # Type-check, build the webOS bundle, and copy assets into webos/
 npm run lint         # Run ESLint
 npm test             # Run the test suite (Vitest)
 npm run test:watch   # Run the tests in watch mode
@@ -122,9 +127,10 @@ Every push and pull request runs [CI](.github/workflows/ci.yml):
 | --- | --- |
 | `npx tsc -b` | The same type-check the build performs. `tsc --noEmit` lets errors through in a project with references. |
 | `npm run lint` | ESLint, including the React Hooks rules the project treats as errors. |
-| `npm test` | 226 tests. Node environment, except the `useTVNavigation` suite, which needs jsdom. |
+| `npm test` | 396 tests. Node environment, except the `useTVNavigation` and `useVirtualGridNavigation` suites, which need jsdom. |
 | `npm run check:css` | CSS features Chromium 69 ignores. They break neither the build nor the browser — they only disappear on the TV. |
 | `npm run build:tizen` | Fails if `tizen/index.html` points at assets the build did not produce (that ships a black screen). |
+| `npm run build:webos` | Same check as `build:tizen`, for `webos/index.html` and the webOS bundle. |
 | `npm run check:bundle` | Size budget. On a 2019 TV the cost of a large bundle is parse time and heap, not bandwidth. |
 
 The tests deliberately cover the places where failures are silent: storage quota, per-profile data
@@ -132,13 +138,13 @@ scoping, catalog caching, reminder timers, the parental PIN lockout, and every r
 
 ## TMDB API Key
 
-NeoStream TV does not ship with a TMDB API key. TMDB is optional: without a key, the app still works with the channels, movies, series, posters, and metadata returned by your IPTV provider.
+Zapp TV does not ship with a TMDB API key. TMDB is optional: without a key, the app still works with the channels, movies, series, posters, and metadata returned by your IPTV provider.
 
 To enable TMDB metadata on a device:
 
 1. Create or sign in to your account at [themoviedb.org](https://www.themoviedb.org/).
 2. Open your account settings and request an API key from the API section.
-3. Open NeoStream TV, go to **Configurações**, paste your TMDB API key, and save it.
+3. Open Zapp TV, go to **Configurações**, paste your TMDB API key, and save it.
 
 Each user should use their own TMDB key. The key is saved only in the local storage of the browser or TV where it was entered, under `neostream_tmdb_api_key`; it is not committed to this repository and is not embedded in the app bundle.
 
@@ -150,6 +156,7 @@ Each user should use their own TMDB key. The key is saved only in the local stor
 | TypeScript 5 | Type safety |
 | Vite 7 | Build tooling |
 | HLS.js | HLS stream playback |
+| react-window | Grid/list virtualization for large catalogs (channels, movies, series) |
 | React Icons | UI icons |
 | Vanilla CSS | Styling |
 
@@ -169,6 +176,11 @@ tizen/
 |-- assets/              Built app assets for Samsung Tizen
 |-- config.xml           Tizen package configuration
 `-- index.html           Tizen entrypoint
+
+webos/
+|-- assets/              Built app assets for LG webOS
+|-- appinfo.json         webOS package manifest
+`-- index.html           webOS entrypoint
 ```
 
 ## TV Navigation
@@ -198,7 +210,7 @@ The current Tizen package identity is:
 Application ID: RakjsuNeo1.NeoStreamTV
 Package ID: RakjsuNeo1
 Widget ID: http://rakjsu.neostream.tv
-Visible name: NeoStreamTV
+Visible name: ZappTV
 ```
 
 After `npm run build:tizen`, package the app with Tizen Studio CLI and install it on a connected Samsung TV:
@@ -211,22 +223,60 @@ After `npm run build:tizen`, package the app with Tizen Studio CLI and install i
 
 If the Tizen CLI has trouble transferring `NeoStreamTV.wgt`, copy the same package to a temporary name such as `NeoFinal.wgt` and install that file. The app identity inside the package remains `RakjsuNeo1.NeoStreamTV`.
 
+## LG webOS
+
+The webOS build targets webOS 5.x and newer (Chromium ~68+) — not the older webOS 3.x floor, to
+avoid running React 19 on an engine that old. The package identity in `webos/appinfo.json` is
+currently a **placeholder**, not a value reserved with LG:
+
+```text
+App ID: com.rakjsu.neostreamtv   (placeholder — confirm against the id reserved in LG Seller Lounge)
+Vendor: Rakjsu
+Visible name: Zapp TV
+```
+
+After `npm run build:webos`, package the app with the webOS CLI (`ares-package`, part of the
+[webOS TV SDK](https://webostv.developer.lge.com/develop/tools/cli-installation)) and install it on
+a connected LG TV:
+
+```bash
+ares-package webos
+# ares-package names the .ipk after the app id and version — install that generated file
+ares-install -d <device-name> <generated>.ipk
+ares-launch -d <device-name> com.rakjsu.neostreamtv
+```
+
+Use `ares-inspect` for remote Chrome DevTools on the actual TV — the emulator does not reproduce the
+device's real RAM constraints.
+
+**Not done by this repo** (needs a human with an LG account and physical hardware): creating the LG
+Seller Lounge account, reserving the real app id, generating a signed `.ipk`, testing on a physical
+webOS TV, and store screenshots. See `docs/CHECKLIST_WEBOS.md`, `docs/LG_UX_SCENARIO.md`, and
+`docs/LG_SELF_CHECKLIST.md` for what's left before a real submission.
+
 ## Security Notes
 
 - IPTV credentials are stored in browser/device `localStorage`.
 - Server URLs are normalized locally; the app accepts bare domains and common Xtream endpoint URLs, then saves the URL that authenticated successfully.
 - TMDB is disabled until the user enters their own API key in Settings.
 - The TMDB key is stored locally on the device where it was entered.
-- Do not add private provider credentials, private API keys, certificates, generated signatures, logs, or Tizen workspace metadata to commits.
+- Categories detected as adult content (by name, across live TV, movies, and series) are locked
+  behind a parental PIN. The **first time** an adult category is opened on a device with no PIN
+  configured yet, the PIN is silently created as `0000` and only the adult-category lock is
+  turned on (the "require PIN for Settings"/"require PIN to leave Kids" gates stay off, so this
+  doesn't unexpectedly lock anything else). Change the PIN in Settings → Parental control.
+- Do not add private provider credentials, private API keys, certificates, generated signatures, logs, or Tizen/webOS workspace metadata to commits.
 
 ## Current Maintenance Notes
 
 - Modern browser builds use `npm run build:web`.
 - Samsung Tizen builds use `npm run build:tizen` and copy generated assets into `tizen/assets/`.
+- LG webOS builds use `npm run build:webos` and copy generated assets into `webos/assets/`.
 - Type-check with `npx tsc -b`: it is what the build runs, and `--noEmit` alone lets some errors through.
 - CSS `gap` in flex containers is not available on the Chromium version shipped with the minimum
-  supported Tizen release; use margins on children instead.
-- Some generated Tizen artifacts and install/debug logs may exist locally after packaging or device testing.
+  supported Tizen/webOS release; use margins on children instead.
+- Some generated Tizen/webOS artifacts and install/debug logs may exist locally after packaging or
+  device testing.
 
 ## Roadmap
 
@@ -235,9 +285,11 @@ watching, profiles with parental filtering, themes, global search, multi-playlis
 resilience.
 
 Also delivered: the multi-channel program guide, program reminders, the "now on favorites" panel,
-embedded audio and subtitle track selection, per-profile data scoping, the test suite with CI, and
-the whole catalog-and-discovery set (genre filter, collections, cast, trailers, per-episode detail,
-named lists, and the "because you watched" row).
+embedded audio and subtitle track selection, per-profile data scoping, the test suite with CI, the
+whole catalog-and-discovery set (genre filter, collections, cast, trailers, per-episode detail,
+named lists, and the "because you watched" row), `react-window` virtualization on every large grid
+(Live TV, Movies, Series, My List, Favorites), and the LG webOS build pipeline (store submission
+itself is still pending — see [LG webOS](#lg-webos)).
 
 Next up:
 
@@ -246,7 +298,7 @@ Next up:
   listen on a socket.
 - Backup and restore through the paired desktop, and favorites/progress sync.
 - The phone as a keyboard for global search.
-- LG webOS packaging.
+- The actual LG webOS store submission (account, physical-device testing, signed `.ipk`).
 
 ## License
 

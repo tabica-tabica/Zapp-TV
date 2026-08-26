@@ -12,11 +12,18 @@ interface AccentDef {
     rgb: string; // "r, g, b" pra compor rgba(var(--ns-accent-rgb), a)
 }
 
+// 'roxo' e 'rosa' pegam as cores de brand.config.mjs (__BRAND_ACCENT_*/
+// __BRAND_ACCENT4_*) em vez de hex fixo — são a cor PADRÃO do app e a cor que
+// já coincidia com a segunda cor do logo, então ficam amarradas à marca em vez
+// de duplicar o valor. As outras 4 são opções de tema de verdade, sem relação
+// com a marca. Os nomes das chaves 'roxo'/'rosa' não mudam (são só a chave de
+// storage) mas os rótulos ficam genéricos — dizer "Roxo"/"Rosa" ficaria errado
+// assim que a marca deixasse de ser roxa/rosa (aconteceu no rebrand pra azul).
 export const ACCENTS: Record<AccentId, AccentDef> = {
-    roxo: { label: 'Roxo', hex: '#a855f7', rgb: '168, 85, 247' },
+    roxo: { label: 'Padrão', hex: __BRAND_ACCENT_HEX__, rgb: __BRAND_ACCENT_RGB__ },
     azul: { label: 'Azul', hex: '#3b82f6', rgb: '59, 130, 246' },
     verde: { label: 'Verde', hex: '#22c55e', rgb: '34, 197, 94' },
-    rosa: { label: 'Rosa', hex: '#ec4899', rgb: '236, 72, 153' },
+    rosa: { label: 'Destaque', hex: __BRAND_ACCENT4_HEX__, rgb: __BRAND_ACCENT4_RGB__ },
     laranja: { label: 'Laranja', hex: '#f97316', rgb: '249, 115, 22' },
     ciano: { label: 'Ciano', hex: '#06b6d4', rgb: '6, 182, 212' },
 };

@@ -31,7 +31,7 @@
 .login-orb-1 {
     width: 500px;
     height: 500px;
-    background: radial-gradient(circle, #6366f1 0%, transparent 70%);
+    background: radial-gradient(circle, var(--accent-primary) 0%, transparent 70%);
     top: -150px;
     right: -150px;
 }
@@ -116,13 +116,13 @@
 .login-logo-bg {
     width: 80px;
     height: 80px;
-    background: linear-gradient(135deg, #6366f1 0%, var(--ns-accent) 100%);
+    background: linear-gradient(135deg, var(--accent-primary) 0%, var(--ns-accent) 100%);
     border-radius: 24px;
     display: flex;
     align-items: center;
     justify-content: center;
     margin: 0 auto 16px;
-    box-shadow: 0 16px 48px rgba(99, 102, 241, 0.4);
+    box-shadow: 0 16px 48px rgba(var(--accent-primary-rgb), 0.4);
 }
 
 .login-logo-icon {
@@ -196,8 +196,8 @@
 
 .login-input-wrap.focused {
     background: rgba(255, 255, 255, 0.08);
-    border-color: rgba(99, 102, 241, 0.7);
-    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.2);
+    border-color: rgba(var(--accent-primary-rgb), 0.7);
+    box-shadow: 0 0 0 4px rgba(var(--accent-primary-rgb), 0.2);
 }
 
 .login-input-wrap svg {
@@ -274,9 +274,9 @@
 }
 
 .login-checkbox.focused {
-    background: rgba(99, 102, 241, 0.15);
-    border-color: rgba(99, 102, 241, 0.5);
-    box-shadow: 0 0 20px rgba(99, 102, 241, 0.2);
+    background: rgba(var(--accent-primary-rgb), 0.15);
+    border-color: rgba(var(--accent-primary-rgb), 0.5);
+    box-shadow: 0 0 20px rgba(var(--accent-primary-rgb), 0.2);
     color: white;
     transform: scale(1.02);
 }
@@ -302,7 +302,7 @@
 }
 
 .login-checkbox-mark.checked {
-    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+    background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
     border-color: transparent;
 }
 
@@ -316,19 +316,19 @@
 }
 
 .login-btn-lang {
-    background: rgba(99, 102, 241, 0.15);
+    background: rgba(var(--accent-primary-rgb), 0.15);
     color: #a5b4fc;
-    border: 1px solid rgba(99, 102, 241, 0.3);
+    border: 1px solid rgba(var(--accent-primary-rgb), 0.3);
     flex: 0 0 auto;
     min-width: 80px;
 }
 
 .login-btn-lang:hover:not(:disabled),
 .login-btn-lang.focused {
-    background: rgba(99, 102, 241, 0.25);
-    border-color: rgba(99, 102, 241, 0.6);
+    background: rgba(var(--accent-primary-rgb), 0.25);
+    border-color: rgba(var(--accent-primary-rgb), 0.6);
     transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(99, 102, 241, 0.3);
+    box-shadow: 0 8px 24px rgba(var(--accent-primary-rgb), 0.3);
 }
 
 .login-btn {
@@ -355,15 +355,15 @@
 }
 
 .login-btn-primary {
-    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+    background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
     color: white;
-    box-shadow: 0 8px 32px rgba(99, 102, 241, 0.3);
+    box-shadow: 0 8px 32px rgba(var(--accent-primary-rgb), 0.3);
 }
 
 .login-btn-primary:hover:not(:disabled),
 .login-btn-primary.focused {
     transform: translateY(-2px);
-    box-shadow: 0 12px 40px rgba(99, 102, 241, 0.5);
+    box-shadow: 0 12px 40px rgba(var(--accent-primary-rgb), 0.5);
 }
 
 .login-btn-primary:disabled {

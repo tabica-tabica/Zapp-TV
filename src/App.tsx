@@ -1,6 +1,7 @@
-// Main App Component - NeoStream TV
+// Main App Component - Zapp TV
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { FaSatelliteDish, FaSync, FaUserCircle, FaBell, FaPlay } from 'react-icons/fa';
 import { api, foiRebaixadoParaHttp } from './services/api';
 import { storage } from './services/storage';
 import { Welcome } from './pages/Welcome';
@@ -14,6 +15,7 @@ import { MyList } from './pages/MyList';
 import { Settings } from './pages/Settings';
 import { LanguageSelection } from './pages/LanguageSelection';
 import { Sidebar } from './components/Sidebar';
+import { BrandLogo } from './components/BrandLogo';
 import { ProfileManager } from './components/ProfileManager';
 import { GlobalSearch } from './components/GlobalSearch';
 import { SetupWizard } from './components/SetupWizard';
@@ -24,7 +26,10 @@ import { migrateScopeOnce, migrateHiddenScope } from './services/profileScope';
 import { storageSchema } from './services/storageSchema';
 import { accountService } from './services/accountService';
 import { bootLastChannel } from './services/liveExtras';
+import { contentFlags } from './services/contentFlags';
 import { reminderService, type Reminder } from './services/reminderService';
+import { newContentService, type NewContentItem } from './services/newContentService';
+import { NewContentDialog } from './components/NewContentDialog';
 import { FocusContext, type FocusZone } from './contexts/FocusContext';
 import { useTVNavigation } from './hooks/useTVNavigation';
 import { useExitPrompt } from './hooks/useExitPrompt';
@@ -45,6 +50,8 @@ type AuthState = 'loading' | 'languageSelection' | 'welcome' | 'login' | 'authen
 
 // No Tizen real, teclas além de setas/OK/Back (CH±, dígitos, color keys,
 // media keys) só chegam ao web app se registradas via tvinputdevice.
+// Sem equivalente no webOS: lá essas teclas já chegam como KeyboardEvent
+// padrão (useTVNavigation.ts já trata os códigos da LG, incluindo o Back 461).
 const TIZEN_KEYS = [
   'ChannelUp', 'ChannelDown',
   'ColorF0Red', 'ColorF1Green', 'ColorF2Yellow', 'ColorF3Blue',
@@ -92,7 +99,7 @@ function OfflineRetry({ onRetry, onOtherLogin }: { onRetry: () => void; onOtherL
 
   return (
     <div className="app-loading">
-      <div className="app-loading-logo">📡</div>
+      <div className="app-loading-logo"><FaSatelliteDish /></div>
       <p className="app-loading-text">Sem conexão com o servidor</p>
       <p className="app-offline-hint">
         Suas credenciais foram mantidas. Verifique a rede da TV e pressione OK
@@ -103,13 +110,13 @@ function OfflineRetry({ onRetry, onOtherLogin }: { onRetry: () => void; onOtherL
           className={`app-offline-retry ${focusedIndex === 0 ? 'tv-focused' : ''}`}
           onClick={onRetry}
         >
-          🔄 Tentar novamente
+          <FaSync /> Tentar novamente
         </button>
         <button
           className={`app-offline-retry app-offline-secondary ${focusedIndex === 1 ? 'tv-focused' : ''}`}
           onClick={onOtherLogin}
         >
-          👤 Usar outro login
+          <FaUserCircle /> Usar outro login
         </button>
       </div>
     </div>
@@ -132,10 +139,10 @@ function ReminderToast({ reminder, onWatch, onDismiss }: {
   return (
     <div className="reminder-toast">
       <span className="reminder-toast-text">
-        🔔 {reminder.programTitle} começa já em {reminder.channelName}
+        <FaBell /> {reminder.programTitle} começa já em {reminder.channelName}
       </span>
       <button className="app-offline-retry tv-focused" onClick={onWatch}>
-        ▶ Assistir agora
+        <FaPlay /> Assistir agora
       </button>
       <span className="reminder-toast-hint">OK assiste · Voltar dispensa</span>
     </div>
@@ -155,6 +162,11 @@ function App() {
   // Lembretes vivem no App: disparam em QUALQUER página (na LiveTV só,
   // o aviso morria ao sair da página e o timer era recriado a cada volta)
   const [activeReminder, setActiveReminder] = useState<Reminder | null>(null);
+  // Conteúdo novo desde o último "Recarregar lista" (item novo do backlog):
+  // populado no boot, quando a checagem pendente marcada por
+  // reloadPlaylist.ts é consumida — mora no App pelo mesmo motivo do
+  // lembrete, precisa aparecer em cima de qualquer página.
+  const [newContentItems, setNewContentItems] = useState<NewContentItem[] | null>(null);
   // Assistente de primeira configuração (item 60): só depois do primeiro login
   const [showWizard, setShowWizard] = useState(false);
   // Remontar a LiveTV à força: é assim que o "Assistir agora" de um lembrete
@@ -172,6 +184,7 @@ function App() {
   // react-hooks/set-state-in-effect proíbe, e o cleanup ainda por cima
   // rodaria DEPOIS do "Assistir agora", desfazendo a zona que ele escolheu.
   const zoneBeforeReminder = useRef<FocusZone>('content');
+  const zoneBeforeNewContent = useRef<FocusZone>('content');
   // Espelho da zona atual: o ref é escrito em effect, nunca no render
   const focusZoneRef = useRef<FocusZone>('content');
   useEffect(() => {
@@ -189,6 +202,17 @@ function App() {
     // Só devolve a zona se ela ainda for a NOSSA: quem dispensou o aviso
     // abrindo outra coisa já escolheu a zona dele
     setFocusZone(zone => (zone === 'overlay' ? zoneBeforeReminder.current : zone));
+  }, []);
+
+  const showNewContentDialog = useCallback((items: NewContentItem[]) => {
+    zoneBeforeNewContent.current = focusZoneRef.current;
+    setNewContentItems(items);
+    setFocusZone('overlay');
+  }, []);
+
+  const hideNewContentDialog = useCallback(() => {
+    setNewContentItems(null);
+    setFocusZone(zone => (zone === 'overlay' ? zoneBeforeNewContent.current : zone));
   }, []);
 
   useEffect(() => {
@@ -274,13 +298,23 @@ function App() {
         // O payload traz validade, conexões e status da conta — era descartado
         const auth = await api.authenticate(credentials.url, credentials.username, credentials.password);
         accountService.save(auth, foiRebaixadoParaHttp(credentials.url, api.getBaseUrl()));
-        // "Ligar e assistir": abre direto na TV ao vivo tocando o último canal
-        if (bootLastChannel.get() && storage.getLastChannel()) {
+        // "Ligar e assistir": abre direto na TV ao vivo tocando o último canal.
+        // Sem o contentFlags.includeTV(), este atalho furava o "Incluir canais
+        // de TV" desmarcado no login — ia direto pra TV ao vivo mesmo assim.
+        if (bootLastChannel.get() && storage.getLastChannel() && contentFlags.includeTV()) {
           sessionStorage.setItem('neostream_autoplay_last', '1');
           setCurrentPage('live');
         }
         setAuthState('authenticated');
         if (!setupWizard.isDone()) openWizard();
+        // A flag só existe se "Recarregar lista" a marcou (reloadPlaylist.ts)
+        // ANTES do reload que trouxe o app até aqui — checa uma vez, em
+        // segundo plano, sem atrasar a transição de tela.
+        if (newContentService.consumePendingCheck()) {
+          newContentService.checkForNewContent()
+            .then(items => { if (items.length > 0) showNewContentDialog(items); })
+            .catch(() => { /* provedor fora do ar — tenta no próximo reload */ });
+        }
       } else {
         // No credentials saved - show welcome screen
         setAuthState('welcome');
@@ -298,7 +332,7 @@ function App() {
         setAuthState('offline');
       }
     }
-  }, [openWizard]);
+  }, [openWizard, showNewContentDialog]);
 
   useEffect(() => {
     void Promise.resolve().then(checkAuth);
@@ -311,6 +345,10 @@ function App() {
   const handleLoginSuccess = () => {
     setAddingPlaylist(false);
     setAuthState('authenticated');
+    // Cria o baseline de "conteúdo novo" da playlist recém-registrada (só se
+    // ainda não existir) — em segundo plano, sem popup: primeira vez não é
+    // diff, é semente.
+    void newContentService.seedIfNeeded();
     // Primeira vez: fecha o fluxo de configuração (tema, tamanho, TMDB).
     // Ao ADICIONAR uma playlist extra o assistente não volta.
     if (!setupWizard.isDone() && !addingPlaylist) openWizard();
@@ -337,19 +375,34 @@ function App() {
     setFocusZone('content'); // Reset focus to content when changing pages
   };
 
+  // Atalho de teclado (item novo): "/" abre a busca de qualquer tela, igual
+  // convenção de navegador/editor de código — só quando NENHUM campo de
+  // texto está focado (senão "/" precisa continuar sendo TEXTO ali) e
+  // nenhum overlay bloqueante já está por cima.
+  useEffect(() => {
+    if (authState !== 'authenticated') return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== '/') return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
+      if (showGlobalSearch || showWizard || showProfileManager) return;
+      e.preventDefault();
+      handlePageChange('search');
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authState, showGlobalSearch, showWizard, showProfileManager]);
+
   // Loading screen
   if (authState === 'loading') {
     return (
       <div className="app-loading">
         <div className="app-loading-logo">
-          <svg viewBox="0 0 24 24" fill="none" width="64" height="64">
-            <path d="M4 5C4 4.44772 4.44772 4 5 4H19C19.5523 4 20 4.44772 20 5V15C20 15.5523 19.5523 16 19 16H5C4.44772 16 4 15.5523 4 15V5Z" stroke="currentColor" strokeWidth="2" />
-            <path d="M8 20H16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            <path d="M12 16V20" stroke="currentColor" strokeWidth="2" />
-          </svg>
+          <BrandLogo size={64} />
         </div>
         <div className="app-loading-spinner" />
-        <p className="app-loading-text">NeoStream</p>
+        <p className="app-loading-text">{__BRAND_NAME__}</p>
       </div>
     );
   }
@@ -413,7 +466,7 @@ function App() {
             termina aqui e o aviso precisa aparecer com a sidebar focada. */}
         {exitArmado && (
           <div className="app-exit-toast" role="status">
-            Pressione Voltar de novo para sair do NeoStream
+            Pressione Voltar de novo para sair do {__BRAND_NAME__}
           </div>
         )}
 
@@ -439,6 +492,10 @@ function App() {
             }}
             onDismiss={hideReminderToast}
           />
+        )}
+
+        {newContentItems && (
+          <NewContentDialog items={newContentItems} onClose={hideNewContentDialog} />
         )}
 
         {showWizard && <SetupWizard onFinish={closeWizard} />}

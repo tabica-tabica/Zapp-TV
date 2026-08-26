@@ -144,8 +144,8 @@ describe('limite de tentativas', () => {
 });
 
 describe('gates', () => {
-    it('ambos ligados por padrão', () => {
-        expect(parentalService.getGates()).toEqual({ settings: true, leaveKids: true });
+    it('todos ligados por padrão', () => {
+        expect(parentalService.getGates()).toEqual({ settings: true, leaveKids: true, adultCategories: true });
     });
 
     it('requires exige PIN configurado E gate ligado', () => {
@@ -156,5 +156,27 @@ describe('gates', () => {
 
         parentalService.clear();
         expect(parentalService.requires('leaveKids')).toBe(false);
+    });
+});
+
+describe('autoProvisionAdultLock', () => {
+    it('sem PIN algum, provisiona "0000" e liga só o portão adultCategories', async () => {
+        parentalService.clear();
+        expect(parentalService.isSet()).toBe(false);
+
+        await parentalService.autoProvisionAdultLock();
+
+        expect(parentalService.isSet()).toBe(true);
+        expect(await parentalService.verify('0000')).toBe(true);
+        expect(parentalService.getGates()).toEqual({ settings: false, leaveKids: false, adultCategories: true });
+    });
+
+    it('com PIN já definido (pelo usuário), não faz nada', async () => {
+        // beforeEach já definiu CERTO ('4271') com os gates default
+        await parentalService.autoProvisionAdultLock();
+
+        expect(await parentalService.verify('0000')).toBe(false);
+        expect(await parentalService.verify(CERTO)).toBe(true);
+        expect(parentalService.getGates()).toEqual({ settings: true, leaveKids: true, adultCategories: true });
     });
 });

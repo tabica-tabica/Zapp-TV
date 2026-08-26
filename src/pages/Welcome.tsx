@@ -1,8 +1,9 @@
 // Welcome Page - Premium design from original app (without settings button)
 import { useRef, useEffect } from 'react';
-import { FaTv, FaPlus, FaStar } from 'react-icons/fa';
+import { FaPlus, FaStar, FaExclamationTriangle } from 'react-icons/fa';
 import { useTVNavigation } from '../hooks/useTVNavigation';
 import { useTranslation } from '../hooks/useTranslation';
+import { BrandLogo } from '../components/BrandLogo';
 import './Welcome.css';
 
 interface WelcomeProps {
@@ -39,7 +40,9 @@ export function Welcome({ onGoToLogin }: WelcomeProps) {
                 <div className="welcome-orb welcome-orb-1" />
                 <div className="welcome-orb welcome-orb-2" />
                 <div className="welcome-orb welcome-orb-3" />
+                <div className="welcome-glow-sweep" />
                 <div className="welcome-grid" />
+                <div className="welcome-vignette" />
             </div>
 
             {/* Content */}
@@ -47,9 +50,9 @@ export function Welcome({ onGoToLogin }: WelcomeProps) {
                 {/* Logo Section */}
                 <div className="welcome-logo">
                     <div className="welcome-logo-bg">
-                        <FaTv className="welcome-logo-icon" />
+                        <BrandLogo size={44} className="welcome-logo-icon" />
                     </div>
-                    <h1 className="welcome-title">NeoStream</h1>
+                    <h1 className="welcome-title">{__BRAND_NAME__}</h1>
                     <div className="welcome-badge">
                         <FaStar size={12} />
                         <span style={{ marginLeft: '6px' }}>{t('welcome_subtitle')}</span>
@@ -79,6 +82,12 @@ export function Welcome({ onGoToLogin }: WelcomeProps) {
                             <span className="welcome-card-desc">{t('welcome_login_desc')}</span>
                         </div>
                     </button>
+                </div>
+
+                {/* Legal use notice */}
+                <div className="welcome-legal-notice">
+                    <FaExclamationTriangle size={16} className="welcome-legal-notice-icon" />
+                    <p>{t('welcome_legal_notice')}</p>
                 </div>
 
                 {/* Footer */}

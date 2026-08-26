@@ -2,7 +2,8 @@
 // Tizen-compatible: no readOnly, no type=password (uses CSS masking)
 import { useState, useRef, useEffect, useCallback } from 'react';
 import type { KeyboardEvent } from 'react';
-import { FaTv, FaServer, FaUser, FaLock, FaSignInAlt, FaStar, FaArrowLeft, FaGlobe } from 'react-icons/fa';
+import { FaServer, FaUser, FaLock, FaSignInAlt, FaStar, FaArrowLeft, FaGlobe, FaExclamationTriangle } from 'react-icons/fa';
+import { BrandLogo } from '../components/BrandLogo';
 import { api } from '../services/api';
 import { storage } from '../services/storage';
 import { playlistService } from '../services/playlistService';
@@ -260,9 +261,9 @@ export function Login({ onLoginSuccess, onLanguageSelect, startBlank = false }: 
                 {/* Logo */}
                 <div className="login-logo">
                     <div className="login-logo-bg">
-                        <FaTv className="login-logo-icon" />
+                        <BrandLogo size={40} className="login-logo-icon" />
                     </div>
-                    <h1 className="login-title">NeoStream</h1>
+                    <h1 className="login-title">{__BRAND_NAME__}</h1>
                     <div className="login-badge">
                         <FaStar size={12} />
                         <span style={{ marginLeft: '8px' }}>IPTV LOGIN</span>
@@ -272,7 +273,7 @@ export function Login({ onLoginSuccess, onLanguageSelect, startBlank = false }: 
                 <form onSubmit={(e) => { e.preventDefault(); blurAllInputs(); }} className="login-form">
                     {error && (
                         <div className="login-error">
-                            <span>❌</span>
+                            <span><FaExclamationTriangle /></span>
                             <span>{error}</span>
                         </div>
                     )}

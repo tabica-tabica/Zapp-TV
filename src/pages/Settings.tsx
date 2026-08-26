@@ -1,10 +1,23 @@
 import { useEffect, useRef, useState } from 'react';
+import {
+    FaPalette, FaGlobe, FaSatelliteDish, FaPlus, FaBroadcastTower, FaUniversalAccess,
+    FaUserCircle, FaExclamationTriangle, FaLock, FaTools, FaChartBar, FaFilm, FaTv,
+    FaTrophy, FaImages, FaClosedCaptioning, FaTimes, FaPlay, FaSync, FaMapMarkerAlt,
+    FaCheckSquare, FaRegSquare, FaEyeSlash,
+} from 'react-icons/fa';
+import { RemoteColorHint } from '../components/RemoteColorHint';
 import { storage } from '../services/storage';
 import { themeService, ACCENTS, ACCENT_IDS, BACKGROUNDS, BACKGROUND_IDS, type AccentId, type BackgroundId } from '../services/themeService';
 import { usageStats, type UsageSummary } from '../services/usageStats';
 import { playlistService, type PlaylistEntry } from '../services/playlistService';
 import { epgOffset } from '../services/epgService';
-import { bootLastChannel } from '../services/liveExtras';
+import { readCatalog, type CachedLiveStream } from '../services/catalogCache';
+import { reloadActivePlaylist } from '../services/reloadPlaylist';
+import { groupChannelVariants, channelDisplayName } from '../services/channelVariants';
+import { detectRegionalFamilies, detectCategoryFamilies } from '../services/regionalVariants';
+import { regionalPrefs } from '../services/regionalPrefs';
+import { bootLastChannel, liveToggles } from '../services/liveExtras';
+import { newContentService } from '../services/newContentService';
 import { qualityCap, QUALITY_CAPS, type QualityCap } from '../services/playerPrefs';
 import { playbackPrefs, BUFFER_PROFILES, BUFFER_LABELS, type BufferProfile } from '../services/playbackPrefs';
 import { a11yService, TEXT_SCALES, type ContrastMode, type TextScale } from '../services/a11yService';
@@ -17,30 +30,33 @@ import { PinPrompt } from '../components/PinPrompt';
 import { RemoteGuide } from '../components/RemoteGuide';
 import { DiagnosticsOverlay, QrBackupOverlay } from '../components/SystemOverlays';
 import { WrappedOverlay } from '../components/WrappedOverlay';
+import { HiddenGroupsOverlay } from '../components/HiddenGroupsOverlay';
 import { useTVNavigation } from '../hooks/useTVNavigation';
 import { useFocusZone } from '../contexts/FocusContext';
 import './Settings.css';
 
 type FocusZone =
-    | 'bg' | 'accent' | 'lang' | 'playlists'
-    | 'epgoffset' | 'bootlast'
+    | 'bg' | 'accent' | 'lang' | 'playlists' | 'reload' | 'notifynew' | 'regional'
+    | 'epgoffset' | 'bootlast' | 'groupvariants' | 'hiddengroups'
     | 'qualitycap' | 'autonext' | 'resume' | 'buffer'
     | 'contrast' | 'textscale' | 'motion' | 'burnin'
     | 'account'
-    | 'parentalpin' | 'gatesettings' | 'gatekids'
+    | 'parentalpin' | 'gatesettings' | 'gatekids' | 'gateadult'
     | 'guide' | 'diag' | 'qrbackup' | 'snapshot' | 'reset'
-    | 'wrapped' | 'input' | 'save' | 'clear';
+    | 'wrapped' | 'input' | 'save' | 'clear'
+    | 'os-apikey' | 'os-username' | 'os-password' | 'os-lang' | 'os-save' | 'os-clear';
 
 // A ORDEM aqui é a navegação vertical da página inteira
 const ZONES: FocusZone[] = [
-    'bg', 'accent', 'lang', 'playlists',
-    'epgoffset', 'bootlast',
+    'bg', 'accent', 'lang', 'playlists', 'reload', 'notifynew', 'regional',
+    'epgoffset', 'bootlast', 'groupvariants', 'hiddengroups',
     'qualitycap', 'autonext', 'resume', 'buffer',
     'contrast', 'textscale', 'motion', 'burnin',
     'account',
-    'parentalpin', 'gatesettings', 'gatekids',
+    'parentalpin', 'gatesettings', 'gatekids', 'gateadult',
     'guide', 'diag', 'qrbackup', 'snapshot', 'reset',
     'wrapped', 'input', 'save', 'clear',
+    'os-apikey', 'os-username', 'os-password', 'os-lang', 'os-save', 'os-clear',
 ];
 
 function formatDate(epochMs: number | null): string {
@@ -74,6 +90,16 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
     const [editing, setEditing] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
 
+    // OpenSubtitles (legendas por busca) — mesmo modelo do TMDB acima
+    const [osApiKey, setOsApiKey] = useState(() => storage.getOpenSubtitlesApiKey());
+    const [savedOsApiKey, setSavedOsApiKey] = useState(() => storage.getOpenSubtitlesApiKey());
+    const [osUsername, setOsUsername] = useState(() => storage.getOpenSubtitlesCredentials()?.username || '');
+    const [osPassword, setOsPassword] = useState(() => storage.getOpenSubtitlesCredentials()?.password || '');
+    const [osLangIndex, setOsLangIndex] = useState(() => Math.max(0, LANGUAGES.findIndex(l => l.id === storage.getSubtitleLanguage())));
+    const osApiKeyRef = useRef<HTMLInputElement>(null);
+    const osUsernameRef = useRef<HTMLInputElement>(null);
+    const osPasswordRef = useRef<HTMLInputElement>(null);
+
     // Tema
     const [background, setBackground] = useState<BackgroundId>(() => themeService.getBackground());
     const [accent, setAccent] = useState<AccentId>(() => themeService.getAccent());
@@ -85,9 +111,42 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
     const [playlists, setPlaylists] = useState<PlaylistEntry[]>(() => playlistService.list());
     const [activePlaylistId, setActivePlaylistId] = useState<string | null>(() => playlistService.getActiveId());
 
+    // Afiliadas/praças regionais (RedeTV! Guará/Imperial/Paraná etc.) — a
+    // detecção usa o catálogo já em cache da TV ao Vivo (sem fetch próprio
+    // aqui); sem cache ainda, a seção simplesmente não tem nada pra mostrar.
+    // PRECISA rodar sobre o catálogo já agrupado por qualidade — sem isso,
+    // "ESPN 2 H265"/"ESPN 2 FHD"/"ESPN 2 HD" (variantes de qualidade do MESMO
+    // canal, não afiliadas de verdade) apareciam aqui como se fossem praças
+    // regionais distintas, uma avalanche de centenas de falsos positivos.
+    const [regionalFamilies] = useState<Map<string, CachedLiveStream[]>>(() => {
+        const cached = readCatalog<CachedLiveStream>('live');
+        if (!cached) return new Map();
+        const { groups } = groupChannelVariants(cached);
+        const nameFamilies = detectRegionalFamilies(groups);
+        // Redes de TV aberta nacionais (Globo/SBT/RecordTV/Band/"Abertos"):
+        // mesma tela, mesmo default "só a 1ª aparece" — ver detectCategoryFamilies.
+        const cachedCategories = readCatalog<{ category_id: string; category_name: string }>('live-cats') || [];
+        const categoryFamilies = detectCategoryFamilies(groups, cachedCategories);
+        return new Map([...nameFamilies, ...categoryFamilies]);
+    });
+    const [regionalSelections, setRegionalSelections] = useState<Map<string, Set<number | string>>>(() => {
+        const map = new Map<string, Set<number | string>>();
+        for (const [key, members] of regionalFamilies) {
+            map.set(key, regionalPrefs.getSelected(key, members[0].stream_id));
+        }
+        return map;
+    });
+    // Lista achatada (família + variante) pra navegação ←→ dentro da zona
+    const regionalEntries = [...regionalFamilies.entries()].flatMap(
+        ([familyKey, members]) => members.map(member => ({ familyKey, member }))
+    );
+
     // TV ao vivo: fuso do EPG (item 15) + boot no último canal (item 14)
     const [epgOffsetHours, setEpgOffsetHours] = useState(() => epgOffset.get());
     const [bootLast, setBootLast] = useState(() => bootLastChannel.get());
+    const [groupVariants, setGroupVariants] = useState(() => liveToggles.getGroupVariants());
+    const [showHiddenGroups, setShowHiddenGroups] = useState(false);
+    const [notifyNewContent, setNotifyNewContent] = useState(() => newContentService.isNotifyEnabled());
     // Teto global de qualidade (item 47): rede fraca não aguenta 1080p
     const [cap, setCap] = useState<QualityCap>(() => qualityCap.get());
 
@@ -115,7 +174,7 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
         | null
         | { kind: 'removepin' }
         | { kind: 'resetconta' }
-        | { kind: 'gate'; gate: 'settings' | 'leaveKids'; value: boolean }
+        | { kind: 'gate'; gate: 'settings' | 'leaveKids' | 'adultCategories'; value: boolean }
     >(null);
     // Mexer nas travas exige ter provado o PIN nesta visita. Sem PIN definido,
     // não há o que destravar.
@@ -150,6 +209,7 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
     const [accentIndex, setAccentIndex] = useState(() => Math.max(0, ACCENT_IDS.indexOf(themeService.getAccent())));
     const [langIndex, setLangIndex] = useState(() => Math.max(0, LANGUAGES.findIndex(l => l.id === storage.getSettings().language)));
     const [playlistIndex, setPlaylistIndex] = useState(0);
+    const [regionalIndex, setRegionalIndex] = useState(0);
 
     useEffect(() => {
         if (!message) return;
@@ -170,6 +230,31 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
         setTmdbKey('');
         setSavedKey('');
         setMessage('Chave TMDB removida deste dispositivo.');
+    };
+
+    const saveOpenSubtitles = () => {
+        storage.saveOpenSubtitlesApiKey(osApiKey);
+        const currentKey = storage.getOpenSubtitlesApiKey();
+        setSavedOsApiKey(currentKey);
+        setOsApiKey(currentKey);
+        // Credencial pela metade falharia login em silêncio depois — só salva com os dois campos
+        if (osUsername.trim() && osPassword.trim()) {
+            storage.saveOpenSubtitlesCredentials({ username: osUsername.trim(), password: osPassword });
+        } else {
+            storage.clearOpenSubtitlesCredentials();
+        }
+        storage.saveSubtitleLanguage(LANGUAGES[osLangIndex].id);
+        setMessage(currentKey ? 'Legendas OpenSubtitles configuradas neste dispositivo.' : 'Chave OpenSubtitles removida.');
+    };
+
+    const clearOpenSubtitles = () => {
+        storage.clearOpenSubtitlesApiKey();
+        storage.clearOpenSubtitlesCredentials();
+        setOsApiKey('');
+        setSavedOsApiKey('');
+        setOsUsername('');
+        setOsPassword('');
+        setMessage('Configuração do OpenSubtitles removida deste dispositivo.');
     };
 
     const applyBackground = (id: BackgroundId) => {
@@ -210,13 +295,26 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
         }
     };
 
-    // Slots da zona de playlists: uma por entrada + "➕ Adicionar" no fim
+    // Slots da zona de playlists: uma por entrada + "Adicionar" no fim
     const playlistSlots = playlists.length + 1;
     const safePlaylistIndex = Math.min(playlistIndex, playlistSlots - 1);
+    const safeRegionalIndex = Math.min(regionalIndex, Math.max(0, regionalEntries.length - 1));
+
+    const toggleRegionalVariant = (familyKey: string, id: number | string) => {
+        setRegionalSelections(prev => {
+            const next = new Map(prev);
+            const current = new Set(next.get(familyKey) ?? []);
+            if (current.has(id)) current.delete(id);
+            else current.add(id);
+            next.set(familyKey, current);
+            regionalPrefs.setSelected(familyKey, current);
+            return next;
+        });
+    };
 
     useTVNavigation({
         enabled: appFocusZone === 'content' && !editing && !showWrapped
-            && pinMode === 'none' && !showGuide && !showDiag && !showQr,
+            && pinMode === 'none' && !showGuide && !showDiag && !showQr && !showHiddenGroups,
         onNavigate: (direction) => {
             if (direction === 'up' || direction === 'down') {
                 setResetArmed(false); // sair da linha cancela a confirmação
@@ -236,6 +334,14 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                 setLangIndex(prev => direction === 'left' ? Math.max(0, prev - 1) : Math.min(LANGUAGES.length - 1, prev + 1));
             } else if (focusZone === 'playlists') {
                 setPlaylistIndex(prev => direction === 'left' ? Math.max(0, prev - 1) : Math.min(playlistSlots - 1, prev + 1));
+            } else if (focusZone === 'notifynew') {
+                const next = direction === 'right';
+                newContentService.setNotifyEnabled(next);
+                setNotifyNewContent(next);
+            } else if (focusZone === 'regional') {
+                setRegionalIndex(prev => direction === 'left'
+                    ? Math.max(0, prev - 1)
+                    : Math.min(Math.max(0, regionalEntries.length - 1), prev + 1));
             } else if (focusZone === 'epgoffset') {
                 setEpgOffsetHours(prev => {
                     const next = Math.max(-12, Math.min(12, prev + (direction === 'left' ? -1 : 1)));
@@ -246,6 +352,10 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                 const next = direction === 'right';
                 bootLastChannel.set(next);
                 setBootLast(next);
+            } else if (focusZone === 'groupvariants') {
+                const next = direction === 'right';
+                liveToggles.setGroupVariants(next);
+                setGroupVariants(next);
             } else if (focusZone === 'autonext') {
                 const next = direction === 'right';
                 playbackPrefs.set({ autoNextEpisode: next });
@@ -286,8 +396,10 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                 const next = direction === 'right';
                 burnIn.setEnabled(next);
                 setDimmer(next);
-            } else if (focusZone === 'gatesettings' || focusZone === 'gatekids') {
-                const gate = focusZone === 'gatesettings' ? 'settings' as const : 'leaveKids' as const;
+            } else if (focusZone === 'gatesettings' || focusZone === 'gatekids' || focusZone === 'gateadult') {
+                const gate = focusZone === 'gatesettings' ? 'settings' as const
+                    : focusZone === 'gatekids' ? 'leaveKids' as const
+                    : 'adultCategories' as const;
                 const value = direction === 'right';
                 if (!parentalUnlocked) {
                     // Desligar a trava sem provar o PIN esvaziava o controle
@@ -321,6 +433,12 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                 setFocusZone('clear');
             } else if (focusZone === 'clear' && direction === 'left') {
                 setFocusZone('save');
+            } else if (focusZone === 'os-lang') {
+                setOsLangIndex(prev => direction === 'left' ? Math.max(0, prev - 1) : Math.min(LANGUAGES.length - 1, prev + 1));
+            } else if (focusZone === 'os-save' && direction === 'right') {
+                setFocusZone('os-clear');
+            } else if (focusZone === 'os-clear' && direction === 'left') {
+                setFocusZone('os-save');
             }
         },
         onEnter: () => {
@@ -334,6 +452,17 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                     if (entry) switchPlaylist(entry);
                 }
             }
+            else if (focusZone === 'reload') reloadActivePlaylist();
+            else if (focusZone === 'notifynew') {
+                setNotifyNewContent(prev => {
+                    newContentService.setNotifyEnabled(!prev);
+                    return !prev;
+                });
+            }
+            else if (focusZone === 'regional') {
+                const entry = regionalEntries[safeRegionalIndex];
+                if (entry) toggleRegionalVariant(entry.familyKey, entry.member.stream_id);
+            }
             else if (focusZone === 'epgoffset') {
                 epgOffset.set(0);
                 setEpgOffsetHours(0);
@@ -345,6 +474,13 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                     return !prev;
                 });
             }
+            else if (focusZone === 'groupvariants') {
+                setGroupVariants(prev => {
+                    liveToggles.setGroupVariants(!prev);
+                    return !prev;
+                });
+            }
+            else if (focusZone === 'hiddengroups') setShowHiddenGroups(true);
             else if (focusZone === 'qualitycap') {
                 qualityCap.set(0);
                 setCap(0);
@@ -398,6 +534,20 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
             }
             else if (focusZone === 'save') saveKey();
             else if (focusZone === 'clear') clearKey();
+            else if (focusZone === 'os-apikey') {
+                setEditing(true);
+                osApiKeyRef.current?.focus();
+            }
+            else if (focusZone === 'os-username') {
+                setEditing(true);
+                osUsernameRef.current?.focus();
+            }
+            else if (focusZone === 'os-password') {
+                setEditing(true);
+                osPasswordRef.current?.focus();
+            }
+            else if (focusZone === 'os-save') saveOpenSubtitles();
+            else if (focusZone === 'os-clear') clearOpenSubtitles();
         },
         onBack: () => {
             setResetArmed(false); // confirmação pendente não pode sobreviver à saída
@@ -419,8 +569,13 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
             accent: 'sec-aparencia',
             lang: 'sec-idioma',
             playlists: 'sec-playlists',
+            reload: 'sec-playlists',
+            notifynew: 'sec-playlists',
+            regional: 'sec-regional',
             epgoffset: 'sec-tv',
             bootlast: 'sec-tv',
+            groupvariants: 'sec-tv',
+            hiddengroups: 'sec-tv',
             qualitycap: 'sec-player',
             autonext: 'sec-player',
             resume: 'sec-player',
@@ -433,6 +588,7 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
             parentalpin: 'sec-parental',
             gatesettings: 'sec-parental',
             gatekids: 'sec-parental',
+            gateadult: 'sec-parental',
             guide: 'sec-sistema',
             diag: 'sec-sistema',
             qrbackup: 'sec-sistema',
@@ -442,11 +598,18 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
             input: 'sec-tmdb',
             save: 'sec-tmdb',
             clear: 'sec-tmdb',
+            'os-apikey': 'sec-legendas',
+            'os-username': 'sec-legendas',
+            'os-password': 'sec-legendas',
+            'os-lang': 'sec-legendas',
+            'os-save': 'sec-legendas',
+            'os-clear': 'sec-legendas',
         };
         document.getElementById(sectionIds[focusZone])?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }, [focusZone]);
 
     const hasSavedKey = savedKey.length > 0;
+    const hasSavedOsApiKey = savedOsApiKey.length > 0;
     const expiryDays = accountService.daysUntilExpiry(account);
 
     // Porta de entrada: com PIN parental exigido, a página não renderiza nada
@@ -550,7 +713,7 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
 
                 {/* Aparência */}
                 <section id="sec-aparencia" className="settings-section">
-                    <h2 className="settings-section-title">🎨 Aparência</h2>
+                    <h2 className="settings-section-title"><FaPalette className="settings-section-icon" /> Aparência</h2>
 
                     <label className="settings-label">Fundo</label>
                     <div className="settings-options-row">
@@ -583,7 +746,7 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
 
                 {/* Idioma */}
                 <section id="sec-idioma" className="settings-section">
-                    <h2 className="settings-section-title">🌐 Idioma</h2>
+                    <h2 className="settings-section-title"><FaGlobe className="settings-section-icon" /> Idioma</h2>
                     <p className="settings-muted">
                         Vale para as telas traduzidas (Login, Boas-vindas, menu lateral).
                     </p>
@@ -602,9 +765,9 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
 
                 {/* Playlists */}
                 <section id="sec-playlists" className="settings-section">
-                    <h2 className="settings-section-title">📡 Playlists</h2>
+                    <h2 className="settings-section-title"><FaSatelliteDish className="settings-section-icon" /> Playlists</h2>
                     <p className="settings-muted">
-                        OK troca de provedor (recarrega o app) · 🔴 remove a playlist focada
+                        OK troca de provedor (recarrega o app) · <RemoteColorHint color="red" label="remove a playlist focada" />
                     </p>
                     <div className="settings-options-row settings-playlists">
                         {playlists.map((entry, index) => (
@@ -623,7 +786,7 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                                             removePlaylist(entry);
                                         }}
                                     >
-                                        ✕
+                                        <FaTimes />
                                     </span>
                                 )}
                             </button>
@@ -632,14 +795,64 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                             className={`settings-option ${focusZone === 'playlists' && safePlaylistIndex === playlists.length ? 'focused' : ''}`}
                             onClick={() => onAddPlaylist?.()}
                         >
-                            ➕ Adicionar
+                            <FaPlus /> Adicionar
                         </button>
                     </div>
+                    <button
+                        className={`settings-option ${focusZone === 'reload' ? 'focused' : ''}`}
+                        onClick={reloadActivePlaylist}
+                    >
+                        <FaSync /> Recarregar lista
+                    </button>
+                    <div className="settings-row">
+                        <span className="settings-label">Notificar novo conteúdo</span>
+                        <span className={`settings-value ${focusZone === 'notifynew' ? 'focused' : ''}`}>
+                            {notifyNewContent ? 'Ligado' : 'Desligado'}
+                        </span>
+                    </div>
+                </section>
+
+                {/* Canais regionais (afiliadas/praças) */}
+                <section id="sec-regional" className="settings-section">
+                    <h2 className="settings-section-title"><FaMapMarkerAlt className="settings-section-icon" /> Canais regionais</h2>
+                    {regionalFamilies.size === 0 ? (
+                        <p className="settings-muted">
+                            Nenhuma afiliada regional detectada ainda — abra a TV ao Vivo pra carregar o catálogo.
+                        </p>
+                    ) : (
+                        <>
+                            <p className="settings-muted">
+                                Canais com nomes parecidos (a mesma marca, praça diferente) — marque quais quer ver.
+                            </p>
+                            {[...regionalFamilies.entries()].map(([familyKey, members]) => (
+                                <div className="settings-row settings-regional-family" key={familyKey}>
+                                    <span className="settings-label">{channelDisplayName(members[0].name) || familyKey}</span>
+                                    <div className="settings-options-row">
+                                        {members.map(member => {
+                                            const entryIndex = regionalEntries.findIndex(
+                                                e => e.familyKey === familyKey && e.member.stream_id === member.stream_id
+                                            );
+                                            const selected = regionalSelections.get(familyKey)?.has(member.stream_id) ?? false;
+                                            return (
+                                                <button
+                                                    key={member.stream_id}
+                                                    className={`settings-option ${selected ? 'selected' : ''} ${focusZone === 'regional' && safeRegionalIndex === entryIndex ? 'focused' : ''}`}
+                                                    onClick={() => toggleRegionalVariant(familyKey, member.stream_id)}
+                                                >
+                                                    {selected ? <FaCheckSquare /> : <FaRegSquare />} {channelDisplayName(member.name)}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            ))}
+                        </>
+                    )}
                 </section>
 
                 {/* TV ao Vivo */}
                 <section id="sec-tv" className="settings-section">
-                    <h2 className="settings-section-title">📺 TV ao Vivo</h2>
+                    <h2 className="settings-section-title"><FaBroadcastTower className="settings-section-icon" /> TV ao Vivo</h2>
                     <div className="settings-row">
                         <span className="settings-label">Ajuste de fuso do EPG (←→ muda, OK zera)</span>
                         <span className={`settings-value ${focusZone === 'epgoffset' ? 'focused' : ''}`}>
@@ -652,11 +865,23 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                             {bootLast ? 'Ligado' : 'Desligado'}
                         </span>
                     </div>
+                    <div className="settings-row">
+                        <span className="settings-label">Agrupar variantes de qualidade (FHD/HD/SD)</span>
+                        <span className={`settings-value ${focusZone === 'groupvariants' ? 'focused' : ''}`}>
+                            {groupVariants ? 'Ligado' : 'Desligado'}
+                        </span>
+                    </div>
+                    <button
+                        className={`settings-option ${focusZone === 'hiddengroups' ? 'focused' : ''}`}
+                        onClick={() => setShowHiddenGroups(true)}
+                    >
+                        <FaEyeSlash /> Gerenciar canais ocultos por padrão
+                    </button>
                 </section>
 
                 {/* Reprodução */}
                 <section id="sec-player" className="settings-section">
-                    <h2 className="settings-section-title">▶️ Reprodução</h2>
+                    <h2 className="settings-section-title"><FaPlay className="settings-section-icon" /> Reprodução</h2>
                     <div className="settings-row">
                         <span className="settings-label">Qualidade máxima (←→ muda, OK remove o limite)</span>
                         <span className={`settings-value ${focusZone === 'qualitycap' ? 'focused' : ''}`}>
@@ -694,7 +919,7 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
 
                 {/* Acessibilidade (itens 58, 64, 65) */}
                 <section id="sec-a11y" className="settings-section">
-                    <h2 className="settings-section-title">♿ Acessibilidade</h2>
+                    <h2 className="settings-section-title"><FaUniversalAccess className="settings-section-icon" /> Acessibilidade</h2>
 
                     <div className="settings-row">
                         <span className="settings-label">Alto contraste</span>
@@ -737,7 +962,7 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
 
                 {/* Minha conta (item 56) */}
                 <section id="sec-conta" className="settings-section">
-                    <h2 className="settings-section-title">👤 Minha conta</h2>
+                    <h2 className="settings-section-title"><FaUserCircle className="settings-section-icon" /> Minha conta</h2>
                     {!account ? (
                         <p className="settings-muted">
                             Os dados da conta aparecem depois do próximo login.
@@ -776,7 +1001,7 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                             </div>
                             {account.inseguro && (
                                 <p className="settings-warning">
-                                    ⚠️ A conexão segura falhou e o app entrou por HTTP: sua senha
+                                    <FaExclamationTriangle /> A conexão segura falhou e o app entrou por HTTP: sua senha
                                     trafega sem proteção nesta rede. Se puder, peça ao provedor um
                                     endereço HTTPS que funcione nesta TV.
                                 </p>
@@ -792,7 +1017,7 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
 
                 {/* Controle parental (item 55) */}
                 <section id="sec-parental" className="settings-section">
-                    <h2 className="settings-section-title">🔒 Controle parental</h2>
+                    <h2 className="settings-section-title"><FaLock className="settings-section-icon" /> Controle parental</h2>
                     <div className="settings-row">
                         <span className="settings-label">
                             PIN de 4 dígitos (OK {pinSet ? 'remove' : 'define'})
@@ -815,16 +1040,23 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                             {gates.leaveKids ? 'Ligado' : 'Desligado'}
                         </span>
                     </div>
+
+                    <div className="settings-row">
+                        <span className="settings-label">Bloquear categorias adultas automaticamente</span>
+                        <span className={`settings-value ${focusZone === 'gateadult' ? 'focused' : ''} ${pinSet ? '' : 'settings-value-off'}`}>
+                            {gates.adultCategories ? 'Ligado' : 'Desligado'}
+                        </span>
+                    </div>
                     <p className="settings-muted">
                         {pinSet
-                            ? 'Sem o PIN não dá pra sair do modo Kids nem mexer aqui.'
-                            : 'Enquanto não houver PIN, estas travas ficam inativas — o modo Kids é contornável em dois cliques.'}
+                            ? 'Sem o PIN não dá pra sair do modo Kids nem mexer aqui. Categoria detectada como adulta pede PIN antes de abrir — na primeira vez, o padrão é 0000.'
+                            : 'Enquanto não houver PIN, estas travas ficam inativas — o modo Kids é contornável em dois cliques. O PIN "0000" é criado sozinho na primeira vez que uma categoria adulta é aberta.'}
                     </p>
                 </section>
 
                 {/* Sistema (itens 57, 59, 61, 62, 63) */}
                 <section id="sec-sistema" className="settings-section">
-                    <h2 className="settings-section-title">🛠 Sistema</h2>
+                    <h2 className="settings-section-title"><FaTools className="settings-section-icon" /> Sistema</h2>
 
                     <div className="settings-row">
                         <span className="settings-label">Guia do controle remoto</span>
@@ -863,14 +1095,14 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                     </div>
                     <p className="settings-muted">
                         {resetArmed
-                            ? '⚠️ Pressione OK de novo para apagar. Sair da linha cancela.'
+                            ? <><FaExclamationTriangle /> Pressione OK de novo para apagar. Sair da linha cancela.</>
                             : DATA_GROUPS[DATA_GROUP_IDS[resetIndex]].description}
                     </p>
                 </section>
 
                 {/* Seu uso */}
                 <section id="sec-uso" className="settings-section">
-                    <h2 className="settings-section-title">📊 Seu uso</h2>
+                    <h2 className="settings-section-title"><FaChartBar className="settings-section-icon" /> Seu uso</h2>
                     {usage.totalSeconds === 0 ? (
                         <p className="settings-muted">Assista algo e as estatísticas aparecem aqui.</p>
                     ) : (
@@ -886,15 +1118,15 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                                 </div>
                                 <div className="usage-card">
                                     <span className="usage-value">{formatHours(usage.byKind.live)}</span>
-                                    <span className="usage-label">📺 TV ao vivo</span>
+                                    <span className="usage-label"><FaBroadcastTower /> TV ao vivo</span>
                                 </div>
                                 <div className="usage-card">
                                     <span className="usage-value">{formatHours(usage.byKind.movie)}</span>
-                                    <span className="usage-label">🎬 Filmes</span>
+                                    <span className="usage-label"><FaFilm /> Filmes</span>
                                 </div>
                                 <div className="usage-card">
                                     <span className="usage-value">{formatHours(usage.byKind.series)}</span>
-                                    <span className="usage-label">📺 Séries</span>
+                                    <span className="usage-label"><FaTv /> Séries</span>
                                 </div>
                             </div>
                             {usage.topItems.length > 0 && (
@@ -915,7 +1147,7 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                                     className={`settings-button primary ${focusZone === 'wrapped' ? 'focused' : ''}`}
                                     onClick={() => setShowWrapped(true)}
                                 >
-                                    🏆 Ver retrospectiva
+                                    <FaTrophy /> Ver retrospectiva
                                 </button>
                             </div>
                         </>
@@ -924,7 +1156,7 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
 
                 {/* TMDB */}
                 <section id="sec-tmdb" className="settings-section">
-                    <h2 className="settings-section-title">🎞 Integração TMDB</h2>
+                    <h2 className="settings-section-title"><FaImages className="settings-section-icon" /> Integração TMDB</h2>
                     <p className="settings-muted">
                         Opcional. Com uma chave própria, o app busca sinopse, capas e metadados extras.
                     </p>
@@ -969,6 +1201,104 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
 
                     {message && <p className="settings-message">{message}</p>}
                 </section>
+
+                {/* OpenSubtitles (legendas por busca) */}
+                <section id="sec-legendas" className="settings-section">
+                    <h2 className="settings-section-title"><FaClosedCaptioning className="settings-section-icon" /> Legendas por busca</h2>
+                    <p className="settings-muted">
+                        Opcional. Chave da API é obrigatória. Usuário e senha são opcionais e
+                        aumentam o limite diário de downloads.
+                    </p>
+                    <label className="settings-label" htmlFor="os-apikey">
+                        Chave API OpenSubtitles
+                    </label>
+                    <input
+                        id="os-apikey"
+                        ref={osApiKeyRef}
+                        className={`settings-input ${focusZone === 'os-apikey' ? 'focused' : ''}`}
+                        value={osApiKey}
+                        onChange={(event) => setOsApiKey(event.target.value)}
+                        onFocus={() => {
+                            setFocusZone('os-apikey');
+                            setEditing(true);
+                        }}
+                        onBlur={() => setEditing(false)}
+                        placeholder="Cole sua chave OpenSubtitles aqui"
+                        autoComplete="off"
+                        spellCheck={false}
+                    />
+
+                    <label className="settings-label" htmlFor="os-username">
+                        Usuário (opcional)
+                    </label>
+                    <input
+                        id="os-username"
+                        ref={osUsernameRef}
+                        className={`settings-input ${focusZone === 'os-username' ? 'focused' : ''}`}
+                        value={osUsername}
+                        onChange={(event) => setOsUsername(event.target.value)}
+                        onFocus={() => {
+                            setFocusZone('os-username');
+                            setEditing(true);
+                        }}
+                        onBlur={() => setEditing(false)}
+                        placeholder="Usuário da conta OpenSubtitles"
+                        autoComplete="off"
+                        spellCheck={false}
+                    />
+
+                    <label className="settings-label" htmlFor="os-password">
+                        Senha (opcional)
+                    </label>
+                    <input
+                        id="os-password"
+                        ref={osPasswordRef}
+                        className={`settings-input settings-password-input ${focusZone === 'os-password' ? 'focused' : ''}`}
+                        value={osPassword}
+                        onChange={(event) => setOsPassword(event.target.value)}
+                        onFocus={() => {
+                            setFocusZone('os-password');
+                            setEditing(true);
+                        }}
+                        onBlur={() => setEditing(false)}
+                        placeholder="Senha da conta OpenSubtitles"
+                        autoComplete="off"
+                        spellCheck={false}
+                    />
+
+                    <div className="settings-label">Idioma de busca</div>
+                    <div className="settings-options-row">
+                        {LANGUAGES.map((lang, index) => (
+                            <button
+                                key={lang.id}
+                                className={`settings-option ${osLangIndex === index ? 'selected' : ''} ${focusZone === 'os-lang' && osLangIndex === index ? 'focused' : ''}`}
+                                onClick={() => setOsLangIndex(index)}
+                            >
+                                {lang.label}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="settings-status">
+                        Status: {hasSavedOsApiKey ? 'chave salva localmente neste dispositivo' : 'nenhuma chave salva'}
+                    </div>
+
+                    <div className="settings-actions">
+                        <button
+                            className={`settings-button primary ${focusZone === 'os-save' ? 'focused' : ''}`}
+                            onClick={saveOpenSubtitles}
+                        >
+                            Salvar
+                        </button>
+                        <button
+                            className={`settings-button secondary ${focusZone === 'os-clear' ? 'focused' : ''}`}
+                            onClick={clearOpenSubtitles}
+                            disabled={!hasSavedOsApiKey && !osApiKey}
+                        >
+                            Remover
+                        </button>
+                    </div>
+                </section>
             </div>
 
             {/* Retrospectiva (Wrapped) */}
@@ -984,6 +1314,7 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                 />
             )}
             {showQr && <QrBackupOverlay onClose={() => setShowQr(false)} />}
+            {showHiddenGroups && <HiddenGroupsOverlay onClose={() => setShowHiddenGroups(false)} />}
         </div>
     );
 }

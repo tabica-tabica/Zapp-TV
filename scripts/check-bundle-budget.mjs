@@ -27,11 +27,17 @@ const alvo = join(root, process.argv[2] || join('dist-tizen', 'assets'));
  */
 // Medido em 21/08/2026: index.js 980 KB, polyfills.js 119 KB, style.css 141 KB.
 // Os tetos são esses valores com ~5% de folga — apertado de propósito.
+//
+// Subido em 24/08/2026: varredura completa de emoji → react-icons/fa (~150
+// ícones novos, importados individualmente em ~35 arquivos) + carregamento da
+// fonte Inter (via <link> injetado em runtime, não entra no JS/CSS medido
+// aqui). Medido depois da varredura: index.js 1074 KB, polyfills.js 119 KB,
+// style.css 150 KB — teto de novo com ~5% de folga sobre isso.
 const ORCAMENTO = {
     /** Soma de todo JS. */
-    jsTotal: 1150,
+    jsTotal: 1250,
     /** O maior arquivo isolado — é ele que trava a thread principal no parse. */
-    maiorJs: 1030,
+    maiorJs: 1130,
     /** Todo o CSS. */
     cssTotal: 160,
 };

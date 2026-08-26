@@ -50,12 +50,15 @@ describe('channelVariants', () => {
         expect(variantBaseName('ESPN [H.265]')).toBe(variantBaseName('ESPN (HEVC)'));
     });
 
-    // Tag de codec SÓ é removida entre colchetes ou parênteses. É deliberado e
-    // conservador: "ESPN H265" solto pode ser um canal de verdade com outro
-    // nome, e fundir demais SOME com canais da grade — o erro mais caro deste
-    // agrupador (foi o que aconteceu com os Batman no catálogo de filmes).
-    it('codec solto NÃO funde: entre colchetes é sinal, no meio do nome é nome', () => {
-        expect(variantBaseName('ESPN H.265')).not.toBe(variantBaseName('ESPN'));
+    // RECALIBRADO: um catálogo de provedor real testado nesta sessão mostrou
+    // dezenas de famílias de canal (Discovery Theater, HGTV, History, ESPN
+    // 2-6...) usando "H265" solto — sem "FHD"/"HD" por perto — como o PRÓPRIO
+    // rótulo de qualidade, sempre pareado com uma variante irmã sem o sufixo.
+    // A CLI (tools/m3u-transformer) já tratava assim sem guarda nenhuma; este
+    // arquivo divergia por excesso de cautela e estava deixando de agrupar o
+    // que devia. Ver channelVariants.ts:stripTrailingRun.
+    it('codec solto (com ou sem colchetes) funde do mesmo jeito que qualidade', () => {
+        expect(variantBaseName('ESPN H.265')).toBe(variantBaseName('ESPN'));
         expect(variantBaseName('ESPN [H.265]')).toBe(variantBaseName('ESPN'));
     });
 

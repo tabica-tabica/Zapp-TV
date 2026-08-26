@@ -1,0 +1,14 @@
+{
+  "id": "com.rakjsu.neostreamtv",
+  "version": "1.0.0",
+  "vendor": "Rakjsu",
+  "type": "web",
+  "main": "index.html",
+  "title": "Zapp TV",
+  "icon": "icon.png",
+  "largeIcon": "largeIcon.png",
+  "iconColor": "#05070d",
+  "resolution": "1920x1080",
+  "appDescription": "IPTV player for LG webOS Smart TVs.",
+  "disableBackHistoryAPI": true
+}

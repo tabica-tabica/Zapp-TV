@@ -39,3 +39,31 @@ export function preconnectProvider(): void {
         // Preconnect é otimização: falhar aqui não pode atrapalhar o boot
     }
 }
+
+/**
+ * Carrega a fonte que --font-family (src/index.css) já pede desde sempre —
+ * sem isto o app sempre rodou na fonte padrão do sistema, em silêncio. Nome e
+ * pesos vêm de brand.config.mjs (__BRAND_FONT_FAMILY__/__BRAND_FONT_WEIGHTS__),
+ * não hardcoded aqui.
+ * Injeção via JS em vez de <link> nos HTML porque index.html/tizen/index.html/
+ * webos/index.html são 3 arquivos estáticos sem template compartilhado; assim
+ * a mudança vale pros três de uma vez só. Chamar junto de preconnectProvider().
+ */
+export function loadBrandFont(): void {
+    try {
+        const preconnect1 = document.createElement('link');
+        preconnect1.rel = 'preconnect';
+        preconnect1.href = 'https://fonts.googleapis.com';
+        const preconnect2 = document.createElement('link');
+        preconnect2.rel = 'preconnect';
+        preconnect2.href = 'https://fonts.gstatic.com';
+        preconnect2.crossOrigin = 'anonymous';
+        const stylesheet = document.createElement('link');
+        stylesheet.rel = 'stylesheet';
+        const family = encodeURIComponent(__BRAND_FONT_FAMILY__);
+        stylesheet.href = `https://fonts.googleapis.com/css2?family=${family}:wght@${__BRAND_FONT_WEIGHTS__}&display=swap`;
+        document.head.append(preconnect1, preconnect2, stylesheet);
+    } catch {
+        // Fonte é progressive enhancement: falhar aqui cai no fallback do sistema, não trava o boot
+    }
+}

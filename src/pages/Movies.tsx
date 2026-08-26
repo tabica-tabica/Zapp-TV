@@ -1,9 +1,21 @@
 // Movies Page - Matching NeoStream Desktop Style
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, type ReactNode } from 'react';
+import {
+    FaFilm, FaHeart, FaRegHeart, FaBookmark, FaRegBookmark, FaPlay, FaSort, FaEyeSlash,
+    FaTag, FaCalendarAlt, FaTheaterMasks, FaStar,
+} from 'react-icons/fa';
+import { RemoteColorHint } from '../components/RemoteColorHint';
+import { Grid, type CellComponentProps } from 'react-window';
 import { api } from '../services/api';
 import type { VODStream, Category } from '../types';
 import { useTVNavigation } from '../hooks/useTVNavigation';
+import { useVirtualGridNavigation } from '../hooks/useVirtualGridNavigation';
+import { useMeasuredColumns } from '../hooks/useMeasuredColumns';
+import { useBrokenImages } from '../hooks/useBrokenImages';
+import { useAdultLock } from '../hooks/useAdultLock';
+import { parentalService } from '../services/parentalService';
+import { PinPrompt } from '../components/PinPrompt';
 import { useFocusZone } from '../contexts/FocusContext';
 import { mapaDeGeneros, generosDisponiveis, rotuloDoGenero } from '../services/catalogGenres';
 import { CategoryMenu, type CategoryMenuHandle } from '../components/CategoryMenu';
@@ -15,13 +27,55 @@ import {
     catalogFilters, matchesFilters, normalizeSearch, fuzzyMatches,
     DECADES, MIN_RATINGS, type CatalogFilters,
 } from '../services/catalogExtras';
-import { groupVodVersions, tagsOf, hasTag, versionLabel, ALL_VOD_TAGS, type VodTag } from '../services/vodVariants';
+import { groupVodVersions, hasTag, versionLabel, ALL_VOD_TAGS, type VodTag } from '../services/vodVariants';
 // versionLabel é usado nos botões de versão da ficha (abaixo)
 import { storage } from '../services/storage';
 import { kidsFilter } from '../services/kidsFilter';
+import { contentFlags } from '../services/contentFlags';
 import { progressService } from '../services/progressService';
+import { MovieCard } from './MovieCard';
 import './Movies.css';
 import { ErrorScreen } from '../components/ErrorScreen';
+
+const CARD_WIDTH = 180;
+const CARD_GAP = 16;
+const CARD_INFO_HEIGHT = 40;
+
+interface MovieCellProps {
+    items: VODStream[];
+    columns: number;
+    focusedIndex: number;
+    gap: number;
+    isBroken: (id: number) => boolean;
+    onImageError: (id: number) => void;
+    onSelect: (movie: VODStream) => void;
+    selectedId: number | undefined;
+    nowMs: number;
+    versionsOf: Map<string, VODStream[]>;
+}
+
+function MovieGridCell({
+    rowIndex, columnIndex, style, items, columns, focusedIndex, gap, isBroken, onImageError, onSelect, selectedId, nowMs, versionsOf,
+}: CellComponentProps<MovieCellProps>) {
+    const index = rowIndex * columns + columnIndex;
+    const movie = items[index];
+    if (!movie) return null;
+    return (
+        <MovieCard
+            movie={movie}
+            index={index}
+            focused={index === focusedIndex}
+            selected={selectedId === movie.stream_id}
+            broken={isBroken(movie.stream_id)}
+            isNew={isRecentlyAdded(movie, nowMs)}
+            versionCount={versionsOf.get(String(movie.stream_id))?.length ?? 0}
+            onSelect={onSelect}
+            onImageError={onImageError}
+            style={style}
+            gap={gap}
+        />
+    );
+}
 
 export function Movies() {
     const { focusZone, setFocusZone } = useFocusZone();
@@ -37,9 +91,14 @@ export function Movies() {
     // playStreamId: id REAL do stream a tocar (versão escolhida); stream_id
     // continua sendo o do grupo, que é a chave de progresso/favoritos
     const [playingMovie, setPlayingMovie] = useState<(VODStream & { playStreamId?: number }) | null>(null);
-    const [brokenImages, setBrokenImages] = useState<Set<number>>(new Set());
-    const [visibleCount, setVisibleCount] = useState(24); // Start with reasonable default
-    const scrollContainerRef = useRef<HTMLDivElement>(null);
+    const { isBroken, markBroken } = useBrokenImages<number>();
+    const { containerRef: scrollContainerRef, columns, columnWidth } = useMeasuredColumns({
+        cardWidth: CARD_WIDTH, gap: CARD_GAP, minColumns: 3, maxColumns: 10,
+    });
+    const {
+        lockedCategoryIds, guardSelect: guardCategorySelect, pendingCategoryId,
+        setPendingCategoryId, setUnlocked: setAdultUnlocked, justProvisioned,
+    } = useAdultLock(categories);
 
     // Ordenação / esconder assistidos / selo NOVO (Fase 3)
     const [sortMode, setSortMode] = useState<CatalogSort>(() => catalogSort.get('movies'));
@@ -49,7 +108,7 @@ export function Movies() {
     const [filters, setFilters] = useState<CatalogFilters>(() => catalogFilters.get('movies'));
     const [contextItem, setContextItem] = useState<VODStream | null>(null);
     const [contextIndex, setContextIndex] = useState(0);
-    const [toast, setToast] = useState<string | null>(null);
+    const [toast, setToast] = useState<ReactNode | null>(null);
     // Congelado no mount: Date.now() no render viola a pureza do react-hooks
     const [nowMs] = useState(() => Date.now());
 
@@ -63,41 +122,19 @@ export function Movies() {
     // existe para quem não cadastrou chave da API, que é a maioria
     const [genero, setGenero] = useState<string | null>(null);
     const [focusedCategoryIndex, setFocusedCategoryIndex] = useState(0);
-    const [focusedMovieIndex, setFocusedMovieIndex] = useState(0);
     const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
     const searchRef = useRef<AnimatedSearchBarHandle>(null);
     const categoryMenuRef = useRef<CategoryMenuHandle>(null);
 
-    // Calculate initial visible count based on screen size
-    useEffect(() => {
-        const calculateVisibleItems = () => {
-            const container = scrollContainerRef.current;
-            if (!container) return;
-
-            // Card dimensions (160px min width + 20px gap)
-            const cardWidth = 180;
-            const cardHeight = 290; // 2:3 aspect ratio (~240px) + title (~50px)
-
-            const containerWidth = container.clientWidth - 32; // minus padding
-            const containerHeight = window.innerHeight;
-
-            // Calculate columns and rows that fit on screen + 1 extra row
-            const cols = Math.floor(containerWidth / cardWidth);
-            const rows = Math.ceil(containerHeight / cardHeight) + 1; // +1 extra row
-
-            const initialCount = cols * rows;
-            setVisibleCount(Math.max(initialCount, 12)); // Minimum 12 items
-        };
-
-        calculateVisibleItems();
-        window.addEventListener('resize', calculateVisibleItems);
-
-        return () => window.removeEventListener('resize', calculateVisibleItems);
-    }, [loading]); // Recalculate when loading finishes
-
     // Fetch data
     useEffect(() => {
         async function fetchData() {
+            // "Incluir VOD" desmarcado no login: nem busca — mesmo motivo do
+            // gate em LiveTV.tsx.
+            if (!contentFlags.includeVOD()) {
+                setLoading(false);
+                return;
+            }
             try {
                 setLoading(true);
                 const [streamsData, categoriesData] = await Promise.all([
@@ -161,6 +198,12 @@ export function Movies() {
             const matchesSearch = !query || fuzzyMatches(stream.name || '', query);
             const matchesCategory = selectedCategory === 'all' || stream.category_id === selectedCategory;
             if (!matchesSearch || !matchesCategory) return false;
+            // Categoria travada por PIN não aparece em "Todos" nem em outra
+            // categoria — só quando ELA MESMA está selecionada, o que só
+            // acontece depois que guardCategorySelect já exigiu o PIN. Sem
+            // isto, um filme "adulto" categorizado sob uma categoria travada
+            // aparecia normalmente em "Todos", sem pedir PIN nenhum.
+            if (lockedCategoryIds.has(stream.category_id) && selectedCategory !== stream.category_id) return false;
             // Chips de tag: item precisa ter TODAS as tags marcadas
             if (activeTags.length > 0 && !activeTags.every(tag => hasTag(stream.name || '', tag))) return false;
             if (hasFilters && !matchesFilters(stream, filters)) return false;
@@ -171,7 +214,7 @@ export function Movies() {
             list = list.filter(stream => !completedMovieIds.has(String(stream.stream_id)));
         }
         return list;
-    }, [streams, searchQuery, selectedCategory, completedMovieIds, activeTags, filters, genero, generoPorCategoria]);
+    }, [streams, searchQuery, selectedCategory, completedMovieIds, activeTags, filters, genero, generoPorCategoria, lockedCategoryIds]);
 
     // Agrupa versões do mesmo filme (DUB/LEG/4K) sobre a lista JÁ filtrada
     const { groups: groupedStreams, versionsOf } = useMemo(
@@ -240,41 +283,40 @@ export function Movies() {
         return map;
     }, [sortMode, groupedStreams]);
 
-    // Índice focado sempre no range (lista encolhe ao esconder assistidos)
-    const safeMovieIndex = Math.min(focusedMovieIndex, Math.max(0, filteredStreams.length - 1));
-
-    // Lazy loading scroll - load one more row when scrolling near bottom
+    // Seleção limpa ao trocar busca/categoria — a ficha aberta pode não
+    // fazer mais parte do resultado filtrado
     useEffect(() => {
-        const container = scrollContainerRef.current;
-        if (!container) return;
-
-        const handleScroll = () => {
-            const { scrollTop, scrollHeight, clientHeight } = container;
-            // Load more when user scrolls to 80% of the content
-            if (scrollTop + clientHeight >= scrollHeight * 0.8 && visibleCount < filteredStreams.length) {
-                setVisibleCount(prev => Math.min(prev + 12, filteredStreams.length));
-            }
-        };
-
-        container.addEventListener('scroll', handleScroll);
-        return () => container.removeEventListener('scroll', handleScroll);
-    }, [filteredStreams.length, visibleCount]);
-
-    // Reset on filter change - recalculate visible count
-    useEffect(() => {
-        const container = scrollContainerRef.current;
-        if (!container) return;
-
-        const cardWidth = 180;
-        const cardHeight = 290;
-        const containerWidth = container.clientWidth - 32;
-        const containerHeight = window.innerHeight;
-        const cols = Math.floor(containerWidth / cardWidth);
-        const rows = Math.ceil(containerHeight / cardHeight) + 1;
-
-        setVisibleCount(Math.max(cols * rows, 12));
         setSelectedMovie(null);
     }, [searchQuery, selectedCategory]);
+
+    const openMovieModal = useCallback((movie: VODStream) => {
+        setSelectedMovie(movie);
+        setShowModal(true);
+    }, []);
+
+    const {
+        focusedIndex: focusedMovieIndex, setFocusedIndex: setFocusedMovieIndex, gridRef,
+        handleNavigate: handleMovieGridNavigate, handleSelect: handleMovieGridSelect, handlePageSkip,
+    } = useVirtualGridNavigation({
+        itemCount: filteredStreams.length,
+        columns,
+        enabled: focusArea === 'movies',
+        onExitUp: () => setFocusArea('categories'),
+        onExitLeft: () => setFocusZone('sidebar'),
+        onExitRight: () => {
+            // Última coluna + barra A-Z visível → entra na barra
+            if (alphabetIndex && alphabetIndex.size > 1) {
+                setFocusArea('alphabet');
+                setAlphabetIndexFocus(0);
+                return true;
+            }
+            return false;
+        },
+        onSelect: (index) => {
+            const movie = filteredStreams[index];
+            if (movie) openMovieModal(movie);
+        },
+    });
 
     // TV Navigation
     const handleNavigate = (direction: 'up' | 'down' | 'left' | 'right') => {
@@ -294,47 +336,7 @@ export function Movies() {
                 setFocusedMovieIndex(0);
             }
         } else if (focusArea === 'movies') {
-            const cols = 6;
-            const totalMovies = filteredStreams.length;
-            const currentCol = focusedMovieIndex % cols;
-
-            if (direction === 'up') {
-                if (focusedMovieIndex < cols) {
-                    setFocusArea('categories');
-                } else {
-                    setFocusedMovieIndex(prev => Math.max(0, prev - cols));
-                }
-            } else if (direction === 'down') {
-                setFocusedMovieIndex(prev => {
-                    const next = Math.min(totalMovies - 1, prev + cols);
-                    // If we're getting close to the visible limit, load more
-                    if (next >= visibleCount - 10) {
-                        setVisibleCount(current => Math.min(current + cols * 4, totalMovies));
-                    }
-                    return next;
-                });
-            } else if (direction === 'left') {
-                if (currentCol === 0) {
-                    // At first column - go to sidebar
-                    setFocusZone('sidebar');
-                } else {
-                    setFocusedMovieIndex(prev => Math.max(0, prev - 1));
-                }
-            } else if (direction === 'right') {
-                // Última coluna + barra A-Z visível → entra na barra
-                if (currentCol === cols - 1 && alphabetIndex && alphabetIndex.size > 1) {
-                    setFocusArea('alphabet');
-                    setAlphabetIndexFocus(0);
-                    return;
-                }
-                setFocusedMovieIndex(prev => {
-                    const next = Math.min(totalMovies - 1, prev + 1);
-                    if (next >= visibleCount - 5) {
-                        setVisibleCount(current => Math.min(current + cols * 4, totalMovies));
-                    }
-                    return next;
-                });
-            }
+            handleMovieGridNavigate(direction);
         } else if (focusArea === 'alphabet') {
             const letters = alphabetIndex ? [...alphabetIndex.keys()] : [];
             if (direction === 'up') setAlphabetIndexFocus(prev => Math.max(0, prev - 1));
@@ -342,28 +344,6 @@ export function Movies() {
             else if (direction === 'left') setFocusArea('movies');
         }
     };
-
-    // Scroll selected item into view when navigating with TV remote
-    useEffect(() => {
-        if (focusArea === 'movies' && focusZone === 'content') {
-            const container = scrollContainerRef.current;
-            const focusedItem = container?.querySelector('.movie-card.tv-focused') as HTMLElement;
-            
-            if (container && focusedItem) {
-                const containerRect = container.getBoundingClientRect();
-                const itemRect = focusedItem.getBoundingClientRect();
-                
-                // If item is below the view
-                if (itemRect.bottom > containerRect.bottom) {
-                    container.scrollTop += (itemRect.bottom - containerRect.bottom) + 20;
-                }
-                // If item is above the view
-                else if (itemRect.top < containerRect.top) {
-                    container.scrollTop -= (containerRect.top - itemRect.top) + 20;
-                }
-            }
-        }
-    }, [focusedMovieIndex, focusArea, focusZone]);
 
     const cycleSort = () => {
         setSortMode(prev => {
@@ -438,7 +418,7 @@ export function Movies() {
 
     // Menu de contexto no card (item 24): 🟡 abre sem entrar na ficha
     const openContextMenu = () => {
-        const movie = filteredStreams[safeMovieIndex];
+        const movie = filteredStreams[focusedMovieIndex];
         if (!movie) return;
         setContextItem(movie);
         setContextIndex(0);
@@ -446,7 +426,8 @@ export function Movies() {
 
     const contextActions = contextItem ? [
         {
-            label: storage.isFavorite(String(contextItem.stream_id), 'movie') ? '💔 Remover dos favoritos' : '❤️ Favoritar',
+            label: storage.isFavorite(String(contextItem.stream_id), 'movie')
+                ? <><FaHeart /> Remover dos favoritos</> : <><FaRegHeart /> Favoritar</>,
             run: () => {
                 const added = storage.toggleFavorite({
                     id: String(contextItem.stream_id),
@@ -456,11 +437,12 @@ export function Movies() {
                     rating: contextItem.rating,
                     container: contextItem.container_extension,
                 });
-                setToast(added ? '❤️ Adicionado aos favoritos' : '💔 Removido dos favoritos');
+                setToast(added ? <><FaHeart /> Adicionado aos favoritos</> : <><FaRegHeart /> Removido dos favoritos</>);
             },
         },
         {
-            label: storage.isInWatchLater(String(contextItem.stream_id), 'movie') ? '➖ Tirar da Minha Lista' : '➕ Minha Lista',
+            label: storage.isInWatchLater(String(contextItem.stream_id), 'movie')
+                ? <><FaBookmark /> Tirar da Minha Lista</> : <><FaRegBookmark /> Minha Lista</>,
             run: () => {
                 const added = storage.toggleWatchLater({
                     id: String(contextItem.stream_id),
@@ -470,11 +452,11 @@ export function Movies() {
                     rating: contextItem.rating,
                     container: contextItem.container_extension,
                 });
-                setToast(added ? '➕ Salvo na Minha Lista' : '➖ Removido da Minha Lista');
+                setToast(added ? <><FaBookmark /> Salvo na Minha Lista</> : <><FaRegBookmark /> Removido da Minha Lista</>);
             },
         },
         {
-            label: '▶ Assistir agora',
+            label: <><FaPlay /> Assistir agora</>,
             run: () => {
                 setPlayingMovie(contextItem);
                 setShowPlayer(true);
@@ -507,16 +489,12 @@ export function Movies() {
             const entry = entries[alphabetIndexFocus];
             if (entry) jumpToLetter(entry[0]);
         } else if (focusArea === 'movies') {
-            const movie = filteredStreams[safeMovieIndex];
-            if (movie) {
-                setSelectedMovie(movie);
-                setShowModal(true);
-            }
+            handleMovieGridSelect();
         }
     };
 
     // Only enable when content is focused and no modal/player/panel is open
-    const navEnabled = !error && (focusZone === 'content' && !showModal && !showPlayer && !categoryMenuOpen && !contextItem);
+    const navEnabled = !error && (focusZone === 'content' && !showModal && !showPlayer && !categoryMenuOpen && !contextItem && !pendingCategoryId);
 
     useTVNavigation({
         onNavigate: handleNavigate,
@@ -556,8 +534,6 @@ export function Movies() {
     // CH+/CH- pulam uma página inteira da grade (item 25)
     useEffect(() => {
         if (!navEnabled || focusArea !== 'movies') return;
-        const cols = 6;
-        const pageSize = cols * 3;
         const handlePageKeys = (event: KeyboardEvent) => {
             const key = event.key || String(event.keyCode);
             const code = event.keyCode;
@@ -565,23 +541,27 @@ export function Movies() {
             const isDown = key === 'MediaChannelDown' || code === 428 || key === 'PageDown' || code === 34;
             if (!isUp && !isDown) return;
             event.preventDefault();
-            setFocusedMovieIndex(prev => {
-                const next = isUp
-                    ? Math.max(0, prev - pageSize)
-                    : Math.min(filteredStreams.length - 1, prev + pageSize);
-                if (next >= visibleCount - cols) {
-                    setVisibleCount(current => Math.min(current + pageSize, filteredStreams.length));
-                }
-                return next;
-            });
+            handlePageSkip(isUp ? 'up' : 'down');
         };
         window.addEventListener('keydown', handlePageKeys);
         return () => window.removeEventListener('keydown', handlePageKeys);
-    }, [navEnabled, focusArea, filteredStreams.length, visibleCount]);
+    }, [navEnabled, focusArea, handlePageSkip]);
 
-    const handleImageError = (streamId: number) => {
-        setBrokenImages(prev => new Set(prev).add(streamId));
-    };
+    // Altura da linha: pôster 2:3 + a faixa de título + o gap entre linhas.
+    const movieCardHeight = Math.round((columnWidth - CARD_GAP) * 1.5) + CARD_INFO_HEIGHT + CARD_GAP;
+    const movieRowCount = Math.max(1, Math.ceil(filteredStreams.length / columns));
+    const movieCellProps = useMemo<MovieCellProps>(() => ({
+        items: filteredStreams,
+        columns,
+        focusedIndex: focusArea === 'movies' ? focusedMovieIndex : -1,
+        gap: CARD_GAP,
+        isBroken,
+        onImageError: markBroken,
+        onSelect: openMovieModal,
+        selectedId: selectedMovie?.stream_id,
+        nowMs,
+        versionsOf,
+    }), [filteredStreams, columns, focusArea, focusedMovieIndex, isBroken, markBroken, openMovieModal, selectedMovie, nowMs, versionsOf]);
 
     // Loading State
     if (loading) {
@@ -606,7 +586,7 @@ export function Movies() {
     if (error) {
         return (
             <ErrorScreen
-                icon="🎬"
+                icon={FaFilm}
                 title="Erro ao carregar filmes"
                 message={error}
                 className="movies-error-container"
@@ -639,11 +619,32 @@ export function Movies() {
                 ref={categoryMenuRef}
                 categories={categories}
                 selectedCategory={selectedCategory}
-                onSelectCategory={setSelectedCategory}
+                onSelectCategory={(id) => guardCategorySelect(id, () => setSelectedCategory(id))}
                 type="vod"
                 tvFocused={focusArea === 'categories' && focusedCategoryIndex === 1}
                 onOpenChange={setCategoryMenuOpen}
+                lockedCategoryIds={lockedCategoryIds}
             />
+
+            {pendingCategoryId && (
+                <PinPrompt
+                    title="Categoria bloqueada"
+                    hint={justProvisioned
+                        ? 'Conteúdo adulto — PIN padrão: 0000 (altere em Configurações)'
+                        : 'Conteúdo adulto — digite o PIN'}
+                    parental
+                    onSubmit={async (pin) => {
+                        const ok = await parentalService.verify(pin);
+                        if (ok) {
+                            setAdultUnlocked(true);
+                            setSelectedCategory(pendingCategoryId);
+                            setPendingCategoryId(null);
+                        }
+                        return ok;
+                    }}
+                    onCancel={() => setPendingCategoryId(null)}
+                />
+            )}
 
             {/* Toolbar: ordenar + esconder assistidos */}
             <div className="catalog-toolbar">
@@ -652,28 +653,28 @@ export function Movies() {
                     onClick={cycleSort}
                     title="Ordenar"
                 >
-                    ↕ {SORT_LABELS[sortMode]}
+                    <FaSort /> {SORT_LABELS[sortMode]}
                 </button>
                 <button
                     className={`toolbar-btn ${hideWatchedOn ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('hidewatched') ? 'tv-focused' : ''}`}
                     onClick={toggleHideWatched}
                     title="Esconder assistidos"
                 >
-                    🙈
+                    <FaEyeSlash />
                 </button>
                 <button
                     className={`toolbar-btn ${activeTags.length > 0 ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('tags') ? 'tv-focused' : ''}`}
                     onClick={cycleTagFilter}
                     title="Filtrar por Dublado/Legendado/qualidade"
                 >
-                    {activeTags.length > 0 ? activeTags.join('+') : '🏷 Tags'}
+                    {activeTags.length > 0 ? activeTags.join('+') : <><FaTag /> Tags</>}
                 </button>
                 <button
                     className={`toolbar-btn ${filters.decade > 0 ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('decade') ? 'tv-focused' : ''}`}
                     onClick={cycleFilters}
                     title="Filtrar por década"
                 >
-                    {filters.decade > 0 ? `${filters.decade}s` : '📅 Década'}
+                    {filters.decade > 0 ? `${filters.decade}s` : <><FaCalendarAlt /> Década</>}
                 </button>
                 {generosDoCatalogo.length > 0 && (
                     <button
@@ -681,7 +682,7 @@ export function Movies() {
                         onClick={cycleGenero}
                         title="Filtrar por gênero"
                     >
-                        {genero ? rotuloDoGenero(genero) : '🎭 Gênero'}
+                        {genero ? rotuloDoGenero(genero) : <><FaTheaterMasks /> Gênero</>}
                     </button>
                 )}
                 <button
@@ -689,7 +690,7 @@ export function Movies() {
                     onClick={cycleNota}
                     title="Nota mínima"
                 >
-                    {filters.minRating > 0 ? `⭐ ${filters.minRating}+` : '⭐ Nota'}
+                    {filters.minRating > 0 ? <><FaStar /> {filters.minRating}+</> : <><FaStar /> Nota</>}
                 </button>
             </div>
 
@@ -767,6 +768,7 @@ export function Movies() {
                     poster={playingMovie.stream_icon || playingMovie.cover}
                     container={playingMovie.container_extension}
                     streamId={playingMovie.playStreamId ?? playingMovie.stream_id}
+                    year={playingMovie.release_date?.slice(0, 4)}
                     onClose={() => {
                         setShowPlayer(false);
                         setPlayingMovie(null);
@@ -774,62 +776,41 @@ export function Movies() {
                 />
             )}
 
-            {/* Movies Grid */}
+            {/* Movies Grid — virtualizado (react-window): o catálogo pode ter
+                milhares de títulos, e só a janela visível+overscan monta. */}
             <div ref={scrollContainerRef} className="movies-content">
                 {filteredStreams.length === 0 ? (
                     <div className="no-results">
-                        <div className="no-results-icon">🎬</div>
-                        <p>Nenhum filme encontrado</p>
-                        <span>
-                            {filtrosLigados.length > 0
-                                ? `Filtros ligados: ${filtrosLigados.join(' · ')}`
-                                : 'Tente buscar por outro termo'}
-                        </span>
+                        <div className="no-results-icon"><FaFilm /></div>
+                        {contentFlags.includeVOD() ? (
+                            <>
+                                <p>Nenhum filme encontrado</p>
+                                <span>
+                                    {filtrosLigados.length > 0
+                                        ? `Filtros ligados: ${filtrosLigados.join(' · ')}`
+                                        : 'Tente buscar por outro termo'}
+                                </span>
+                            </>
+                        ) : (
+                            <>
+                                <p>VOD desativado para esta playlist</p>
+                                <span>Mude isso ao adicionar a playlist de novo, em Configurações</span>
+                            </>
+                        )}
                     </div>
                 ) : (
-                    <div className="movies-grid">
-                        {filteredStreams.slice(0, visibleCount).map((movie, index) => (
-                            <div
-                                key={movie.stream_id}
-                                className={`movie-card ${focusArea === 'movies' && safeMovieIndex === index ? 'tv-focused' : ''} ${selectedMovie?.stream_id === movie.stream_id ? 'selected' : ''}`}
-                                onClick={() => {
-                                    setSelectedMovie(movie);
-                                    setShowModal(true);
-                                }}
-                                style={{ animationDelay: `${Math.min(index * 0.03, 0.5)}s` }}
-                            >
-                                <div className="movie-poster">
-                                    {brokenImages.has(movie.stream_id) ? (
-                                        <div className="poster-placeholder">🎬</div>
-                                    ) : (
-                                        <img decoding="async"
-                                            src={movie.stream_icon || movie.cover}
-                                            alt={movie.name}
-                                            loading="lazy"
-                                            onError={() => handleImageError(movie.stream_id)}
-                                        />
-                                    )}
-                                    {isRecentlyAdded(movie, nowMs) && (
-                                        <div className="new-badge">NOVO</div>
-                                    )}
-                                    {(versionsOf.get(String(movie.stream_id))?.length ?? 0) > 1 && (
-                                        <div className="version-badge">
-                                            {versionsOf.get(String(movie.stream_id))!.length} versões
-                                        </div>
-                                    )}
-                                    {tagsOf(movie.name || '').filter(t => t !== 'H265').length > 0 && (
-                                        <div className="tag-badge">
-                                            {tagsOf(movie.name || '').filter(t => t !== 'H265').slice(0, 2).join(' ')}
-                                        </div>
-                                    )}
-                                    {movie.rating && parseFloat(movie.rating) > 0 && (
-                                        <div className="movie-rating">⭐ {movie.rating}</div>
-                                    )}
-                                </div>
-                                <div className="movie-title">{movie?.name || 'Filme Sem Nome'}</div>
-                            </div>
-                        ))}
-                    </div>
+                    <Grid
+                        className="movies-grid-viewport"
+                        gridRef={gridRef}
+                        cellComponent={MovieGridCell}
+                        cellProps={movieCellProps}
+                        columnCount={columns}
+                        columnWidth={columnWidth}
+                        rowCount={movieRowCount}
+                        rowHeight={movieCardHeight}
+                        overscanCount={1}
+                        style={{ height: '100%', width: '100%' }}
+                    />
                 )}
             </div>
 
@@ -857,7 +838,7 @@ export function Movies() {
                         <div className="context-title">{contextItem.name}</div>
                         {contextActions.map((action, index) => (
                             <div
-                                key={action.label}
+                                key={index}
                                 className={`context-item ${contextIndex === index ? 'tv-focused' : ''}`}
                                 onClick={() => {
                                     action.run();
@@ -877,7 +858,7 @@ export function Movies() {
                 <span>↑↓←→ Navegar</span>
                 <span>OK Selecionar</span>
                 <span>← Voltar</span>
-                <span>🟡 Ações</span>
+                <RemoteColorHint color="yellow" label="Ações" />
                 <span>CH± Página</span>
             </div>
         </div>

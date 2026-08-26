@@ -6,13 +6,14 @@ export const en = {
     language_es: "Español",
 
     // Welcome
-    welcome_title: "Welcome to NeoStream",
-    welcome_subtitle: "IPTV Player",
+    welcome_title: `Welcome to ${__BRAND_NAME__}`,
+    welcome_subtitle: __BRAND_TAGLINE__,
     welcome_no_playlist: "No playlist configured",
-    welcome_add_instruction: "Add a playlist from your IPTV provider to start watching",
+    welcome_add_instruction: "Add a playlist from your Stream Provider to start watching",
     welcome_login_button: "Add Playlist",
-    welcome_login_desc: "Connect your IPTV account",
-    welcome_disclaimer: "NeoStream does not provide any content. Use your own IPTV subscription.",
+    welcome_login_desc: "Connect your Stream Provider account",
+    welcome_disclaimer: `${__BRAND_NAME__} does not provide any content. Use your own Stream Provider subscription.`,
+    welcome_legal_notice: "This app is a player only. We do not host, provide, or endorse any content. You are solely responsible for ensuring your subscription with your Stream Provider is lawful in your jurisdiction.",
     welcome_hint: "Press OK to continue",
 
     // Login
@@ -46,4 +47,13 @@ export const en = {
     sidebar_settings: "Settings",
     sidebar_profile: "Profile",
     sidebar_logout: "Logout",
+
+    // New content (diff on playlist reload)
+    new_content_title: "New content available",
+    new_content_channels_label: "Channels",
+    new_content_movies_label: "Movies",
+    new_content_series_label: "Series",
+    new_content_more: "more",
+    new_content_hint: "↑↓ Navigate · OK/← Close",
+    settings_notify_new_content: "Notify new content",
 };

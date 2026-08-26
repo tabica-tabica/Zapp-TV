@@ -71,3 +71,37 @@ jobs:
           name: tizen-assets
           path: tizen/assets
           retention-days: 7
+
+  webos:
+    name: Compatibilidade webOS e orçamento
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Mesmo script do Tizen: o piso do webOS (Chromium ~68) já é coberto
+      # pelo alvo Chromium 69 do check — forkar um script quase-duplicado
+      # pra 1 versão de diferença não compensa.
+      - name: CSS contra Chromium 69
+        run: node scripts/check-tizen-css.mjs
+
+      # Mesma checagem dupla do Tizen: webos/index.html aponta pra assets que
+      # existem, e os polyfills que o lint silencia estão MESMO no bundle.
+      - name: Build webOS
+        run: npm run build:webos
+
+      - name: Orçamento de bundle
+        run: node scripts/check-bundle-budget.mjs dist-webos/assets
+
+      - name: Guardar o bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: webos-assets
+          path: webos/assets
+          retention-days: 7

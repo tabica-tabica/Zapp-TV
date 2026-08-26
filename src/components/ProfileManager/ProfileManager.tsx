@@ -1,5 +1,6 @@
 ﻿// ProfileManager Component - TV Optimized
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { FaUndo, FaTrashAlt } from 'react-icons/fa';
 import { profileService } from '../../services/profileService';
 import type { Profile } from '../../types/profile';
 import { useTVNavigation } from '../../hooks/useTVNavigation';
@@ -575,7 +576,7 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
                                     setFormPin('');
                                 }}
                             >
-                                {removePin ? '↩ Manter PIN' : '🗑 Remover PIN'}
+                                {removePin ? <><FaUndo /> Manter PIN</> : <><FaTrashAlt /> Remover PIN</>}
                             </button>
                         )}
                     </div>

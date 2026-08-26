@@ -1,4 +1,4 @@
-// Profile Service for NeoStream TV
+// Profile Service for Zapp TV
 import type { Profile, ProfilesData, CreateProfileData, UpdateProfileData } from '../types/profile';
 import { purgeProfileData } from './profileScope';
 
@@ -98,7 +98,7 @@ export const profileService = {
         const newProfile: Profile = {
             id: generateId(),
             name: profileData.name.trim(),
-            avatar: profileData.avatar || '👤',
+            avatar: profileData.avatar || 'P',
             pin: profileData.pin ? await hashPin(profileData.pin) : undefined,
             isKids: profileData.isKids || false,
             createdAt: now,
@@ -204,7 +204,7 @@ export const profileService = {
             const defaultProfile: Profile = {
                 id: 'default',
                 name: 'Principal',
-                avatar: '👤',
+                avatar: 'P',
                 createdAt: now,
                 lastUsed: now
             };
@@ -213,7 +213,7 @@ export const profileService = {
             const kidsProfile: Profile = {
                 id: 'kids-default',
                 name: 'Kids',
-                avatar: '👶',
+                avatar: 'K',
                 isKids: true,
                 createdAt: now,
                 lastUsed: now

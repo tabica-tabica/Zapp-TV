@@ -15,7 +15,10 @@
 //    de canal mantendo o horário. É o que o usuário de TV já espera.
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { FaThLarge, FaBroadcastTower, FaBell } from 'react-icons/fa';
 import { epgService, type EpgProgram } from '../services/epgService';
+import { channelDisplayName } from '../services/channelVariants';
+import { RemoteColorHint } from './RemoteColorHint';
 import {
     programasNaJanela, faixaDoPrograma, noAr, alinharJanela, indiceNoInstante,
     instanteNaJanela, moverJanela as moverJanelaPura,
@@ -215,7 +218,7 @@ export function EpgGrid({
         // Futuro: lembrete
         const ativo = onToggleReminder(canalAtual, focado);
         setLembreteTick(t => t + 1);
-        setAviso(ativo ? '⏰ Lembrete criado.' : 'Lembrete removido.');
+        setAviso(ativo ? 'Lembrete criado.' : 'Lembrete removido.');
     };
 
     useTVNavigation({
@@ -251,7 +254,7 @@ export function EpgGrid({
         <div className="epgrid-overlay">
             <div className="epgrid-panel">
                 <div className="epgrid-header">
-                    <h2 className="epgrid-title">📊 Guia de programação</h2>
+                    <h2 className="epgrid-title"><FaThLarge /> Guia de programação</h2>
                     <span className="epgrid-day">{rotuloDia}</span>
                 </div>
 
@@ -290,8 +293,8 @@ export function EpgGrid({
                                 <div className="epgrid-channel">
                                     {canal.stream_icon
                                         ? <img className="epgrid-logo" src={canal.stream_icon} alt="" loading="lazy" />
-                                        : <span className="epgrid-logo epgrid-logo-empty">📺</span>}
-                                    <span className="epgrid-channel-name">{canal.name}</span>
+                                        : <span className="epgrid-logo epgrid-logo-empty"><FaBroadcastTower /></span>}
+                                    <span className="epgrid-channel-name">{channelDisplayName(canal.name)}</span>
                                 </div>
 
                                 <div className="epgrid-track">
@@ -321,7 +324,7 @@ export function EpgGrid({
                                             >
                                                 <span className="epgrid-prog-time">{relogio(programa.start)}</span>
                                                 <span className="epgrid-prog-title">
-                                                    {comLembrete ? '⏰ ' : ''}{programa.title}
+                                                    {comLembrete && <FaBell className="epgrid-reminder-icon" />}{programa.title}
                                                 </span>
                                             </div>
                                         );
@@ -348,7 +351,7 @@ export function EpgGrid({
                         </>
                     ) : (
                         <span className="epgrid-detail-title">
-                            {canalAtual ? canalAtual.name : 'Nenhum canal'}
+                            {canalAtual ? channelDisplayName(canalAtual.name) : 'Nenhum canal'}
                         </span>
                     )}
                     {aviso && <span className="epgrid-aviso">{aviso}</span>}
@@ -356,10 +359,10 @@ export function EpgGrid({
 
                 <div className="epgrid-hints">
                     <span>OK: no ar assiste · passado abre o arquivo · futuro cria lembrete</span>
-                    <span className="hint-red">🔴 −1h</span>
-                    <span className="hint-green">🟢 +1h</span>
-                    <span className="hint-yellow">🟡 Agora</span>
-                    <span className="hint-blue">🔵 Assistir</span>
+                    <RemoteColorHint color="red" label="−1h" />
+                    <RemoteColorHint color="green" label="+1h" />
+                    <RemoteColorHint color="yellow" label="Agora" />
+                    <RemoteColorHint color="blue" label="Assistir" />
                     <span>Voltar fecha</span>
                 </div>
             </div>

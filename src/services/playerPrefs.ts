@@ -6,6 +6,7 @@ const QUALITY_BY_KEY = 'neostream_quality_by_content';
 const QUALITY_CAP = 'neostream_quality_cap';
 const SUBTITLE_SIZE = 'neostream_subtitle_size';
 const SHOW_STATS = 'neostream_player_stats';
+const VOLUME = 'neostream_player_volume';
 const MAX_QUALITY_ENTRIES = 120;
 
 function readJson<T>(key: string, fallback: T): T {
@@ -119,5 +120,19 @@ export const statsOverlay = {
         } catch {
             // sem drama
         }
+    },
+};
+
+// ---- Volume do elemento <video> ----
+// Independente do volume de hardware da TV (a web app não recebe isso) —
+// controla só o elemento <video>, e persiste entre canais/sessões como um
+// controle remoto de verdade faria.
+
+export const playerVolume = {
+    get(): { volume: number; muted: boolean } {
+        return readJson(VOLUME, { volume: 1, muted: false });
+    },
+    set(volume: number, muted: boolean): void {
+        writeJson(VOLUME, { volume, muted });
     },
 };

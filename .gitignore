@@ -6,6 +6,8 @@ node_modules/
 # Build outputs
 dist/
 dist-tizen/
+dist-webos/
+dist-tauri/
 dist-ssr/
 build/
 build-tizen/
@@ -33,6 +35,12 @@ lerna-debug.log*
 # OS files
 .DS_Store
 Thumbs.db
+
+# Listas IPTV do usuário — nunca commitar (as credenciais do provedor vão
+# embutidas na URL de cada entrada)
+*.m3u
+*.m3u8
+.agents/
 
 # Environment
 .env
@@ -72,6 +80,12 @@ webos-package/
 *.bak
 *.tmp
 *.temp
+
+# Ícone-base gerado por scripts/generate-icons.mjs a partir de
+# brand/logo-source.svg + brand.config.mjs — derivado, refaz sozinho com
+# `npm run brand:icons`. O .svg fonte continua versionado normalmente.
+brand/icon-source.png
+brand/*.tmp.svg
 
 # Claude Code (local agent config / memory)
 CLAUDE.md
