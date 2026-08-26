@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Zapp TV",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "identifier": "tv.neostream.app",
   "build": {
     "frontendDist": "../dist-tauri",
@@ -29,7 +29,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis", "msi", "deb", "appimage"],
+    "targets": ["nsis", "msi", "deb", "appimage", "dmg"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
