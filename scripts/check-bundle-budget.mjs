@@ -33,13 +33,17 @@ const alvo = join(root, process.argv[2] || join('dist-tizen', 'assets'));
 // fonte Inter (via <link> injetado em runtime, não entra no JS/CSS medido
 // aqui). Medido depois da varredura: index.js 1074 KB, polyfills.js 119 KB,
 // style.css 150 KB — teto de novo com ~5% de folga sobre isso.
+//
+// CSS subido em 10/10/2026: prévia de canal ao vivo na Home/zap do player,
+// fallbacks de gap/aspect-ratio delas, e o webOS com alvo Chromium 53 (mais
+// prefixos -webkit-). Medido: style.css 161 KB (Tizen) / 165 KB (webOS).
 const ORCAMENTO = {
     /** Soma de todo JS. */
     jsTotal: 1250,
     /** O maior arquivo isolado — é ele que trava a thread principal no parse. */
     maiorJs: 1130,
     /** Todo o CSS. */
-    cssTotal: 160,
+    cssTotal: 175,
 };
 
 if (!existsSync(alvo)) {

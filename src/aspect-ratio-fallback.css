@@ -59,4 +59,15 @@
     .preview-video {
         height: 168.75px;
     }
+
+    /* --- Prévias 16/9 de canal ao vivo (larguras fixas) ---
+       .zap-peek tem 280px sem padding → 158px; a prévia da Home tem 220px → 124px. */
+    .zap-peek-placeholder,
+    .zap-peek .live-channel-preview-video {
+        height: 158px;
+    }
+
+    .home-channel-preview-video {
+        height: 124px;
+    }
 }

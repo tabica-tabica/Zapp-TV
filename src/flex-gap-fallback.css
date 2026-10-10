@@ -452,3 +452,69 @@ html.no-flex-gap .pm-profile-card > .pm-actions {
 html.no-flex-gap .mylist-page .empty-suggestions > * + * {
     margin-left: 0;
 }
+
+/* ---- components/HiddenGroupsOverlay.css ---- */
+
+html.no-flex-gap .hg-search > * + * {
+    margin-left: 10px;
+}
+
+html.no-flex-gap .hg-row > * + * {
+    margin-left: 14px;
+}
+
+html.no-flex-gap .hg-hints > * + * {
+    margin-left: 20px;
+}
+
+/* ---- components/NewContentDialog.css ---- */
+
+html.no-flex-gap .new-content-section-title > * + * {
+    margin-left: 8px;
+}
+
+/* ---- components/VideoPlayer/VideoPlayer.css (zap) ---- */
+
+html.no-flex-gap .zap-preview-stage > * + * {
+    margin-top: 18px;
+}
+
+html.no-flex-gap .zap-preview-name > * + * {
+    margin-left: 14px;
+}
+
+/* ---- pages/HomeChannelPreview.css ---- */
+
+html.no-flex-gap .home-channel-preview-row > * + * {
+    margin-left: 16px;
+}
+
+html.no-flex-gap .home-channel-preview > * + * {
+    margin-left: 20px;
+}
+
+html.no-flex-gap .home-channel-preview-live-badge > * + * {
+    margin-left: 5px;
+}
+
+html.no-flex-gap .home-channel-preview-info > * + * {
+    margin-top: 6px;
+}
+
+html.no-flex-gap .home-channel-preview-play > * + * {
+    margin-left: 6px;
+}
+
+html.no-flex-gap .home-channel-cover-row > * + * {
+    margin-left: 12px;
+}
+
+html.no-flex-gap .home-channel-cover > * + * {
+    margin-top: 8px;
+}
+
+/* ---- pages/Welcome.css ---- */
+
+html.no-flex-gap .welcome-legal-notice > * + * {
+    margin-left: 12px;
+}
