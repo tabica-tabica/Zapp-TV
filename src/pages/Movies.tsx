@@ -853,8 +853,36 @@ export function Movies() {
                 />
             )}
 
+            {/* Filme adulto com a lista secreta ativa: player secreto (momentos,
+                miniaturas, abre no 1º momento, sem progresso/uso) — tocado da
+                grade ou da ficha, não só da 🔒 */}
+            {showPlayer && playingMovie && listaSecretaAtiva && ehFilmeAdulto(playingMovie) && (() => {
+                const id = String(playingMovie.stream_id);
+                const salvos = secretList.list();
+                const indice = salvos.findIndex(item => item.id === id);
+                const itens = indice >= 0 ? salvos : [{
+                    id,
+                    title: playingMovie.name,
+                    poster: playingMovie.stream_icon || playingMovie.cover,
+                    container: playingMovie.container_extension,
+                    addedAt: 0,
+                    moments: [],
+                }];
+                return (
+                    <SecretPlayer
+                        key={id}
+                        itens={itens}
+                        indiceInicial={Math.max(0, indice)}
+                        onClose={() => {
+                            setShowPlayer(false);
+                            setPlayingMovie(null);
+                        }}
+                    />
+                );
+            })()}
+
             {/* Video Player (com retomada e progresso salvo) */}
-            {showPlayer && playingMovie && (
+            {showPlayer && playingMovie && !(listaSecretaAtiva && ehFilmeAdulto(playingMovie)) && (
                 <MoviePlayer
                     movieId={String(playingMovie.stream_id)}
                     title={playingMovie.name}

@@ -75,6 +75,11 @@ export function SecretPlayer({ itens, indiceInicial, momentoInicial, onClose }: 
 
     const marcar = useCallback((t: number, thumb?: string) => {
         if (!item) return;
+        // Aberto pela grade de Filmes com um filme que ainda não está na lista:
+        // o primeiro 📌 já o guarda — momento só existe pra filme da lista
+        if (!secretList.has(item.id)) {
+            secretList.toggle({ id: item.id, title: item.title, poster: item.poster, container: item.container });
+        }
         const nova = secretList.addMoment(item.id, t, thumb);
         setMomentos(atual => ({ ...atual, [item.id]: nova }));
     }, [item]);

@@ -19,6 +19,9 @@ Maintained by **Tabica**. Originally created by Rakjsu.
   shown in the "Momento salvo" toast and on the list chips. Works where the movie's final URL can
   be resolved (dev, desktop); otherwise the moment is saved without the image.
 - Player: clickable ◀ / ▶ buttons for previous/next moment (mouse users), beside 📌.
+- Adult movies played from the Movies grid or detail screen (secret list on) use the secret player
+  too: moments, snapshots, start at the first moment, no progress/usage. The first 📌 adds the
+  movie to the secret list.
 
 ### Changed
 
