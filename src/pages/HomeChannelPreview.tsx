@@ -20,6 +20,7 @@ import { LiveChannelPreview } from '../components/LiveChannelPreview';
 import { api } from '../services/api';
 import { epgService } from '../services/epgService';
 import { channelDisplayName } from '../services/channelVariants';
+import { useTranslation } from '../hooks/useTranslation';
 import type { LiveStream } from '../types';
 import './HomeChannelPreview.css';
 
@@ -39,6 +40,7 @@ export function HomeChannelPreview({ channel, focused, onWatch }: HomeChannelPre
     const [nowTitle, setNowTitle] = useState<string | null>(null);
     const [nowTime, setNowTime] = useState<string | null>(null);
     const [imgBroken, setImgBroken] = useState(false);
+    const { t } = useTranslation();
 
     // Sem reset manual de estado aqui: o chamador (Home.tsx) usa
     // `key={channel.stream_id}` — trocar de canal REMONTA o componente
@@ -85,17 +87,17 @@ export function HomeChannelPreview({ channel, focused, onWatch }: HomeChannelPre
                 )}
                 <div className="home-channel-preview-live-badge">
                     <span className="live-dot" />
-                    <span>AO VIVO</span>
+                    <span>{t('home_live_badge')}</span>
                 </div>
             </div>
             <div className="home-channel-preview-info">
                 <span className="home-channel-preview-name">{channelDisplayName(channel.name)}</span>
                 {nowTitle && (
                     <span className="home-channel-preview-epg">
-                        AGORA: {nowTitle}{nowTime ? ` · ${nowTime}` : ''}
+                        {t('home_live_now')}: {nowTitle}{nowTime ? ` · ${nowTime}` : ''}
                     </span>
                 )}
-                <span className="home-channel-preview-play"><FaPlay /> Assistir</span>
+                <span className="home-channel-preview-play"><FaPlay /> {t('home_watch')}</span>
             </div>
         </button>
     );
