@@ -522,7 +522,10 @@ export function LiveTV() {
 
     // Botões da toolbar na ordem do JSX — vira a extensão da zona do header
     // (sem isso, ⭐ Agora e ⚽ Jogos só abriam por mouse)
-    const toolbarItems: Array<'onlyepg' | 'guide' | 'random' | 'hidden' | 'favpanel' | 'sports'> = [
+    const favFilterOn = selectedCategory === 'FAVORITES';
+    const toolbarItems: Array<'favfilter' | 'onlyepg' | 'guide' | 'random' | 'hidden' | 'favpanel' | 'sports'> = [
+        // Filtro ★ precisa existir enquanto ligado, mesmo sem favoritos: é ele que desliga
+        ...(favoriteChannels.length > 0 || favFilterOn ? (['favfilter'] as const) : []),
         'onlyepg',
         'guide',
         'random',
@@ -533,6 +536,11 @@ export function LiveTV() {
         ...(favoriteChannels.length > 0 ? (['favpanel'] as const) : []),
         ...(sportsChannels.length > 0 ? (['sports'] as const) : []),
     ];
+    // Botão ★ da toolbar: alterna a grade entre favoritos e todos os canais
+    const toggleFavFilter = () => {
+        if (favFilterOn) setSelectedCategory('all');
+        else guardCategorySelect('FAVORITES', () => setSelectedCategory('FAVORITES'));
+    };
     const HEADER_BASE = 2; // 0 = busca, 1 = menu de categorias
     const toolbarFocusIndex = (item: string) => HEADER_BASE + toolbarItems.indexOf(item as typeof toolbarItems[number]);
 
@@ -844,7 +852,8 @@ export function LiveTV() {
                 categoryMenuRef.current?.open();
             } else {
                 const item = toolbarItems[focusedCategoryIndex - HEADER_BASE];
-                if (item === 'onlyepg') toggleOnlyEpg();
+                if (item === 'favfilter') toggleFavFilter();
+                else if (item === 'onlyepg') toggleOnlyEpg();
                 else if (item === 'guide') setShowGuide(true);
                 else if (item === 'random') randomZap();
                 else if (item === 'hidden') setShowOnlyHidden(prev => !prev);
@@ -1025,6 +1034,15 @@ export function LiveTV() {
 
             {/* Toolbar de filtros */}
             <div className="livetv-toolbar">
+                {(favoriteChannels.length > 0 || favFilterOn) && (
+                    <button
+                        className={`toolbar-btn ${favFilterOn ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('favfilter') ? 'tv-focused' : ''}`}
+                        onClick={toggleFavFilter}
+                        title={favFilterOn ? 'Mostrar todos os canais' : 'Mostrar só os favoritos'}
+                    >
+                        <FaStar /> Favoritos
+                    </button>
+                )}
                 <button
                     className={`toolbar-btn ${onlyWithEpg ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('onlyepg') ? 'tv-focused' : ''}`}
                     onClick={toggleOnlyEpg}

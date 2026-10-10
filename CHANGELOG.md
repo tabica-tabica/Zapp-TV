@@ -6,6 +6,11 @@ Maintained by **Tabica**. Originally created by Rakjsu.
 
 ## Unreleased
 
+### Added
+
+- Live TV toolbar: a ★ Favoritos toggle (mouse or D-pad) that filters the grid to favorite
+  channels and back to all. Shown when there are favorites, and while active.
+
 ### Changed
 
 - Home never shows adult content, even with the parental lock off: adult categories and
