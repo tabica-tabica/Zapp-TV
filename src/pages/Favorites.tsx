@@ -9,6 +9,7 @@ import { api } from '../services/api';
 import { useTVNavigation } from '../hooks/useTVNavigation';
 import { useVirtualGridNavigation } from '../hooks/useVirtualGridNavigation';
 import { useMeasuredColumns } from '../hooks/useMeasuredColumns';
+import { useVariantFailover } from '../hooks/useVariantFailover';
 import { useFocusZone } from '../contexts/FocusContext';
 import { kidsFilter } from '../services/kidsFilter';
 import { ContentDetailModal } from '../components/ContentDetailModal';
@@ -113,6 +114,11 @@ export function Favorites({ onNavigate }: FavoritesProps) {
     // Slots da faixa do cabeçalho: as abas + "Limpar Tudo" (que só existe
     // quando há algo pra limpar — slot invisível vira parada morta do D-pad)
     const headerSlots = tabs.length + (items.length > 0 ? 1 : 0);
+
+    const channelFailover = useVariantFailover(
+        playingChannel && { stream_id: playingChannel.id, name: playingChannel.title },
+        next => setPlayingChannel(prev => prev && { ...prev, id: String(next.stream_id), title: next.name }),
+    );
 
     // Abrir item: canal toca direto; filme/série abrem a ficha
     const openItem = useCallback((item: FavoriteItem) => {
@@ -426,6 +432,7 @@ export function Favorites({ onNavigate }: FavoritesProps) {
                     isLive
                     autoPlay
                     contentType="live"
+                    {...channelFailover}
                     onClose={() => setPlayingChannel(null)}
                 />
             )}

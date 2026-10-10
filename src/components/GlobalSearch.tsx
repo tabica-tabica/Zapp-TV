@@ -8,6 +8,7 @@ import { FaSearch, FaTimes, FaBroadcastTower, FaFilm, FaTv } from 'react-icons/f
 import { loadSearchCatalog, searchIn, type SearchCatalogData } from '../services/searchCatalog';
 import { useTVNavigation } from '../hooks/useTVNavigation';
 import { useWatchSession } from '../hooks/useWatchSession';
+import { useVariantFailover } from '../hooks/useVariantFailover';
 import { api } from '../services/api';
 import { zapHistory } from '../services/liveExtras';
 import { storage } from '../services/storage';
@@ -48,6 +49,7 @@ export function GlobalSearch({ onClose }: GlobalSearchProps) {
     const [seriesQueue, setSeriesQueue] = useState<EpisodeQueue | null>(null);
 
     useWatchSession('live', playingChannel?.name || '');
+    const channelFailover = useVariantFailover(playingChannel, setPlayingChannel);
 
     // Carrega (ou reaproveita) o catálogo unificado
     useEffect(() => {
@@ -222,6 +224,7 @@ export function GlobalSearch({ onClose }: GlobalSearchProps) {
                     autoPlay
                     contentType="live"
                     contentKey={`live-${playingChannel.stream_id}`}
+                    {...channelFailover}
                     onClose={() => setPlayingChannel(null)}
                 />
             )}

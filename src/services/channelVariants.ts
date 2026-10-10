@@ -12,6 +12,7 @@ export interface VariantChannel {
 }
 
 const QUALITY_ORDER = ['4k', 'uhd', 'fhd', 'hd', 'sd'];
+const HD_RANK = QUALITY_ORDER.indexOf('hd');
 
 // Regexes pré-compiladas: com 10k canais isso roda dezenas de milhares de
 // vezes por filtro — compilar dentro da função travava TVs antigas.
@@ -192,20 +193,33 @@ export function groupChannelVariants<T extends VariantChannel>(channels: T[]): {
                 subtitled: isSubtitledVariant(channel.name) ? 1 : 0,
                 rank: qualityRank(channel.name),
             }))
+            // HD é o padrão (toca e dá o logo): leve pra TV/rede fraca e o logo
+            // costuma ser o original. As demais seguem por qualidade — é
+            // também a ordem do failover (LiveTV.handleStreamFailed).
+            .map(entry => (entry.rank === HD_RANK ? { ...entry, rank: -1 } : entry))
             .sort((a, b) => a.subtitled - b.subtitled || a.rank - b.rank)
             .map(entry => entry.channel);
-        // A melhor qualidade continua tocando por padrão e dá o stream_id do
-        // grupo — mas o logo dela às vezes vem quebrado/placeholder (comum em
-        // variantes FHD/H265 de provedor real). A variante de PIOR qualidade
-        // do grupo (SD explícita, ou só a entrada sem tag nenhuma — caso comum
-        // quando só a variante nova ganhou o sufixo FHD/H265) costuma ter o
-        // logo/metadado original e confiável, então só ele empresta o ícone.
+        // Sem HD no grupo, toca a melhor qualidade — mas o logo dela às vezes
+        // vem quebrado/placeholder (comum em variantes FHD/H265 de provedor
+        // real). A variante de PIOR qualidade (SD explícita, ou a entrada sem
+        // tag) costuma ter o logo original e confiável, então ela empresta o
+        // ícone. Com HD (ou HD sem logo), o próprio HD / essa mesma regra.
         const worstQualityVariant = sorted[sorted.length - 1];
-        const representative = worstQualityVariant !== sorted[0]
+        const keepOwnIcon = qualityRank(sorted[0].name) === HD_RANK && !!sorted[0].stream_icon;
+        const representative = worstQualityVariant !== sorted[0] && !keepOwnIcon
             ? { ...sorted[0], stream_icon: worstQualityVariant.stream_icon }
             : sorted[0];
         groups.push(representative);
         variantsOf.set(String(representative.stream_id), sorted);
     }
     return { groups, variantsOf };
+}
+
+/** Todas as variantes do canal `name` dentro de `channels`, na ordem de
+ *  failover (HD primeiro — mesma ordem de groupChannelVariants). */
+export function variantGroup<T extends VariantChannel>(channels: T[], name: string): T[] {
+    const base = variantBaseName(name);
+    const same = channels.filter(c => variantBaseName(c.name) === base);
+    const { variantsOf } = groupChannelVariants(same);
+    return variantsOf.values().next().value ?? same;
 }
