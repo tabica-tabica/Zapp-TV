@@ -9,11 +9,13 @@ export default defineConfig({
   plugins: [
     react(),
     legacy({
-      // Piso: webOS 5.x (Chromium ~68-79) — mesmo raciocinio do Tizen, mirar
-      // no dispositivo mais velho suportado nesta faixa, nao no mais novo.
-      // O piso literal do spec (webOS 3.x, Chromium ~38) foi descartado por
-      // decisao explicita: risco real de incompatibilidade com React 19.
-      targets: ['chrome >= 68'],
+      // Piso: webOS 4.x (Chromium 53, TVs LG 2018) — testado num aparelho
+      // real. APIs de DOM sem polyfill do core-js (AbortController,
+      // ResizeObserver) ficam em src/legacyPolyfills.ts / fallback no hook.
+      targets: ['chrome >= 53'],
+      // Sem isto o plugin troca build.target pelo default moderno (chrome64)
+      // e a sintaxe (spread, async) chega crua no Chromium 53.
+      modernTargets: ['chrome >= 53'],
       // UM bundle so, mesmo motivo do Tizen: sem renderLegacyChunks o pacote
       // levaria DUAS copias do app inteiro (moderna + legacy).
       renderLegacyChunks: false,
@@ -25,7 +27,7 @@ export default defineConfig({
   ],
   base: './',
   build: {
-    target: 'chrome68',
+    target: 'chrome53',
     outDir: 'dist-webos',
     minify: 'terser',
     cssCodeSplit: false,
