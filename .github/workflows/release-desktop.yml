@@ -52,6 +52,6 @@ jobs:
           tagName: v__VERSION__
           releaseName: 'Zapp TV v__VERSION__'
           releaseBody: 'Instalador de desktop (Windows/macOS/Linux). Requer suas próprias credenciais Xtream Codes — este app não inclui, hospeda nem distribui nenhum canal, filme ou lista.'
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
