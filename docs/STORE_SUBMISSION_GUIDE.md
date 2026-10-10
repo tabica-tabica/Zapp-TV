@@ -102,7 +102,7 @@ reabrir conta nem certificado.
    `.agents/smart-tv.md` §4.2); ativar 2FA depois de a conta estar
    funcionando normalmente, se quiser.
 2. Reservar o App ID de verdade assim que possível — o repo hoje usa
-   `com.rakjsu.neostreamtv` como **placeholder** em `webos/appinfo.json`
+   `com.tabica.zapptv` como **placeholder** em `webos/appinfo.json`
    (confirmado no README). Depois de reservar o id real na Seller Lounge,
    atualizar esse campo (é o único lugar que precisa mudar — `vendor`/
    `title` podem ficar).

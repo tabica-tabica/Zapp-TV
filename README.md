@@ -2,7 +2,7 @@
 
 IPTV player for Samsung Tizen and LG webOS Smart TVs.
 
-Created by **Rakjsu**.
+Maintained by **Tabica**. Originally created by Rakjsu.
 
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript)
@@ -94,8 +94,8 @@ Use at your own risk. The creator and contributors are not responsible for how t
 ## Quick Start
 
 ```bash
-git clone https://github.com/Rakjsu/NeoStream-TV.git
-cd NeoStream-TV
+git clone https://github.com/tabica-tabica/Zapp-TV.git
+cd Zapp-TV
 npm install
 npm run dev
 ```
@@ -207,21 +207,21 @@ are registered through `tizen.tvinputdevice.registerKey` at startup. Both are al
 The current Tizen package identity is:
 
 ```text
-Application ID: RakjsuNeo1.NeoStreamTV
-Package ID: RakjsuNeo1
-Widget ID: http://rakjsu.neostream.tv
+Application ID: TabicaZapp.ZappTV
+Package ID: TabicaZapp
+Widget ID: http://tabica.zapp.tv
 Visible name: ZappTV
 ```
 
 After `npm run build:tizen`, package the app with Tizen Studio CLI and install it on a connected Samsung TV:
 
 ```powershell
-& 'C:\tizen-studio\tools\ide\bin\tizen.bat' package -t wgt -s NeoStreamTV -o .\build-tizen -- .\tizen
-& 'C:\tizen-studio\tools\ide\bin\tizen.bat' install -n 'NeoStreamTV.wgt' -s '<TV_IP>:26101' -- '<project>\build-tizen'
-& 'C:\tizen-studio\tools\ide\bin\tizen.bat' run -p RakjsuNeo1.NeoStreamTV -s '<TV_IP>:26101'
+& 'C:\tizen-studio\tools\ide\bin\tizen.bat' package -t wgt -s ZappTV -o .\build-tizen -- .\tizen
+& 'C:\tizen-studio\tools\ide\bin\tizen.bat' install -n 'ZappTV.wgt' -s '<TV_IP>:26101' -- '<project>\build-tizen'
+& 'C:\tizen-studio\tools\ide\bin\tizen.bat' run -p TabicaZapp.ZappTV -s '<TV_IP>:26101'
 ```
 
-If the Tizen CLI has trouble transferring `NeoStreamTV.wgt`, copy the same package to a temporary name such as `NeoFinal.wgt` and install that file. The app identity inside the package remains `RakjsuNeo1.NeoStreamTV`.
+If the Tizen CLI has trouble transferring `ZappTV.wgt`, copy the same package to a temporary name such as `ZappFinal.wgt` and install that file. The app identity inside the package remains `TabicaZapp.ZappTV`.
 
 ## LG webOS
 
@@ -230,8 +230,8 @@ The webOS build targets webOS 4.x and newer (Chromium 53+, with `src/legacyPolyf
 currently a **placeholder**, not a value reserved with LG:
 
 ```text
-App ID: com.rakjsu.neostreamtv   (placeholder — confirm against the id reserved in LG Seller Lounge)
-Vendor: Rakjsu
+App ID: com.tabica.zapptv   (placeholder — confirm against the id reserved in LG Seller Lounge)
+Vendor: Tabica
 Visible name: Zapp TV
 ```
 
@@ -243,7 +243,7 @@ a connected LG TV:
 ares-package webos
 # ares-package names the .ipk after the app id and version — install that generated file
 ares-install -d <device-name> <generated>.ipk
-ares-launch -d <device-name> com.rakjsu.neostreamtv
+ares-launch -d <device-name> com.tabica.zapptv
 ```
 
 Use `ares-inspect` for remote Chrome DevTools on the actual TV — the emulator does not reproduce the

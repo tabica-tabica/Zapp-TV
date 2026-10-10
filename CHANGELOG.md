@@ -2,7 +2,15 @@
 
 All notable project changes should be documented in this file.
 
-Created by **Rakjsu**.
+Maintained by **Tabica**. Originally created by Rakjsu.
+
+## Unreleased
+
+### Changed
+
+- Package identity moved to Tabica: webOS `com.tabica.zapptv` (vendor Tabica), Tizen
+  `TabicaZapp.ZappTV` (widget `http://tabica.zapp.tv`). Installs under the old ids are separate
+  apps on the TV.
 
 ## 1.1.0 - 2026-10-10
 

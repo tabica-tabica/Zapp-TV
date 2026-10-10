@@ -1,7 +1,7 @@
 {
-  "id": "com.rakjsu.neostreamtv",
+  "id": "com.tabica.zapptv",
   "version": "1.1.0",
-  "vendor": "Rakjsu",
+  "vendor": "Tabica",
   "type": "web",
   "main": "index.html",
   "title": "Zapp TV",

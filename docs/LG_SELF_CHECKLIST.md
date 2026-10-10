@@ -42,7 +42,7 @@ resultado de um teste real em TV, não de uma suposição sobre o código.
 ## Metadados da submissão
 
 - [ ] `webos/appinfo.json`: `id` confirmado contra o reservado na Seller Lounge
-  (o valor atual, `com.rakjsu.neostreamtv`, é um placeholder)
+  (o valor atual, `com.tabica.zapptv`, é um placeholder)
 - [ ] Ícones (`icon.png` 80×80, `largeIcon.png` 130×130) presentes e corretos
 - [ ] Screenshots 1280×720 preparados
 - [ ] `docs/LG_UX_SCENARIO.md` preenchido com resultado real
