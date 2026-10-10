@@ -182,6 +182,10 @@
 }
 
 .card-image {
+    /* Âncora da barra de progresso do "Continuar assistindo" (absolute):
+       sem isto ela ia pro container da página e virava uma linha atravessando
+       a tela */
+    position: relative;
     width: 100%;
     height: 100px;
     overflow: hidden;

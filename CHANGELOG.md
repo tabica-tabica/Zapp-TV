@@ -4,6 +4,13 @@ All notable project changes should be documented in this file.
 
 Maintained by **Tabica**. Originally created by Rakjsu.
 
+## Unreleased
+
+### Fixed
+
+- Home: with something in "Continuar Assistindo", its progress bar was drawn as a line across the
+  whole screen — the poster box wasn't positioned, so the bar anchored to the page.
+
 ## 1.1.3 - 2026-10-10
 
 ### Fixed
