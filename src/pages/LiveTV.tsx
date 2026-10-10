@@ -8,7 +8,7 @@ import { useState, useEffect, useRef, useMemo, useCallback, type ReactNode } fro
 import {
     FaExclamationTriangle, FaStar, FaRegStar, FaEye, FaEyeSlash, FaBell, FaBellSlash,
     FaBroadcastTower, FaCalendarAlt, FaThLarge, FaRandom, FaFutbol, FaPlay, FaHistory,
-    FaClipboardList, FaTimes,
+    FaClipboardList, FaTimes, FaVolumeUp, FaVolumeMute,
 } from 'react-icons/fa';
 import { Grid, type CellComponentProps } from 'react-window';
 import { RemoteColorHint } from '../components/RemoteColorHint';
@@ -44,6 +44,7 @@ import { reminderService } from '../services/reminderService';
 import { favoriteOrder, isRadioChannel, isSportsCategory, type SportsEvent } from '../services/liveDiscovery';
 import { AnimatedSearchBar, type AnimatedSearchBarHandle } from '../components/AnimatedSearchBar';
 import { VideoPlayer, type PlayerChannel } from '../components/VideoPlayer';
+import { readRaw, writeRaw } from '../services/safeStorage';
 import { LiveChannelPreview } from '../components/LiveChannelPreview';
 import { ChannelCard } from './ChannelCard';
 import './LiveTV.css';
@@ -98,6 +99,8 @@ function ChannelGridCell({
     );
 }
 
+const PREVIEW_MUTED_KEY = 'neostream_preview_muted';
+
 export function LiveTV() {
     const { focusZone, setFocusZone } = useFocusZone();
     const [loading, setLoading] = useState(true);
@@ -143,6 +146,18 @@ export function LiveTV() {
     // HLS a cada canal que o usuário só passou o olho antes de trocar de novo.
     const [previewSrc, setPreviewSrc] = useState<string | null>(null);
     const [previewFailed, setPreviewFailed] = useState(false);
+    // Prévia com som; o mudo é lembrado entre aberturas
+    const [previewMuted, setPreviewMuted] = useState(() => readRaw(PREVIEW_MUTED_KEY) === '1');
+    const togglePreviewMuted = useCallback(() => {
+        const next = !previewMuted;
+        setPreviewMuted(next);
+        writeRaw(PREVIEW_MUTED_KEY, next ? '1' : '0');
+    }, [previewMuted]);
+    // Sessão já aberta pela prévia (URL com ?token=). Abrir o MESMO canal com
+    // ela reaproveita a conexão: com a URL original o provedor abre outra, e
+    // conta de 1 conexão recusa ("Maximum number of connections reached")
+    // porque a da prévia ainda conta por uns 20s depois de fechada.
+    const [previewSession, setPreviewSession] = useState<{ id: number; url: string } | null>(null);
 
     // Toast OSD da página (favorito/oculto/failover — R1 item 53)
     const [toast, setToast] = useState<ReactNode | null>(null);
@@ -516,14 +531,15 @@ export function LiveTV() {
     // mudaria o significado do índice já focado. tv_archive vem como número
     // OU string dependendo do painel — coerção obrigatória.
     const canRestart = !!(selectedChannel && Number(selectedChannel.tv_archive) > 0 && activePreviewEpg?.now);
-    const previewItems: Array<'play' | 'restart' | 'fav' | 'hide' | 'agenda'> = [
+    const previewItems: Array<'play' | 'mute' | 'restart' | 'fav' | 'hide' | 'agenda'> = [
         'play',
+        'mute',
         'fav',
         'hide',
         ...(canRestart ? (['restart'] as const) : []),
         'agenda',
     ];
-    const previewActionIndex = (action: 'play' | 'restart' | 'fav' | 'hide' | 'agenda') => previewItems.indexOf(action);
+    const previewActionIndex = (action: (typeof previewItems)[number]) => previewItems.indexOf(action);
 
     // Sessão de uso do canal ao vivo (estatísticas)
     useWatchSession('live', playingChannel?.name || '');
@@ -585,6 +601,12 @@ export function LiveTV() {
     // Failover: stream morreu de vez → tenta a próxima variante do grupo
     const handleStreamFailed = useCallback(() => {
         if (!playingChannel) return;
+        // Caiu tocando pela sessão da prévia (token vencido?): antes de trocar
+        // de variante, tenta o mesmo canal pela URL normal
+        if (previewSession?.id === playingChannel.stream_id) {
+            setPreviewSession(null);
+            return;
+        }
         const repId = representativeOf.get(playingChannel.stream_id) ?? playingChannel.stream_id;
         const variants = variantsOf.get(String(repId));
         if (!variants || variants.length < 2) return;
@@ -597,7 +619,7 @@ export function LiveTV() {
             setToast(<><FaExclamationTriangle /> Todas as variantes deste canal falharam</>);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [playingChannel, representativeOf, variantsOf]);
+    }, [playingChannel, representativeOf, variantsOf, previewSession]);
 
     // Variantes do canal TOCANDO (não o pré-visualizado) → menu unificado do player
     const playingVariants = useMemo(
@@ -817,6 +839,7 @@ export function LiveTV() {
             if (previewFocusIndex < previewItems.length) {
                 const action = previewItems[previewFocusIndex];
                 if (action === 'play') playChannel(selectedChannel);
+                else if (action === 'mute') togglePreviewMuted();
                 else if (action === 'restart') restartProgram();
                 else if (action === 'fav') toggleChannelFavorite(selectedChannel);
                 else if (action === 'hide') toggleChannelHidden(selectedChannel);
@@ -866,6 +889,7 @@ export function LiveTV() {
     });
 
     const getLivePlaybackUrl = (stream: LiveStream) => {
+        if (previewSession?.id === stream.stream_id) return previewSession.url;
         return stream.direct_source || api.getLiveStreamUrl(stream.stream_id);
     };
 
@@ -1067,6 +1091,10 @@ export function LiveTV() {
                                 <LiveChannelPreview
                                     key={selectedChannel.stream_id}
                                     src={previewSrc}
+                                    muted={previewMuted}
+                                    // Sem gravar: barrado agora não quer dizer que o usuário prefira mudo
+                                    onAutoMuted={() => setPreviewMuted(true)}
+                                    onResolvedUrl={url => setPreviewSession({ id: selectedChannel.stream_id, url })}
                                     onError={() => setPreviewFailed(true)}
                                 />
                             ) : (
@@ -1140,6 +1168,13 @@ export function LiveTV() {
                                     onClick={() => playChannel(selectedChannel)}
                                 >
                                     <FaPlay /> Assistir
+                                </button>
+                                <button
+                                    className={`info-button ${focusArea === 'preview' && previewFocusIndex === previewActionIndex('mute') ? 'tv-focused' : ''}`}
+                                    onClick={togglePreviewMuted}
+                                    title={previewMuted ? 'Ligar o som da prévia' : 'Silenciar a prévia'}
+                                >
+                                    {previewMuted ? <><FaVolumeMute /> Som</> : <><FaVolumeUp /> Mudo</>}
                                 </button>
                                 <button
                                     className={`info-button ${favoriteChannelIds.has(selectedChannel.stream_id) ? 'active' : ''} ${focusArea === 'preview' && previewFocusIndex === previewActionIndex('fav') ? 'tv-focused' : ''}`}

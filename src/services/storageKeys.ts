@@ -87,6 +87,7 @@ export const KEYS_PREFERENCIAS = [
     'neostream_boot_last_channel',
     'neostream_hide_watched',
     'neostream_burnin_dimmer',
+    'neostream_preview_muted',
     // BASELINE de "novos episódios": não é cache, perdê-la faz o app achar
     // que tudo é novidade
     'neostream_series_lastmod',

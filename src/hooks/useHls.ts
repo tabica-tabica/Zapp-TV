@@ -31,6 +31,12 @@ interface UseHlsOptions {
     autoPlay?: boolean;
     /** Live usa buffers menores — TVs Tizen antigas têm ~1GB de RAM */
     isLive?: boolean;
+    /**
+     * URL final do manifesto (depois dos redirects). No Xtream ela carrega o
+     * `?token=` da SESSÃO aberta: quem reaproveitar essa URL entra na mesma
+     * conexão em vez de abrir outra (conta de 1 conexão recusa a segunda).
+     */
+    onResolvedUrl?: (url: string) => void;
 }
 
 interface UseHlsReturn {
@@ -59,12 +65,14 @@ export function useHls({
     onError,
     onStreamError,
     autoPlay = false,
-    isLive = false
+    isLive = false,
+    onResolvedUrl,
 }: UseHlsOptions): UseHlsReturn {
     const hlsRef = useRef<Hls | null>(null);
     const srcRef = useRef<string>('');
     const onErrorRef = useRef(onError);
     const onStreamErrorRef = useRef(onStreamError);
+    const onResolvedUrlRef = useRef(onResolvedUrl);
     const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     // Escolha manual de faixa precisa sobreviver ao reload() (retry, watchdog,
     // volta do standby): o pipeline é recriado do zero e o hls.js reescolhe a
@@ -101,7 +109,8 @@ export function useHls({
     useEffect(() => {
         onErrorRef.current = onError;
         onStreamErrorRef.current = onStreamError;
-    }, [onError, onStreamError]);
+        onResolvedUrlRef.current = onResolvedUrl;
+    }, [onError, onStreamError, onResolvedUrl]);
 
     const cleanup = useCallback(() => {
         destroyHlsInstance();
@@ -268,6 +277,10 @@ export function useHls({
                     // subtitleDisplay=false. Reportar esse id deixaria o menu
                     // dizendo "Português" com a tela sem legenda nenhuma.
                     setCurrentSubtitleTrack(hls.subtitleDisplay ? data.id : -1);
+                });
+
+                hls.on(Hls.Events.MANIFEST_LOADED, (_event, data) => {
+                    if (data.url) onResolvedUrlRef.current?.(data.url);
                 });
 
                 // Capture quality levels when manifest is parsed

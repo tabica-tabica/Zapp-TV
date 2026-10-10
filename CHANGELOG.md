@@ -6,8 +6,16 @@ Maintained by **Tabica**. Originally created by Rakjsu.
 
 ## Unreleased
 
+### Added
+
+- Live TV: the channel preview plays with sound, with a mute button next to "Assistir"
+  (remembered). If the device blocks autoplay with sound, the preview plays muted.
+
 ### Fixed
 
+- Live TV: channels that played in the preview failed when opened on 1-connection accounts
+  ("Maximum number of connections reached"). The player now reuses the preview's session URL
+  (`?token=`) instead of opening a second connection; if that fails it retries the normal URL.
 - Home: with something in "Continuar Assistindo", its progress bar was drawn as a line across the
   whole screen — the poster box wasn't positioned, so the bar anchored to the page.
 
