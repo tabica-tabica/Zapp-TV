@@ -8,6 +8,11 @@ Maintained by **Tabica**. Originally created by Rakjsu.
 
 ### Added
 
+- Movies/Series: the "Gênero" button opens a panel with every genre at once (mouse clicks a chip;
+  D-pad moves, OK picks, Back closes) instead of cycling one genre per press.
+- "Adulto" genre for adult categories, offered only when the page has adult content (never in the
+  Kids profile). Picking it while the adult lock is on asks for the PIN, then shows all adult
+  titles together.
 - Live TV toolbar: a ★ Favoritos toggle (mouse or D-pad) that filters the grid to favorite
   channels and back to all. Shown when there are favorites, and while active.
 

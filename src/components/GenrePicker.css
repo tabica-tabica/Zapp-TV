@@ -1,0 +1,97 @@
+/* Painel de gêneros (Filmes/Séries). Sem `gap` em flexbox e sem grid: o
+   webOS 4 (Chromium 53) não tem nenhum dos dois — espaçamento por margem. */
+
+.genre-picker-backdrop {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 1200;
+    background: rgba(0, 0, 0, 0.55);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 140px;
+}
+
+.genre-picker {
+    width: 760px;
+    max-width: calc(100% - 48px);
+    max-height: calc(100% - 180px);
+    overflow-y: auto;
+    background: rgba(17, 20, 34, 0.98);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 16px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+    padding: 20px 18px 18px;
+}
+
+.genre-picker-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 6px 14px;
+    color: #fff;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.genre-picker-header svg {
+    margin-right: 8px;
+    vertical-align: -2px;
+}
+
+.genre-picker-close {
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 18px;
+    cursor: pointer;
+    padding: 4px 8px;
+}
+
+.genre-picker-close:hover {
+    color: #fff;
+}
+
+.genre-picker-chips {
+    display: flex;
+    flex-wrap: wrap;
+}
+
+/* 4 por linha — o mesmo número que o GenrePicker.tsx usa pra ↑↓ */
+.genre-chip {
+    width: calc(25% - 12px);
+    margin: 6px;
+    padding: 14px 10px;
+    border-radius: 12px;
+    border: 2px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+    text-align: center;
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.genre-chip.selected {
+    background: rgba(var(--ns-accent-rgb), 0.25);
+    border-color: var(--ns-accent);
+    color: #fff;
+}
+
+.genre-chip.tv-focused,
+.genre-chip:hover {
+    border-color: var(--ns-accent);
+    background: rgba(var(--ns-accent-rgb), 0.18);
+    transform: scale(1.04);
+}
+
+.genre-chip-lock {
+    margin-right: 6px;
+    font-size: 12px;
+    vertical-align: -1px;
+    opacity: 0.8;
+}

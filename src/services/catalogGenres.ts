@@ -14,6 +14,11 @@
 //
 // Módulo PURO: sem DOM, sem rede, sem armazenamento.
 
+import { isAdultCategoryName } from './adultNames';
+
+/** Gênero das categorias adultas — sai do detector de nome adulto, não de pistas. */
+export const GENERO_ADULTO = 'adulto';
+
 export interface Genero {
     id: string;
     rotulo: string;
@@ -48,6 +53,9 @@ export const GENEROS: readonly Genero[] = [
     { id: 'suspense', rotulo: 'Suspense', pistas: ['suspense', 'thriller'] },
     { id: 'terror', rotulo: 'Terror', pistas: ['terror', 'horror'] },
     { id: 'novela', rotulo: 'Novela', pistas: ['novela', 'dorama', 'turca'] },
+    // Por último de propósito: é o último a ser oferecido. Sem pistas — quem
+    // decide é isAdultCategoryName (o mesmo detector do Kids e do PIN).
+    { id: GENERO_ADULTO, rotulo: 'Adulto', pistas: [] },
 ];
 
 /** Minúsculas e sem acento — as mesmas regras da busca do catálogo. */
@@ -103,6 +111,9 @@ function posicaoDaPista(nome: string, pista: string): number {
 export function generoDaCategoria(nomeDaCategoria: string): string | null {
     const nome = normalizar(nomeDaCategoria || '');
     if (!nome) return null;
+    // Adulto ganha de qualquer pista: "Hentai [adultos]" é adulto antes de ser
+    // anime, e "Filmes Adultos" não tinha gênero nenhum
+    if (isAdultCategoryName(nomeDaCategoria)) return GENERO_ADULTO;
 
     // Quem casa PRIMEIRO NO NOME vence, não quem vem primeiro na tabela.
     // "FILMES | TERROR E SUSPENSE" é uma categoria de terror que também cita

@@ -17,7 +17,8 @@ import { useAdultLock } from '../hooks/useAdultLock';
 import { parentalService } from '../services/parentalService';
 import { PinPrompt } from '../components/PinPrompt';
 import { useFocusZone } from '../contexts/FocusContext';
-import { mapaDeGeneros, generosDisponiveis, rotuloDoGenero } from '../services/catalogGenres';
+import { mapaDeGeneros, generosDisponiveis, rotuloDoGenero, GENERO_ADULTO } from '../services/catalogGenres';
+import { GenrePicker } from '../components/GenrePicker';
 import { CategoryMenu, type CategoryMenuHandle } from '../components/CategoryMenu';
 import { AnimatedSearchBar, type AnimatedSearchBarHandle } from '../components/AnimatedSearchBar';
 import { ContentDetailModal } from '../components/ContentDetailModal';
@@ -96,8 +97,11 @@ export function Movies() {
     });
     const {
         lockedCategoryIds, guardSelect: guardCategorySelect, pendingCategoryId,
-        setPendingCategoryId, setUnlocked: setAdultUnlocked, justProvisioned,
+        setPendingCategoryId, setUnlocked: setAdultUnlocked, justProvisioned, unlocked: adultUnlocked,
     } = useAdultLock(categories);
+    // Painel de gêneros (todos de uma vez) e o "Adulto" esperando o PIN
+    const [generoPickerOpen, setGeneroPickerOpen] = useState(false);
+    const [pendingAdultGenre, setPendingAdultGenre] = useState(false);
 
     // Ordenação / esconder assistidos / selo NOVO (Fase 3)
     const [sortMode, setSortMode] = useState<CatalogSort>(() => catalogSort.get('movies'));
@@ -202,7 +206,8 @@ export function Movies() {
             // acontece depois que guardCategorySelect já exigiu o PIN. Sem
             // isto, um filme "adulto" categorizado sob uma categoria travada
             // aparecia normalmente em "Todos", sem pedir PIN nenhum.
-            if (lockedCategoryIds.has(stream.category_id) && selectedCategory !== stream.category_id) return false;
+            if (lockedCategoryIds.has(stream.category_id) && selectedCategory !== stream.category_id
+                && !(genero === GENERO_ADULTO && adultUnlocked)) return false;
             // Chips de tag: item precisa ter TODAS as tags marcadas
             if (activeTags.length > 0 && !activeTags.every(tag => hasTag(stream.name || '', tag))) return false;
             if (hasFilters && !matchesFilters(stream, filters)) return false;
@@ -213,7 +218,7 @@ export function Movies() {
             list = list.filter(stream => !completedMovieIds.has(String(stream.stream_id)));
         }
         return list;
-    }, [streams, searchQuery, selectedCategory, completedMovieIds, activeTags, filters, genero, generoPorCategoria, lockedCategoryIds]);
+    }, [streams, searchQuery, selectedCategory, completedMovieIds, activeTags, filters, genero, generoPorCategoria, lockedCategoryIds, adultUnlocked]);
 
     // Agrupa versões do mesmo filme (DUB/LEG/4K) sobre a lista JÁ filtrada
     const { groups: groupedStreams, versionsOf } = useMemo(
@@ -394,13 +399,17 @@ export function Movies() {
         });
     };
 
-    // Gênero (item 31): OK cicla pelos gêneros que o catálogo tem
-    const cycleGenero = () => {
-        if (generosDoCatalogo.length === 0) return;
-        setGenero(atual => {
-            const i = generosDoCatalogo.findIndex(g => g.id === atual);
-            return i + 1 >= generosDoCatalogo.length ? null : generosDoCatalogo[i + 1].id;
-        });
+    // Gênero: escolhido no painel. "Adulto" com categoria travada pede o PIN
+    // primeiro — o mesmo prompt de abrir uma categoria adulta.
+    const escolherGenero = (id: string | null) => {
+        const travado = id === GENERO_ADULTO && !adultUnlocked;
+        const categoriaAdulta = [...lockedCategoryIds][0];
+        if (travado && categoriaAdulta) {
+            setPendingAdultGenre(true);
+            guardCategorySelect(categoriaAdulta, () => setGenero(GENERO_ADULTO));
+            return;
+        }
+        setGenero(id);
     };
 
     // Nota mínima (item 32): o filtro EXISTIA em matchesFilters e nenhuma tela
@@ -465,7 +474,7 @@ export function Movies() {
                 else if (item === 'hidewatched') toggleHideWatched();
                 else if (item === 'tags') cycleTagFilter();
                 else if (item === 'decade') cycleFilters();
-                else if (item === 'genero') cycleGenero();
+                else if (item === 'genero') setGeneroPickerOpen(true);
                 else if (item === 'nota') cycleNota();
             }
         } else if (focusArea === 'alphabet') {
@@ -478,7 +487,7 @@ export function Movies() {
     };
 
     // Only enable when content is focused and no modal/player/panel is open
-    const navEnabled = !error && (focusZone === 'content' && !showModal && !showPlayer && !categoryMenuOpen && !contextItem && !pendingCategoryId);
+    const navEnabled = !error && (focusZone === 'content' && !showModal && !showPlayer && !categoryMenuOpen && !contextItem && !pendingCategoryId && !generoPickerOpen);
 
     useTVNavigation({
         onNavigate: handleNavigate,
@@ -621,12 +630,28 @@ export function Movies() {
                         const ok = await parentalService.verify(pin);
                         if (ok) {
                             setAdultUnlocked(true);
-                            setSelectedCategory(pendingCategoryId);
+                            // Veio do gênero "Adulto": liga o gênero, não troca de categoria
+                            if (pendingAdultGenre) setGenero(GENERO_ADULTO);
+                            else setSelectedCategory(pendingCategoryId);
+                            setPendingAdultGenre(false);
                             setPendingCategoryId(null);
                         }
                         return ok;
                     }}
-                    onCancel={() => setPendingCategoryId(null)}
+                    onCancel={() => {
+                        setPendingAdultGenre(false);
+                        setPendingCategoryId(null);
+                    }}
+                />
+            )}
+
+            {generoPickerOpen && (
+                <GenrePicker
+                    generos={generosDoCatalogo}
+                    selecionado={genero}
+                    onEscolher={escolherGenero}
+                    onFechar={() => setGeneroPickerOpen(false)}
+                    bloqueados={lockedCategoryIds.size > 0 && !adultUnlocked ? new Set([GENERO_ADULTO]) : undefined}
                 />
             )}
 
@@ -663,7 +688,7 @@ export function Movies() {
                 {generosDoCatalogo.length > 0 && (
                     <button
                         className={`toolbar-btn ${genero ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('genero') ? 'tv-focused' : ''}`}
-                        onClick={cycleGenero}
+                        onClick={() => setGeneroPickerOpen(true)}
                         title="Filtrar por gênero"
                     >
                         {genero ? rotuloDoGenero(genero) : <><FaTheaterMasks /> Gênero</>}

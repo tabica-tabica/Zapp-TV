@@ -90,7 +90,8 @@ describe('generoDaCategoria', () => {
     });
 
     it('todo gênero da tabela é reconhecível pela própria pista', () => {
-        for (const genero of GENEROS) {
+        // Adulto não tem pista (decide o detector de nome adulto) — testado abaixo
+        for (const genero of GENEROS.filter(g => g.pistas.length > 0)) {
             expect(generoDaCategoria(genero.pistas[0])).toBe(genero.id);
         }
     });
@@ -146,5 +147,24 @@ describe('rotuloDoGenero', () => {
 
     it('id desconhecido devolve o próprio id em vez de vazio', () => {
         expect(rotuloDoGenero('inexistente')).toBe('inexistente');
+    });
+});
+
+describe('gênero Adulto', () => {
+    it.each(['Filmes Adultos', 'Hentai [adultos]', 'Canais | Adultos [4K]', 'XXX Premium'])('%s vira Adulto', (nome) => {
+        expect(generoDaCategoria(nome)).toBe('adulto');
+    });
+
+    it('Adult Swim e Vida Adulta não são adulto', () => {
+        expect(generoDaCategoria('Adult Swim')).not.toBe('adulto');
+        expect(generoDaCategoria('Vida Adulta')).not.toBe('adulto');
+    });
+
+    it('só é oferecido quando o catálogo tem categoria adulta', () => {
+        const comum = [{ category_id: '1', category_name: 'Filmes | Ação' }];
+        expect(generosDisponiveis(comum).map(g => g.id)).not.toContain('adulto');
+        const comAdulto = [...comum, { category_id: '2', category_name: 'Filmes Adultos' }];
+        expect(generosDisponiveis(comAdulto).map(g => g.id)).toEqual(['acao', 'adulto']);
+        expect(rotuloDoGenero('adulto')).toBe('Adulto');
     });
 });
