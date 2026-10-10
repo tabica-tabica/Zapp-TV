@@ -8,7 +8,7 @@ import { POLYFILLS_DO_BUILD } from './scripts/tizen-polyfills.mjs'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores(['dist', 'src-tauri/target']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
