@@ -1,4 +1,4 @@
-﻿// Xtream Codes API Client - Ported from NeoStream IPTV
+// Xtream Codes API Client - Ported from NeoStream IPTV
 
 import type { AuthResponse, LiveStream, VODStream, Series, Category, SeriesInfo, Credentials } from '../types';
 
@@ -106,6 +106,15 @@ function buildApiUrl(
     }
     for (const [key, value] of Object.entries(params)) {
         apiUrl.searchParams.set(key, value);
+    }
+    // No modo de desenvolvimento web local (Vite dev server no browser),
+    // o navegador bloqueia redirecionamentos entre origens (301) que não têm
+    // Access-Control-Allow-Origin (muito comum em painéis IPTV como auth.urlcld.com).
+    // O proxy local resolve o redirecionamento via Node sem restrição de CORS.
+    if (import.meta.env.DEV) {
+        const proxyUrl = new URL('/api-proxy', window.location.origin);
+        proxyUrl.searchParams.set('url', apiUrl.toString());
+        return proxyUrl;
     }
     return apiUrl;
 }

@@ -219,7 +219,8 @@ export function useHls({
                     startLevel: -1, // Auto quality selection
                 });
 
-                hls.loadSource(src);
+                // Dev no browser: ver /stream-redirect no vite.config.ts (CORS do 1º redirect)
+                hls.loadSource(import.meta.env.DEV ? `/stream-redirect?url=${encodeURIComponent(src)}` : src);
                 hls.attachMedia(video);
 
                 // Legenda só aparece quando o usuário escolhe (item 40)
