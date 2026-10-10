@@ -301,7 +301,7 @@ Also delivered: the multi-channel program guide, program reminders, the "now on 
 embedded audio and subtitle track selection, per-profile data scoping, the test suite with CI, the
 whole catalog-and-discovery set (genre filter, collections, cast, trailers, per-episode detail,
 named lists, and the "because you watched" row), `react-window` virtualization on every large grid
-(Live TV, Movies, Series, My List, Favorites), and the LG webOS build pipeline (store submission
+(Live TV, Movies, Series, My List), and the LG webOS build pipeline (store submission
 itself is still pending — see [LG webOS](#lg-webos)).
 
 Next up:

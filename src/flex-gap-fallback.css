@@ -194,7 +194,7 @@ html.no-flex-gap .tv-button > * + * {
     margin-left: var(--spacing-sm);
 }
 
-/* ---- pages/Favorites.css ---- */
+/* ---- pages/MyList.css (classes que vieram da antiga página Favoritos) ---- */
 
 html.no-flex-gap .header-title > * + * {
     margin-left: 16px;
@@ -223,10 +223,6 @@ html.no-flex-gap .empty-suggestions > * {
 
 html.no-flex-gap .suggestion-btn > * + * {
     margin-left: 10px;
-}
-
-html.no-flex-gap .favorites-hints > * + * {
-    margin-left: 32px;
 }
 
 /* ---- pages/Home.css ---- */

@@ -10,7 +10,6 @@ import { Home } from './pages/Home';
 import { LiveTV } from './pages/LiveTV';
 import { Movies } from './pages/Movies';
 import { Series } from './pages/Series';
-import { Favorites } from './pages/Favorites';
 import { MyList } from './pages/MyList';
 import { Settings } from './pages/Settings';
 import { LanguageSelection } from './pages/LanguageSelection';
@@ -46,7 +45,7 @@ import './aspect-ratio-fallback.css';
 import './App.css';
 import './components/LivePanels.css';
 
-type Page = 'home' | 'live' | 'movies' | 'series' | 'mylist' | 'favorites' | 'settings';
+type Page = 'home' | 'live' | 'movies' | 'series' | 'mylist' | 'settings';
 type AuthState = 'loading' | 'languageSelection' | 'welcome' | 'login' | 'authenticated' | 'offline';
 
 // No Tizen real, teclas além de setas/OK/Back (CH±, dígitos, color keys,
@@ -462,7 +461,6 @@ function App() {
           {currentPage === 'movies' && <Movies />}
           {currentPage === 'series' && <Series />}
           {currentPage === 'mylist' && <MyList onNavigate={handlePageChange} />}
-          {currentPage === 'favorites' && <Favorites onNavigate={handlePageChange} />}
           {currentPage === 'settings' && <Settings onAddPlaylist={() => { setAddingPlaylist(true); setAuthState('login'); }} />}
         </main>
 

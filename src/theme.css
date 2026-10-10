@@ -14,7 +14,6 @@ html[data-bg="amoled"] .livetv-page,
 html[data-bg="amoled"] .movies-page,
 html[data-bg="amoled"] .series-page,
 html[data-bg="amoled"] .mylist-page,
-html[data-bg="amoled"] .favorites-page,
 html[data-bg="amoled"] .settings-page,
 html[data-bg="amoled"] .livetv-loading-container {
     background: #000 !important;
@@ -26,8 +25,7 @@ html[data-bg="amoled"] .livetv-bg-gradient,
 html[data-bg="amoled"] .livetv-bg-glow,
 html[data-bg="amoled"] .movies-bg-gradient,
 html[data-bg="amoled"] .series-bg-gradient,
-html[data-bg="amoled"] .mylist-backdrop,
-html[data-bg="amoled"] .favorites-backdrop {
+html[data-bg="amoled"] .mylist-backdrop {
     display: none !important;
 }
 
@@ -55,7 +53,6 @@ html[data-contrast="alto"] .livetv-page,
 html[data-contrast="alto"] .movies-page,
 html[data-contrast="alto"] .series-page,
 html[data-contrast="alto"] .mylist-page,
-html[data-contrast="alto"] .favorites-page,
 html[data-contrast="alto"] .settings-page,
 html[data-contrast="alto"] .livetv-loading-container {
     background: #000;
@@ -66,8 +63,7 @@ html[data-contrast="alto"] .livetv-bg-gradient,
 html[data-contrast="alto"] .livetv-bg-glow,
 html[data-contrast="alto"] .movies-bg-gradient,
 html[data-contrast="alto"] .series-bg-gradient,
-html[data-contrast="alto"] .mylist-backdrop,
-html[data-contrast="alto"] .favorites-backdrop {
+html[data-contrast="alto"] .mylist-backdrop {
     display: none;
 }
 
@@ -197,7 +193,6 @@ html.tv-lite .live-badge,
 html.tv-lite .livetv-bg-glow,
 html.tv-lite .mylist-backdrop,
 html.tv-lite .mylist-page .empty-icon-glow,
-html.tv-lite .favorites-backdrop::before,
 html.tv-lite .title-icon,
 html.tv-lite .empty-icon,
 html.tv-lite .empty-icon-glow,

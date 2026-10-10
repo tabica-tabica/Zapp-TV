@@ -379,8 +379,7 @@ body {
     transform: scale(1.05);
 }
 
-/* Tecla vermelha nos rodapés de dicas (Favoritos / Minha Lista) */
-.favorites-hints .hint-red,
+/* Tecla vermelha no rodapé de dicas da Minha Lista */
 .mylist-hints .hint-red {
     color: #f87171;
 }
