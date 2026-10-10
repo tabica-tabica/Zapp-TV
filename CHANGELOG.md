@@ -6,6 +6,12 @@ Maintained by **Tabica**. Originally created by Rakjsu.
 
 ## Unreleased
 
+### Removed
+
+- The Favorites page and its sidebar entry. Favorite channels live in Live TV: the "Favoritos"
+  category filters the grid, and the ★ panel lists them with what's on now. Styles My List was
+  borrowing from Favorites.css moved into MyList.css (computed styles checked, unchanged).
+
 ### Added
 
 - Live TV: the channel preview plays with sound, with a mute button next to "Assistir"
