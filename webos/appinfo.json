@@ -10,5 +10,6 @@
   "iconColor": "#05070d",
   "resolution": "1920x1080",
   "appDescription": "IPTV player for LG webOS Smart TVs.",
-  "disableBackHistoryAPI": true
+  "disableBackHistoryAPI": true,
+  "requiredACG": []
 }

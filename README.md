@@ -225,8 +225,8 @@ If the Tizen CLI has trouble transferring `NeoStreamTV.wgt`, copy the same packa
 
 ## LG webOS
 
-The webOS build targets webOS 5.x and newer (Chromium ~68+) — not the older webOS 3.x floor, to
-avoid running React 19 on an engine that old. The package identity in `webos/appinfo.json` is
+The webOS build targets webOS 4.x and newer (Chromium 53+, with `src/legacyPolyfills.ts` filling
+`AbortController`/`ResizeObserver`) — not the older webOS 3.x floor. The package identity in `webos/appinfo.json` is
 currently a **placeholder**, not a value reserved with LG:
 
 ```text
