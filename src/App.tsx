@@ -38,6 +38,7 @@ import { a11yService } from './services/a11yService';
 import { configSnapshot } from './services/configSnapshot';
 import { installErrorCapture } from './services/diagnostics';
 import { applyFlexGapFallback } from './services/flexGap';
+import { naTV } from './services/platformApp';
 import { burnIn } from './services/burnIn';
 import './index.css';
 import './flex-gap-fallback.css';
@@ -235,6 +236,9 @@ function App() {
     // Tizen 5.5/6.0 não têm `gap` em flexbox: sem isto, os itens de 102
     // containers ficam colados na TV (e só na TV)
     applyFlexGapFallback();
+    // TV (webOS/Tizen): sem as animações decorativas em loop — na TV elas
+    // custavam ~20% de CPU parado na Home (ver theme.css, html.tv-lite)
+    if (naTV()) document.documentElement.classList.add('tv-lite');
     // Sem console aberto numa TV, o anel de erros é a única testemunha
     installErrorCapture();
     // Menu parado por horas marca painel OLED (item 78)

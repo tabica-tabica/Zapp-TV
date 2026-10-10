@@ -6,16 +6,14 @@
 import { memo, type CSSProperties } from 'react';
 import { FaTv, FaStar } from 'react-icons/fa';
 import type { Series as SeriesType } from '../types';
+import { posterThumb } from '../services/tmdb';
 import './SeriesCard.css';
 
-const STAGGER_BUCKETS = 8;
 
 export type SeriesCardBadge = 'episodes' | 'new' | null;
 
 export interface SeriesCardProps {
     item: SeriesType;
-    /** Posição na lista completa — define o bucket de stagger. */
-    index: number;
     focused: boolean;
     selected: boolean;
     broken: boolean;
@@ -28,14 +26,13 @@ export interface SeriesCardProps {
 }
 
 function SeriesCardImpl({
-    item, index, focused, selected, broken, badge, onSelect, onImageError, style, gap = 16,
+    item, focused, selected, broken, badge, onSelect, onImageError, style, gap = 16,
 }: SeriesCardProps) {
     return (
         <div className="series-card-cell" style={style}>
             <div
                 className={[
                     'series-card',
-                    `stagger-${index % STAGGER_BUCKETS}`,
                     focused ? 'tv-focused' : '',
                     selected ? 'selected' : '',
                 ].filter(Boolean).join(' ')}
@@ -48,7 +45,7 @@ function SeriesCardImpl({
                     ) : (
                         <img
                             decoding="async"
-                            src={item.cover}
+                            src={posterThumb(item.cover)}
                             alt={item.name}
                             loading="lazy"
                             onError={() => onImageError(item.series_id)}

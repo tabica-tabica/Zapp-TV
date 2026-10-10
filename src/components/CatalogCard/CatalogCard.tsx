@@ -1,16 +1,14 @@
 // Card de pôster compartilhado por MyList e Favorites — mesmo markup, mesmas
 // classes, mesmo botão de remover com stopPropagation, que antes viviam
 // duplicados em cada página. `React.memo` só funciona aqui porque os
-// callbacks (onSelect/onRemove/onPlay) são estáveis (useCallback na página) e
-// o `animationDelay` inline virou uma classe `stagger-N` fixa — um objeto de
-// estilo novo por render, por item, derrotava a memoização de qualquer jeito.
+// callbacks (onSelect/onRemove/onPlay) são estáveis (useCallback na página).
 
 import { memo, type CSSProperties, type ReactNode } from 'react';
 import { FaFilm, FaTv, FaBroadcastTower, FaTrashAlt, FaPlay, FaStar } from 'react-icons/fa';
 import type { SavedContentItem } from '../../services/storage';
+import { posterThumb } from '../../services/tmdb';
 import './CatalogCard.css';
 
-const STAGGER_BUCKETS = 8;
 
 function iconeDoTipo(type: SavedContentItem['type']): ReactNode {
     if (type === 'movie') return <FaFilm />;
@@ -20,8 +18,6 @@ function iconeDoTipo(type: SavedContentItem['type']): ReactNode {
 
 export interface CatalogCardProps {
     item: SavedContentItem;
-    /** Posição na lista completa (não só na janela virtualizada) — define o bucket de stagger. */
-    index: number;
     focused: boolean;
     removing?: boolean;
     onSelect: (item: SavedContentItem) => void;
@@ -51,7 +47,7 @@ export interface CatalogCardProps {
 }
 
 function CatalogCardImpl({
-    item, index, focused, removing, onSelect, onRemove, onPlay, style, gap = 24,
+    item, focused, removing, onSelect, onRemove, onPlay, style, gap = 24,
     accentRgb = '20, 184, 166', typeBadge = iconeDoTipo,
 }: CatalogCardProps) {
     return (
@@ -59,7 +55,6 @@ function CatalogCardImpl({
             <div
                 className={[
                     'catalog-card',
-                    `stagger-${index % STAGGER_BUCKETS}`,
                     removing ? 'removing' : '',
                     focused ? 'tv-focused' : '',
                 ].filter(Boolean).join(' ')}
@@ -68,7 +63,7 @@ function CatalogCardImpl({
             >
                 <div className="catalog-card-poster">
                     {item.poster ? (
-                        <img decoding="async" loading="lazy" src={item.poster} alt={item.title} />
+                        <img decoding="async" loading="lazy" src={posterThumb(item.poster)} alt={item.title} />
                     ) : (
                         <div className="catalog-card-poster-placeholder">{typeBadge(item.type)}</div>
                     )}

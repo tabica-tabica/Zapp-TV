@@ -5,14 +5,12 @@ import { memo, type CSSProperties } from 'react';
 import { FaFilm, FaStar } from 'react-icons/fa';
 import type { VODStream } from '../types';
 import { tagsOf } from '../services/vodVariants';
+import { posterThumb } from '../services/tmdb';
 import './MovieCard.css';
 
-const STAGGER_BUCKETS = 8;
 
 export interface MovieCardProps {
     movie: VODStream;
-    /** Posição na lista completa — define o bucket de stagger. */
-    index: number;
     focused: boolean;
     selected: boolean;
     broken: boolean;
@@ -26,7 +24,7 @@ export interface MovieCardProps {
 }
 
 function MovieCardImpl({
-    movie, index, focused, selected, broken, isNew, versionCount, onSelect, onImageError, style, gap = 16,
+    movie, focused, selected, broken, isNew, versionCount, onSelect, onImageError, style, gap = 16,
 }: MovieCardProps) {
     // Chamado uma vez só (antes cada card chamava tagsOf duas vezes — uma
     // pra decidir SE mostra o selo, outra pra montar o texto dele).
@@ -37,7 +35,6 @@ function MovieCardImpl({
             <div
                 className={[
                     'movie-card',
-                    `stagger-${index % STAGGER_BUCKETS}`,
                     focused ? 'tv-focused' : '',
                     selected ? 'selected' : '',
                 ].filter(Boolean).join(' ')}
@@ -50,7 +47,7 @@ function MovieCardImpl({
                     ) : (
                         <img
                             decoding="async"
-                            src={movie.stream_icon || movie.cover}
+                            src={posterThumb(movie.stream_icon || movie.cover)}
                             alt={movie.name}
                             loading="lazy"
                             onError={() => onImageError(movie.stream_id)}

@@ -181,3 +181,40 @@ html[data-motion="reduzido"] .radio-stage {
     animation-duration: 90s !important;
     animation-iteration-count: infinite !important;
 }
+
+/* ===================================================================
+   TV lite: animações decorativas em loop desligadas no webOS/Tizen
+   =================================================================== */
+
+/* Medido no build webOS com CPU 6x mais lenta: parada na Home, a CPU caía de
+   23% pra 3% sem elas. Pulsos e brilhos repintam a cada quadro pra sempre;
+   na TV isso disputa CPU com o vídeo e a navegação. Spinners de carregamento
+   e a deriva anti burn-in continuam. */
+html.tv-lite .indicator-bar,
+html.tv-lite .waving-hand,
+html.tv-lite .live-dot,
+html.tv-lite .live-badge,
+html.tv-lite .livetv-bg-glow,
+html.tv-lite .mylist-backdrop,
+html.tv-lite .mylist-page .empty-icon-glow,
+html.tv-lite .favorites-backdrop::before,
+html.tv-lite .title-icon,
+html.tv-lite .empty-icon,
+html.tv-lite .empty-icon-glow,
+html.tv-lite .category-item.selected,
+html.tv-lite .category-item.selected::before,
+html.tv-lite .selected-dot,
+html.tv-lite .category-panel-header::before,
+html.tv-lite .play-btn {
+    animation: none !important;
+}
+
+/* As grades (react-window) só rolam na vertical. A barra vertical come uns
+   pixels da largura e o conteúdo (colunas × pitch) passava do viewport,
+   abrindo uma barra horizontal embaixo da grade. */
+.cards-grid-viewport,
+.channels-grid-viewport,
+.movies-grid-viewport,
+.series-grid-viewport {
+    overflow-x: hidden !important;
+}

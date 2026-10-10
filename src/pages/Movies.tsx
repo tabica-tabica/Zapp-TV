@@ -63,7 +63,6 @@ function MovieGridCell({
     return (
         <MovieCard
             movie={movie}
-            index={index}
             focused={index === focusedIndex}
             selected={selectedId === movie.stream_id}
             broken={isBroken(movie.stream_id)}

@@ -5,6 +5,7 @@
 
 import { memo, useState, type ReactNode } from 'react';
 import type { IconType } from 'react-icons';
+import { posterThumb } from '../services/tmdb';
 
 export interface HomeCardProps<T> {
     item: T;
@@ -36,7 +37,7 @@ function HomeCardImpl<T>({
         >
             {rankBadge}
             <div className="card-image card-image-poster">
-                {broken ? (
+                {broken || !image ? (
                     <div className="card-image-fallback">
                         {FallbackIcon && <FallbackIcon />}
                     </div>
@@ -44,7 +45,7 @@ function HomeCardImpl<T>({
                     <img
                         decoding="async"
                         loading="lazy"
-                        src={image}
+                        src={posterThumb(image)}
                         alt={title}
                         onError={() => setBroken(true)}
                     />

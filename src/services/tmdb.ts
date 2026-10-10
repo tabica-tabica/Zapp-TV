@@ -240,6 +240,16 @@ export const IMAGE_SIZE_FUNDO = 'w1280';
 // Hoje TODO call site passa o tamanho de propósito; o padrão só existe pra
 // quem for acrescentar um novo. A grade do catálogo não usa TMDB — ela mostra
 // o stream_icon que o próprio provedor manda, num tamanho que não escolhemos.
+/**
+ * Pôster de card em tamanho de card. ~95% dos pôsteres do provedor apontam
+ * pro TMDB em w600_and_h900 (≈93KB, 540k px) pra um card de ~200px: na TV o
+ * decode disso domina a rolagem da grade. w342 tem 1/3 dos pixels e é nítido
+ * no card (mesmo com o zoom do foco). URL que não é do TMDB passa intacta.
+ */
+export function posterThumb(url: string | undefined): string | undefined {
+    return url?.replace(/^(https?:\/\/image\.tmdb\.org\/t\/p\/)[^/]+\//, '$1w342/');
+}
+
 export function getImageUrl(path: string | null, size: string = IMAGE_SIZE_FICHA): string | null {
     if (!path) return null;
     return `${TMDB_IMAGE_BASE_URL}/${size}${path}`;

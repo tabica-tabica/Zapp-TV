@@ -86,7 +86,6 @@ function ChannelGridCell({
     return (
         <ChannelCard
             stream={stream}
-            index={index}
             focused={index === focusedIndex}
             selected={selectedId === stream.stream_id}
             isFavorite={favoriteIds.has(stream.stream_id)}
@@ -1072,11 +1071,11 @@ export function LiveTV() {
                                 />
                             ) : (
                                 <div className="preview-placeholder">
-                                    {isBroken(selectedChannel.stream_id) ? (
+                                    {isBroken(selectedChannel.stream_id) || !selectedChannel.stream_icon ? (
                                         <span className="placeholder-emoji"><FaBroadcastTower /></span>
                                     ) : (
                                         <img decoding="async"
-                                            src={selectedChannel?.stream_icon || ''}
+                                            src={selectedChannel.stream_icon}
                                             alt={selectedChannel?.name || 'Canal'}
                                             onError={() => markBroken(selectedChannel.stream_id)}
                                         />

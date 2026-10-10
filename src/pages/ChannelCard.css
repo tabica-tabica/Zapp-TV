@@ -19,29 +19,7 @@
     border-radius: 12px;
     cursor: pointer;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    animation: channelFadeIn 0.4s ease backwards;
 }
-
-@keyframes channelFadeIn {
-    from {
-        opacity: 0;
-        transform: translateY(10px);
-    }
-
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-.channel-card.stagger-0 { animation-delay: 0s; }
-.channel-card.stagger-1 { animation-delay: 0.03s; }
-.channel-card.stagger-2 { animation-delay: 0.06s; }
-.channel-card.stagger-3 { animation-delay: 0.09s; }
-.channel-card.stagger-4 { animation-delay: 0.12s; }
-.channel-card.stagger-5 { animation-delay: 0.15s; }
-.channel-card.stagger-6 { animation-delay: 0.18s; }
-.channel-card.stagger-7 { animation-delay: 0.21s; }
 
 .channel-card:hover,
 .channel-card.tv-focused {

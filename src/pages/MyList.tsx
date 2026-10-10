@@ -51,7 +51,6 @@ function MyListCell({
     return (
         <CatalogCard
             item={item}
-            index={index}
             focused={index === focusedIndex}
             removing={removingId === item.id}
             onSelect={onSelect}

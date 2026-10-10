@@ -61,7 +61,6 @@ function SeriesGridCell({
     return (
         <SeriesCard
             item={item}
-            index={index}
             focused={index === focusedIndex}
             selected={selectedId === item.series_id}
             broken={isBroken(item.series_id)}

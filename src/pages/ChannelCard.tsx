@@ -7,12 +7,9 @@ import type { LiveStream } from '../types';
 import { channelDisplayName } from '../services/channelVariants';
 import './ChannelCard.css';
 
-const STAGGER_BUCKETS = 8;
 
 export interface ChannelCardProps {
     stream: LiveStream;
-    /** Posição na lista completa — define o bucket de stagger. */
-    index: number;
     focused: boolean;
     selected: boolean;
     isFavorite: boolean;
@@ -25,14 +22,13 @@ export interface ChannelCardProps {
 }
 
 function ChannelCardImpl({
-    stream, index, focused, selected, isFavorite, broken, onImageError, onSelect, style, gap = 12,
+    stream, focused, selected, isFavorite, broken, onImageError, onSelect, style, gap = 12,
 }: ChannelCardProps) {
     return (
         <div className="channel-card-cell" style={style}>
             <div
                 className={[
                     'channel-card',
-                    `stagger-${index % STAGGER_BUCKETS}`,
                     focused ? 'tv-focused' : '',
                     selected ? 'selected' : '',
                 ].filter(Boolean).join(' ')}
@@ -40,13 +36,13 @@ function ChannelCardImpl({
                 onClick={() => onSelect(stream)}
             >
                 <div className="channel-logo">
-                    {broken ? (
+                    {broken || !stream?.stream_icon ? (
                         <span className="channel-placeholder"><FaBroadcastTower /></span>
                     ) : (
                         <img
                             decoding="async"
                             loading="lazy"
-                            src={stream?.stream_icon || ''}
+                            src={stream.stream_icon}
                             alt={stream?.name ? channelDisplayName(stream.name) : 'Canal'}
                             onError={() => onImageError(stream.stream_id)}
                         />
