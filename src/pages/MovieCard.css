@@ -10,6 +10,9 @@
     box-sizing: border-box;
     width: calc(100% - var(--movie-card-gap, 16px));
     height: calc(100% - var(--movie-card-gap, 16px));
+    /* Centrado na célula (meio gap de cada lado): o zoom do foco na 1ª
+       coluna/linha cabe na folga em vez de ser cortado pela borda da grade */
+    margin: calc(var(--movie-card-gap, 16px) / 2);
     cursor: pointer;
     transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }

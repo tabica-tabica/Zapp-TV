@@ -9,6 +9,9 @@
     box-sizing: border-box;
     width: calc(100% - var(--catalog-card-gap, 24px));
     height: calc(100% - var(--catalog-card-gap, 24px));
+    /* Centrado na célula (meio gap de cada lado): o zoom do foco na 1ª
+       coluna/linha cabe na folga em vez de ser cortado pela borda da grade */
+    margin: calc(var(--catalog-card-gap, 24px) / 2);
     background: rgba(255, 255, 255, 0.03);
     border-radius: 16px;
     overflow: hidden;

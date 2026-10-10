@@ -67,6 +67,9 @@ coverage/
 *.wgt
 tizen/.metadata/
 tizen/.manifest.tmp
+# Assinaturas geradas pelo `tizen package` (certificado de quem empacota)
+tizen/author-signature.xml
+tizen/signature*.xml
 dlog.txt
 sdb_*.txt
 install_*.txt

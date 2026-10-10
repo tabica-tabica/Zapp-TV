@@ -4,6 +4,19 @@ All notable project changes should be documented in this file.
 
 Maintained by **Tabica**. Originally created by Rakjsu.
 
+## Unreleased
+
+### Fixed
+
+- The focused card in the first grid column/row was clipped by the grid edge: cards are now
+  centered in their cell, so the focus zoom fits.
+
+### Changed
+
+- Settings → TMDB shows the attribution required by the TMDB API terms.
+- Removed the original author's Tizen signature files from the repo (now ignored);
+  `tizen package` regenerates them with the packager's certificate.
+
 ## 1.1.2 - 2026-10-10
 
 ### Fixed

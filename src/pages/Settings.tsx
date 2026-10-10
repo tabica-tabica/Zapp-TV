@@ -1200,6 +1200,11 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                     </div>
 
                     {message && <p className="settings-message">{message}</p>}
+
+                    {/* Aviso exigido pelos termos da API do TMDB */}
+                    <p className="settings-muted">
+                        Este produto usa a API do TMDB, mas não é endossado nem certificado pelo TMDB.
+                    </p>
                 </section>
 
                 {/* OpenSubtitles (legendas por busca) */}
