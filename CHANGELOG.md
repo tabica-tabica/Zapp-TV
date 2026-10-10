@@ -8,6 +8,13 @@ Maintained by **Tabica**. Originally created by Rakjsu.
 
 ### Added
 
+- Movies: secret list for adult movies with saved moments. A 🔒 toolbar button (only when adult
+  content is on in Settings, never in the Kids profile) opens it behind the PIN every time. Add
+  adult movies from the Ações menu (🟡) or the detail screen. In the player, 🟢 / 📌 pins the
+  current moment, CH+/CH− jump between moments (markers on the seek bar, clickable), ⏮/⏭ go to
+  the previous/next movie of the list, and a movie opens at its first moment (or the chip you
+  click). Stored per profile, outside the QR backup and config snapshots; secret playback records
+  no progress and no usage stats.
 - Movies: the "Gênero" button opens a panel with every genre at once (mouse clicks a chip;
   D-pad moves, OK picks, Back closes) instead of cycling one genre per press.
 - Movies: "Adulto" genre (all adult titles together), offered only when adult content is turned

@@ -1,7 +1,7 @@
 ﻿// ContentDetailModal.tsx - Premium modal matching original NeoStream app
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { FaStar, FaTheaterMasks, FaLayerGroup, FaBookmark, FaRegBookmark } from 'react-icons/fa';
+import { FaStar, FaTheaterMasks, FaLayerGroup, FaBookmark, FaRegBookmark, FaLock } from 'react-icons/fa';
 import { api } from '../services/api';
 import { storage } from '../services/storage';
 import { searchMovieByName, searchSeriesByName, fetchMovieDetails, fetchSeriesDetails, getImageUrl, formatGenres, type TMDBMovieDetails, type TMDBSeriesDetails, IMAGE_SIZE_FICHA, IMAGE_SIZE_FUNDO } from '../services/tmdb';
@@ -59,6 +59,8 @@ interface ContentDetailModalProps {
     }>;
     /** Abrir outro filme do catálogo (um da saga) */
     onOpenRelated?: (streamId: string) => void;
+    /** Botão "Lista secreta" (só Filmes, só filme adulto, só com adulto ligado) */
+    secretList?: { active: boolean; onToggle: () => void };
 }
 
 function formatRuntime(minutes: number): string {
@@ -83,7 +85,8 @@ export function ContentDetailModal({
     versions,
     onSelectVersion,
     catalogoFilmes,
-    onOpenRelated
+    onOpenRelated,
+    secretList,
 }: ContentDetailModalProps) {
     const [seriesInfo, setSeriesInfo] = useState<SeriesInfo | null>(null);
     const [selectedSeason, setSelectedSeason] = useState(1);
@@ -114,7 +117,7 @@ export function ContentDetailModal({
     const [tmdbLoading, setTmdbLoading] = useState(false);
 
     // Focus management for TV navigation
-    type FocusZone = 'play' | 'watchLater' | 'close' | 'season' | 'episode' | 'version' | 'collection' | 'trailer';
+    type FocusZone = 'play' | 'watchLater' | 'secret' | 'close' | 'season' | 'episode' | 'version' | 'collection' | 'trailer';
     const [focusZone, setFocusZone] = useState<FocusZone>('play');
     const [seasonFocusIndex, setSeasonFocusIndex] = useState(0);
     const [episodeFocusIndex, setEpisodeFocusIndex] = useState(0);
@@ -156,6 +159,7 @@ export function ContentDetailModal({
     // o embed sempre serve.
     const naTv = naTV();
     const hasTrailer = !!trailerKey && (!naTv || podeAbrirExterno());
+    const hasSecret = contentType === 'movie' && !!secretList;
 
     // ---- Elenco (item 34, versão reduzida) ----
     // Faixa VISÍVEL, sem foco próprio. Torná-la navegável exigiria uma
@@ -372,7 +376,7 @@ export function ContentDetailModal({
     const listaRica = episodiosComDetalhe.temSinopse || episodiosComDetalhe.temImagem;
 
     useEffect(() => {
-        if (focusZone !== 'play' && focusZone !== 'watchLater' && focusZone !== 'trailer') return;
+        if (focusZone !== 'play' && focusZone !== 'watchLater' && focusZone !== 'secret' && focusZone !== 'trailer') return;
         actionsRef.current?.scrollIntoView({ block: 'nearest' });
         // As dependencias incluem o que CRESCE depois: elenco, saga e a lista
         // de episodios chegam por rede, segundos depois do foco ja estar nos
@@ -453,17 +457,22 @@ export function ContentDetailModal({
                 else if (direction === 'up') setFocusZone(hasCollection ? 'collection' : 'close');
             } else if (focusZone === 'watchLater') {
                 if (direction === 'left') setFocusZone('play');
+                else if (direction === 'right' && hasSecret) setFocusZone('secret');
+                else if (direction === 'right' && hasTrailer) setFocusZone('trailer');
+                else if (direction === 'up') setFocusZone('close');
+            } else if (focusZone === 'secret') {
+                if (direction === 'left') setFocusZone('watchLater');
                 else if (direction === 'right' && hasTrailer) setFocusZone('trailer');
                 else if (direction === 'up') setFocusZone('close');
             } else if (focusZone === 'trailer') {
-                if (direction === 'left') setFocusZone('watchLater');
+                if (direction === 'left') setFocusZone(hasSecret ? 'secret' : 'watchLater');
                 else if (direction === 'up') setFocusZone('close');
             } else if (focusZone === 'close') {
                 if (direction === 'down') setFocusZone(abaixoDoClose);
             }
         }
     }, [isOpen, focusZone, contentType, seasons.length, episodes.length, episodeFocusIndex,
-        hasVersions, versions?.length, hasCollection, saga?.itens.length, hasTrailer]);
+        hasVersions, versions?.length, hasCollection, saga?.itens.length, hasTrailer, hasSecret]);
 
     // Item completo pra salvar em Favoritos/Minha Lista (com pôster e título —
     // a página de listas depende desses campos pra renderizar o card)
@@ -487,6 +496,9 @@ export function ContentDetailModal({
             );
         } else if (focusZone === 'watchLater') {
             storage.toggleWatchLater(buildSavedItem());
+            setRefresh(r => r + 1);
+        } else if (focusZone === 'secret') {
+            secretList?.onToggle();
             setRefresh(r => r + 1);
         } else if (focusZone === 'trailer') {
             if (!trailerKey) return;
@@ -521,7 +533,7 @@ export function ContentDetailModal({
     }, [isOpen, focusZone, contentType, selectedSeason, selectedEpisode, buildSavedItem, seasons,
         seasonFocusIndex, episodes, episodeFocusIndex, onPlay, handleClose, versions,
         versionFocusIndex, onSelectVersion, saga, collectionFocusIndex, onOpenRelated,
-        trailerKey, naTv]);
+        trailerKey, naTv, secretList]);
 
     const handleBack = useCallback(() => {
         handleClose();
@@ -846,6 +858,19 @@ export function ContentDetailModal({
                             {storage.isInWatchLater(contentId, contentType) ? <FaBookmark /> : <FaRegBookmark />}
                             {storage.isInWatchLater(contentId, contentType) ? 'Na Minha Lista' : 'Adicionar à Lista'}
                         </button>
+
+                        {/* Lista secreta (só filme adulto, com adulto ligado) */}
+                        {hasSecret && secretList && (
+                            <button
+                                className={`action-btn secondary-btn ${secretList.active ? 'active' : ''} ${focusZone === 'secret' ? 'focused' : ''}`}
+                                onClick={() => {
+                                    secretList.onToggle();
+                                    setRefresh(r => r + 1);
+                                }}
+                            >
+                                <FaLock /> {secretList.active ? 'Na lista secreta' : 'Lista secreta'}
+                            </button>
+                        )}
 
                         {/* Trailer (item 18). A MESMA expressão `hasTrailer`
                             governa este botão e a zona de foco: na TV ele só

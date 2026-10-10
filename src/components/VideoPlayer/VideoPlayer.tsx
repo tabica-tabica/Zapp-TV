@@ -3,7 +3,7 @@ import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, Fra
 import {
     FaPlay, FaPause, FaCog, FaStepForward, FaStepBackward, FaListUl, FaMoon, FaExpand,
     FaVolumeUp, FaVolumeDown, FaVolumeMute, FaTimes, FaBroadcastTower, FaSync,
-    FaExclamationTriangle, FaHeadphones,
+    FaExclamationTriangle, FaHeadphones, FaThumbtack,
 } from 'react-icons/fa';
 import { useHls, type StreamErrorCause } from '../../hooks/useHls';
 import {
@@ -28,6 +28,7 @@ import { storage } from '../../services/storage';
 import { searchSubtitles, resolveSubtitleTrack, type SubtitleResult } from '../../services/openSubtitles';
 import { api } from '../../services/api';
 import { LiveChannelPreview, type LivePipeline } from '../LiveChannelPreview';
+import { nextMoment, prevMoment } from '../../services/secretList';
 import './VideoPlayer.css';
 
 export interface PlayerChannel {
@@ -112,10 +113,20 @@ export interface VideoPlayerProps {
     adopt?: LivePipeline | null;
     /** Há outra fonte pra tentar (sessão → URL normal → variante): troca já no travamento. */
     hasAlternativeSource?: boolean;
+    /**
+     * Momentos salvos do filme (lista secreta): 🟢 ou 📌 marca o instante,
+     * CH+/CH− pulam entre eles, e eles aparecem como marcas na barra.
+     */
+    moments?: { list: number[]; onAdd: (t: number) => void };
+    /**
+     * Começa EXATAMENTE aqui (segundos), ignorando a preferência de retomar e
+     * o recuo de 5s do resume — é o "abrir no momento salvo".
+     */
+    startAt?: number | null;
 }
 
 // Control buttons: close, prev, play, next, options, channels, volume, sleep, aspect
-type ControlButton = 'close' | 'prev' | 'play' | 'golive' | 'next' | 'options' | 'channels' | 'volume' | 'sleep' | 'aspect';
+type ControlButton = 'close' | 'prev' | 'play' | 'golive' | 'next' | 'pin' | 'options' | 'channels' | 'volume' | 'sleep' | 'aspect';
 // 'seekbar' = barra de progresso focada (seek por D-pad, item 37)
 type PlayerFocus = 'controls' | 'menu' | 'zap-list' | 'seekbar';
 // Uma tela por vez; 'root' lista as seções (item 39/40/41/48)
@@ -236,6 +247,8 @@ export function VideoPlayer({
     subtitleQuery,
     adopt,
     hasAlternativeSource = false,
+    moments,
+    startAt,
 }: VideoPlayerProps) {
     // Um overlay do App (o aviso de lembrete) toma as teclas mudando a zona
     // pra 'overlay'. Sem consultar isso aqui, o MESMO OK pausava o vídeo por
@@ -885,6 +898,7 @@ export function VideoPlayer({
         buttons.push('play');
         if (isLiveContent && isBehindLive) buttons.push('golive');
         if (canGoNext && onNextEpisode) buttons.push('next');
+        if (moments) buttons.push('pin');
         // ⚙ sempre aparece: mesmo sem níveis de qualidade ele dá acesso a
         // áudio, legenda e estatísticas
         buttons.push('options');
@@ -893,7 +907,7 @@ export function VideoPlayer({
         buttons.push('sleep');
         buttons.push('aspect');
         return buttons;
-    }, [canGoPrevious, canGoNext, onPreviousEpisode, onNextEpisode, canZap, isLiveContent, isBehindLive]);
+    }, [canGoPrevious, canGoNext, onPreviousEpisode, onNextEpisode, canZap, isLiveContent, isBehindLive, moments]);
 
     // ----- Zapping helpers (live) -----
     const currentChannelIndex = useMemo(() => {
@@ -1086,6 +1100,21 @@ export function VideoPlayer({
     const closeZapList = useCallback(() => {
         setPlayerFocus('controls');
     }, []);
+
+    // Início exato (momento salvo): uma vez, assim que o vídeo tem metadado
+    const startAppliedRef = useRef(false);
+    useEffect(() => {
+        const video = videoRef.current;
+        if (startAt == null || !video || startAppliedRef.current) return;
+        const apply = () => {
+            if (startAppliedRef.current) return;
+            startAppliedRef.current = true;
+            video.currentTime = startAt;
+        };
+        if (video.readyState >= 1) apply();
+        else video.addEventListener('loadedmetadata', apply, { once: true });
+        return () => video.removeEventListener('loadedmetadata', apply);
+    }, [startAt, src]);
 
     // Resume time - apply once when video is ready
     useEffect(() => {
@@ -1350,6 +1379,65 @@ export function VideoPlayer({
             video.currentTime = time;
         }
     }, []);
+
+    // ----- Momentos (lista secreta) -----
+    const [momentToast, setMomentToast] = useState<string | null>(null);
+    const momentToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const flashMoment = useCallback((text: string) => {
+        setMomentToast(text);
+        if (momentToastTimerRef.current) clearTimeout(momentToastTimerRef.current);
+        momentToastTimerRef.current = setTimeout(() => setMomentToast(null), 2200);
+    }, []);
+    useEffect(() => () => {
+        if (momentToastTimerRef.current) clearTimeout(momentToastTimerRef.current);
+    }, []);
+    const momentsRef = useRef(moments);
+    useEffect(() => { momentsRef.current = moments; }, [moments]);
+
+    const pinMoment = useCallback(() => {
+        const video = videoRef.current;
+        const m = momentsRef.current;
+        if (!video || !m) return;
+        const t = video.currentTime;
+        m.onAdd(t);
+        flashMoment(`📌 Momento salvo ${formatTime(t)}`);
+    }, [flashMoment]);
+
+    const jumpMoment = useCallback((direction: 1 | -1) => {
+        const video = videoRef.current;
+        const list = momentsRef.current?.list ?? [];
+        if (!video) return;
+        if (list.length === 0) {
+            flashMoment('Nenhum momento salvo — 🟢 marca o instante');
+            return;
+        }
+        const alvo = direction > 0 ? nextMoment(list, video.currentTime) : prevMoment(list, video.currentTime);
+        if (alvo == null) {
+            flashMoment(direction > 0 ? 'Último momento' : 'Primeiro momento');
+            return;
+        }
+        video.currentTime = alvo;
+        flashMoment(`Momento ${list.indexOf(alvo) + 1}/${list.length} — ${formatTime(alvo)}`);
+    }, [flashMoment]);
+
+    // CH+/CH− pulam entre momentos. Efeito próprio: o de zapping só existe
+    // com canZap (ao vivo), e filme nunca zapeia.
+    useEffect(() => {
+        if (!moments || canZap) return;
+        const handleMomentKeys = (event: KeyboardEvent) => {
+            const key = event.key || String(event.keyCode);
+            const code = event.keyCode;
+            if (key === 'MediaChannelUp' || code === 427 || key === 'PageUp' || code === 33) {
+                event.preventDefault();
+                jumpMoment(1);
+            } else if (key === 'MediaChannelDown' || code === 428 || key === 'PageDown' || code === 34) {
+                event.preventDefault();
+                jumpMoment(-1);
+            }
+        };
+        window.addEventListener('keydown', handleMomentKeys);
+        return () => window.removeEventListener('keydown', handleMomentKeys);
+    }, [moments, canZap, jumpMoment]);
 
     // Aplica de uma vez o pulo acumulado. Cada tecla mexer no currentTime
     // faria o HLS re-buscar segmento a segmento e travar a TV.
@@ -1728,8 +1816,11 @@ export function VideoPlayer({
             case 'aspect':
                 cycleAspect();
                 break;
+            case 'pin':
+                pinMoment();
+                break;
         }
-    }, [focusedControl, handleClose, onPreviousEpisode, togglePlay, onNextEpisode, openMenu, openZapList, toggleMute, cycleSleep, cycleAspect, seekToLive]);
+    }, [focusedControl, handleClose, onPreviousEpisode, togglePlay, onNextEpisode, openMenu, openZapList, toggleMute, cycleSleep, cycleAspect, seekToLive, pinMoment]);
 
     // TV Navigation handler
     const handleNavigate = useCallback((direction: 'up' | 'down' | 'left' | 'right') => {
@@ -1871,6 +1962,8 @@ export function VideoPlayer({
         onNavigate: handleNavigate,
         onEnter: handleEnter,
         onBack: handleBack,
+        // 🟢 marca um momento (só com a lista secreta; sem `moments` nada muda)
+        onAction: moments ? (action) => { if (action === 'green') pinMoment(); } : undefined,
         enabled: navEnabled && (isOverlayOwner || appFocusZone !== 'overlay')
     });
 
@@ -2134,6 +2227,8 @@ export function VideoPlayer({
                 </div>
             )}
 
+            {momentToast && <div className="moment-toast">{momentToast}</div>}
+
             {/* Reconectando (R1 item 44) */}
             {reconnecting && !error && (
                 <div className="reconnect-overlay">
@@ -2235,6 +2330,15 @@ export function VideoPlayer({
                                 className="progress-handle"
                                 style={{ left: `${percentage(seekDisplay?.target ?? currentTime, duration)}%` }}
                             />
+                            {moments && duration > 0 && moments.list.map(m => (
+                                <div
+                                    key={m}
+                                    className="moment-marker"
+                                    style={{ left: `${percentage(m, duration)}%` }}
+                                    title={formatTime(m)}
+                                    onClick={(e) => { e.stopPropagation(); seek(m); }}
+                                />
+                            ))}
                         </div>
                     </div>
                 )}
@@ -2247,6 +2351,7 @@ export function VideoPlayer({
                             <button
                                 className={`control-btn ${focusedControl === 'prev' && playerFocus === 'controls' ? 'focused' : ''}`}
                                 onClick={onPreviousEpisode}
+                                title="Anterior"
                             >
                                 <FaStepBackward />
                             </button>
@@ -2265,8 +2370,21 @@ export function VideoPlayer({
                             <button
                                 className={`control-btn ${focusedControl === 'next' && playerFocus === 'controls' ? 'focused' : ''}`}
                                 onClick={onNextEpisode}
+                                title="Próximo"
                             >
                                 <FaStepForward />
+                            </button>
+                        )}
+
+                        {/* Marcar momento (lista secreta) */}
+                        {moments && (
+                            <button
+                                className={`control-btn ${focusedControl === 'pin' && playerFocus === 'controls' ? 'focused' : ''}`}
+                                onClick={pinMoment}
+                                title="Marcar este momento (🟢)"
+                            >
+                                <FaThumbtack />
+                                {moments.list.length > 0 && <span className="quality-label">{moments.list.length}</span>}
                             </button>
                         )}
 

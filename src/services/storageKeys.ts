@@ -65,6 +65,10 @@ export const KEYS_LISTAS = [
     // Listas nomeadas do item 30. Chave NOVA: a lista padrao continua sendo
     // neostream_watch_later, byte por byte — zero migracao, zero risco
     'neostream_lists',
+    // Lista secreta de adultos com momentos salvos. Aqui (e não em
+    // preferências) de propósito: backup por QR e snapshot levam só as
+    // preferências — a lista secreta nunca sai do aparelho
+    'neostream_secret_list',
 ] as const;
 
 /** Ajustes do aparelho: é isto que o snapshot e o backup por QR carregam. */

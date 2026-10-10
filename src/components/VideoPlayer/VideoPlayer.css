@@ -1186,3 +1186,36 @@
     font-size: 26px;
     font-weight: 700;
 }
+
+/* Momentos salvos (lista secreta): marcas na barra + aviso curto */
+.moment-marker {
+    position: absolute;
+    top: 50%;
+    width: 4px;
+    height: 16px;
+    margin-left: -2px;
+    transform: translateY(-50%);
+    background: #fbbf24;
+    border-radius: 2px;
+    box-shadow: 0 0 6px rgba(251, 191, 36, 0.8);
+    cursor: pointer;
+    z-index: 11;
+}
+
+.moment-marker:hover {
+    height: 22px;
+}
+
+.moment-toast {
+    position: absolute;
+    top: 12%;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 56;
+    background: rgba(0, 0, 0, 0.78);
+    color: #fff;
+    font-size: 18px;
+    padding: 12px 24px;
+    border-radius: 12px;
+    pointer-events: none;
+}

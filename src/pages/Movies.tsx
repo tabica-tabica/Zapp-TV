@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback, type ReactNode } from 'react';
 import {
     FaFilm, FaBookmark, FaRegBookmark, FaPlay, FaSort, FaEyeSlash,
-    FaTag, FaCalendarAlt, FaTheaterMasks, FaStar,
+    FaTag, FaCalendarAlt, FaTheaterMasks, FaStar, FaLock,
 } from 'react-icons/fa';
 import { RemoteColorHint } from '../components/RemoteColorHint';
 import { Grid, type CellComponentProps } from 'react-window';
@@ -31,7 +31,10 @@ import {
 import { groupVodVersions, hasTag, versionLabel, ALL_VOD_TAGS, type VodTag } from '../services/vodVariants';
 // versionLabel é usado nos botões de versão da ficha (abaixo)
 import { storage } from '../services/storage';
-import { kidsFilter } from '../services/kidsFilter';
+import { kidsFilter, isAdultCategoryName } from '../services/kidsFilter';
+import { secretList, type ItemSecreto } from '../services/secretList';
+import { SecretList } from '../components/SecretList';
+import { SecretPlayer } from '../components/SecretPlayer';
 import { contentFlags } from '../services/contentFlags';
 import { progressService } from '../services/progressService';
 import { MovieCard } from './MovieCard';
@@ -183,6 +186,41 @@ export function Movies() {
         [categories, adultoLiberado],
     );
 
+    // Lista secreta (adultos + momentos): só com conteúdo adulto ligado e
+    // nunca no perfil Kids. Botão na barra, PIN toda vez que abre.
+    const listaSecretaAtiva = adultoLiberado && !kidsFilter.isKidsActive();
+    const categoriasAdultas = useMemo(
+        () => new Set(categories.filter(c => isAdultCategoryName(c.category_name || '')).map(c => c.category_id)),
+        [categories],
+    );
+    const ehFilmeAdulto = (m: VODStream) => categoriasAdultas.has(m.category_id) || isAdultCategoryName(m.name || '');
+    const [secretPinOpen, setSecretPinOpen] = useState(false);
+    const [secretPinProvisioned, setSecretPinProvisioned] = useState(false);
+    const [secretListOpen, setSecretListOpen] = useState(false);
+    const [secretPlaying, setSecretPlaying] = useState<{ itens: ItemSecreto[]; indice: number; momento: number | null } | null>(null);
+    const [, setSecretTick] = useState(0); // re-render do rótulo após toggle
+    const abrirListaSecreta = () => {
+        // Sem PIN ainda: cria o "0000" primeiro (mesmo fluxo da categoria adulta)
+        if (!parentalService.isSet()) {
+            parentalService.autoProvisionAdultLock().then(() => {
+                setSecretPinProvisioned(true);
+                setSecretPinOpen(true);
+            });
+            return;
+        }
+        setSecretPinOpen(true);
+    };
+    const toggleSecreto = (m: VODStream) => {
+        const entrou = secretList.toggle({
+            id: String(m.stream_id),
+            title: m.name,
+            poster: m.stream_icon || m.cover,
+            container: m.container_extension,
+        });
+        setSecretTick(t => t + 1);
+        setToast(entrou ? <><FaLock /> Na lista secreta</> : <><FaLock /> Fora da lista secreta</>);
+    };
+
     // Botões da barra na ORDEM do JSX, ancorados por id e não por posição.
     // O botão de gênero é condicional (some quando o provedor não organiza o
     // catálogo por gênero) — e índice posicional com item condicional é
@@ -191,6 +229,7 @@ export function Movies() {
         'sort', 'hidewatched', 'tags', 'decade',
         ...(generosDoCatalogo.length > 0 ? ['genero'] : []),
         'nota',
+        ...(listaSecretaAtiva ? ['secret'] : []),
     ] as const;
     const HEADER_BASE = 2; // 0 = busca, 1 = menu de categorias
     const toolbarFocusIndex = (item: string) =>
@@ -441,6 +480,12 @@ export function Movies() {
                 setToast(added ? <><FaBookmark /> Salvo na Minha Lista</> : <><FaRegBookmark /> Removido da Minha Lista</>);
             },
         },
+        // Só filme adulto e só com a lista secreta ativa
+        ...(listaSecretaAtiva && ehFilmeAdulto(contextItem) ? [{
+            label: secretList.has(String(contextItem.stream_id))
+                ? <><FaLock /> Tirar da lista secreta</> : <><FaLock /> Lista secreta</>,
+            run: () => toggleSecreto(contextItem),
+        }] : []),
         {
             label: <><FaPlay /> Assistir agora</>,
             run: () => {
@@ -469,6 +514,7 @@ export function Movies() {
                 else if (item === 'decade') cycleFilters();
                 else if (item === 'genero') setGeneroPickerOpen(true);
                 else if (item === 'nota') cycleNota();
+                else if (item === 'secret') abrirListaSecreta();
             }
         } else if (focusArea === 'alphabet') {
             const entries = alphabetIndex ? [...alphabetIndex.entries()] : [];
@@ -480,7 +526,8 @@ export function Movies() {
     };
 
     // Only enable when content is focused and no modal/player/panel is open
-    const navEnabled = !error && (focusZone === 'content' && !showModal && !showPlayer && !categoryMenuOpen && !contextItem && !pendingCategoryId && !generoPickerOpen);
+    const navEnabled = !error && (focusZone === 'content' && !showModal && !showPlayer && !categoryMenuOpen && !contextItem && !pendingCategoryId && !generoPickerOpen
+        && !secretPinOpen && !secretListOpen && !secretPlaying);
 
     useTVNavigation({
         onNavigate: handleNavigate,
@@ -687,7 +734,52 @@ export function Movies() {
                 >
                     {filters.minRating > 0 ? <><FaStar /> {filters.minRating}+</> : <><FaStar /> Nota</>}
                 </button>
+                {listaSecretaAtiva && (
+                    <button
+                        className={`toolbar-btn ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('secret') ? 'tv-focused' : ''}`}
+                        onClick={abrirListaSecreta}
+                        title="Lista secreta"
+                    >
+                        <FaLock />
+                    </button>
+                )}
             </div>
+
+            {secretPinOpen && (
+                <PinPrompt
+                    title="Lista secreta"
+                    hint={secretPinProvisioned
+                        ? 'PIN padrão: 0000 (altere em Configurações)'
+                        : 'Digite o PIN'}
+                    parental
+                    onSubmit={async (pin) => {
+                        const ok = await parentalService.verify(pin);
+                        if (ok) {
+                            setSecretPinOpen(false);
+                            setSecretListOpen(true);
+                        }
+                        return ok;
+                    }}
+                    onCancel={() => setSecretPinOpen(false)}
+                />
+            )}
+
+            {secretListOpen && !secretPlaying && (
+                <SecretList
+                    onClose={() => setSecretListOpen(false)}
+                    onPlay={(itens, indice, momento) => setSecretPlaying({ itens, indice, momento })}
+                />
+            )}
+
+            {secretPlaying && (
+                <SecretPlayer
+                    itens={secretPlaying.itens}
+                    indiceInicial={secretPlaying.indice}
+                    momentoInicial={secretPlaying.momento}
+                    // Volta pra lista (já relida, com os momentos novos)
+                    onClose={() => setSecretPlaying(null)}
+                />
+            )}
 
             {/* Content Detail Modal */}
             {selectedMovie && (
@@ -725,6 +817,10 @@ export function Movies() {
                     // mesma ficha a fileira simplesmente não existe — melhor
                     // que um card focável que não abre nada.
                     catalogoFilmes={streams}
+                    secretList={listaSecretaAtiva && ehFilmeAdulto(selectedMovie) ? {
+                        active: secretList.has(String(selectedMovie.stream_id)),
+                        onToggle: () => toggleSecreto(selectedMovie),
+                    } : undefined}
                     onOpenRelated={(streamId) => {
                         const alvo = streams.find(m => String(m.stream_id) === streamId);
                         if (!alvo) return;
