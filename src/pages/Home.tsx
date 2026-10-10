@@ -18,7 +18,7 @@ import { usageStats } from '../services/usageStats';
 import { kidsFilter, isAdultCategoryName } from '../services/kidsFilter';
 import { parentalService } from '../services/parentalService';
 import { contentFlags } from '../services/contentFlags';
-import { computeDefaultVisibleChannels } from '../services/liveVisibility';
+import { computeDefaultVisibleChannels, withMinimum } from '../services/liveVisibility';
 import { ContentDetailModal } from '../components/ContentDetailModal';
 import { MoviePlayer } from '../components/MoviePlayer';
 import { SeriesQueuePlayer } from '../components/SeriesQueuePlayer';
@@ -46,6 +46,9 @@ interface HomeProps {
     /** Qualquer movimento no controle cancela o aviso de saída. */
     onCancelExit: () => void;
 }
+
+// Mínimo de canais na fileira da prévia (favoritos + visíveis completando)
+const MIN_PREVIEW_CHANNELS = 10;
 
 const LOCALES: Record<Language, string> = { pt: 'pt-BR', en: 'en-US', es: 'es-ES' };
 
@@ -211,10 +214,11 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
 
                 // Prévia de canal ao vivo: o último assistido (se ainda
                 // existir no catálogo já filtrado por Kids/adulto) puxa a
-                // prévia grande; senão sorteia 1 dentre os visíveis por
+                // prévia grande; senão sorteia 1 dos favoritos, ou dos visíveis por
                 // padrão (mesma pipeline de curadoria/dedup de TV ao Vivo —
-                // ver liveVisibility.ts). Os DEMAIS canais visíveis (até 24)
-                // viram a fileira de capas ao lado, pra trocar a prévia sem
+                // ver liveVisibility.ts). A fileira de capas ao lado traz os
+                // canais favoritos (até 24), completada com os visíveis até
+                // MIN_PREVIEW_CHANNELS, pra trocar a prévia sem
                 // sair da Home. `streams` aqui já vem vazio quando "Incluir
                 // canais de TV" está desligado, então a seção some sozinha.
                 if (streams.length > 0) {
@@ -223,10 +227,17 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                     const lastChannel = lastChannelId
                         ? streams.find(s => s.stream_id === lastChannelId)
                         : undefined;
-                    const hero = lastChannel
-                        ?? (visible.length > 0 ? visible[Math.floor(Math.random() * visible.length)] : null);
+                    // Favoritos primeiro; `streams` já passou pelo filtro Kids/adulto
+                    const byId = new Map(streams.map(s => [s.stream_id, s]));
+                    const favChannels = storage.getFavorites()
+                        .filter(f => f.type === 'channel')
+                        .map(f => byId.get(Number(f.id)))
+                        .filter((c): c is LiveStream => !!c);
+                    const sortear = (l: LiveStream[]) => (l.length > 0 ? l[Math.floor(Math.random() * l.length)] : null);
+                    const hero = lastChannel ?? sortear(favChannels) ?? sortear(visible);
                     if (hero) {
-                        const others = visible.filter(c => c.stream_id !== hero.stream_id).slice(0, 24);
+                        const semHero = (l: LiveStream[]) => l.filter(c => c.stream_id !== hero.stream_id);
+                        const others = withMinimum(semHero(favChannels), semHero(visible), MIN_PREVIEW_CHANNELS).slice(0, 24);
                         setChannelPreviewPool({ lastWatchedId: lastChannel ? lastChannel.stream_id : null, channels: [hero, ...others] });
                         setSelectedPreviewChannelId(hero.stream_id);
                     } else {

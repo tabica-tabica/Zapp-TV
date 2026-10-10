@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import type { IconType } from 'react-icons';
 import {
-    FaSearch, FaHome, FaBroadcastTower, FaFilm, FaTv, FaBookmark, FaHeart, FaCog,
+    FaSearch, FaHome, FaBroadcastTower, FaFilm, FaTv, FaBookmark, FaStar, FaCog,
     FaUserCircle, FaSignOutAlt, FaSync,
 } from 'react-icons/fa';
 import { useTVNavigation } from '../../hooks/useTVNavigation';
@@ -41,7 +41,7 @@ const allMenuItems: MenuItem[] = [
     { id: 'movies', label: 'Filmes', icon: FaFilm, gradient: 'linear-gradient(135deg, #3b82f6, #1d4ed8)', requiresVOD: true },
     { id: 'series', label: 'Séries', icon: FaTv, gradient: 'linear-gradient(135deg, #22d3ee, #0891b2)', requiresVOD: true },
     { id: 'mylist', label: 'Minha Lista', icon: FaBookmark, gradient: 'linear-gradient(135deg, #14b8a6, #0891b2)' },
-    { id: 'favorites', label: 'Favoritos', icon: FaHeart, gradient: 'linear-gradient(135deg, #ef4444, #dc2626)' },
+    { id: 'favorites', label: 'Favoritos', icon: FaStar, gradient: 'linear-gradient(135deg, #ef4444, #dc2626)' },
     { id: 'settings', label: 'Configurações', icon: FaCog, gradient: 'linear-gradient(135deg, #6b7280, #4b5563)' },
 ];
 

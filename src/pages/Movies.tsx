@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback, type ReactNode } from 'react';
 import {
-    FaFilm, FaHeart, FaRegHeart, FaBookmark, FaRegBookmark, FaPlay, FaSort, FaEyeSlash,
+    FaFilm, FaBookmark, FaRegBookmark, FaPlay, FaSort, FaEyeSlash,
     FaTag, FaCalendarAlt, FaTheaterMasks, FaStar,
 } from 'react-icons/fa';
 import { RemoteColorHint } from '../components/RemoteColorHint';
@@ -426,23 +426,8 @@ export function Movies() {
 
     const contextActions = contextItem ? [
         {
-            label: storage.isFavorite(String(contextItem.stream_id), 'movie')
-                ? <><FaHeart /> Remover dos favoritos</> : <><FaRegHeart /> Favoritar</>,
-            run: () => {
-                const added = storage.toggleFavorite({
-                    id: String(contextItem.stream_id),
-                    type: 'movie',
-                    title: contextItem.name,
-                    poster: contextItem.stream_icon || contextItem.cover,
-                    rating: contextItem.rating,
-                    container: contextItem.container_extension,
-                });
-                setToast(added ? <><FaHeart /> Adicionado aos favoritos</> : <><FaRegHeart /> Removido dos favoritos</>);
-            },
-        },
-        {
             label: storage.isInWatchLater(String(contextItem.stream_id), 'movie')
-                ? <><FaBookmark /> Tirar da Minha Lista</> : <><FaRegBookmark /> Minha Lista</>,
+                ? <><FaBookmark /> Tirar da Minha Lista</> : <><FaRegBookmark /> Adicionar à Lista</>,
             run: () => {
                 const added = storage.toggleWatchLater({
                     id: String(contextItem.stream_id),

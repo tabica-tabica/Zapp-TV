@@ -104,3 +104,13 @@ export function computeDefaultVisibleChannels<T extends VisibilityCheckChannel>(
     if (hiddenByFamily.size === 0) return visible;
     return visible.filter(s => !hiddenByFamily.has(s.stream_id));
 }
+
+/**
+ * Fileira de canais da Home: todos os `primary` (favoritos) e, se não
+ * chegarem a `min`, completa com `fallback` (os visíveis) sem repetir.
+ */
+export function withMinimum<T extends { stream_id: number }>(primary: T[], fallback: T[], min: number): T[] {
+    const ids = new Set(primary.map(c => c.stream_id));
+    const extra = fallback.filter(c => !ids.has(c.stream_id)).slice(0, Math.max(0, min - primary.length));
+    return [...primary, ...extra];
+}

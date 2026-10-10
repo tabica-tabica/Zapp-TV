@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback, type ReactNode } from 'react';
 import {
-    FaTv, FaHeart, FaRegHeart, FaBookmark, FaRegBookmark, FaSort, FaEyeSlash,
+    FaTv, FaBookmark, FaRegBookmark, FaSort, FaEyeSlash,
     FaCalendarAlt, FaTheaterMasks, FaStar,
 } from 'react-icons/fa';
 import { RemoteColorHint } from '../components/RemoteColorHint';
@@ -337,22 +337,8 @@ export function Series() {
 
     const contextActions = contextItem ? [
         {
-            label: storage.isFavorite(String(contextItem.series_id), 'series')
-                ? <><FaHeart /> Remover dos favoritos</> : <><FaRegHeart /> Favoritar</>,
-            run: () => {
-                const added = storage.toggleFavorite({
-                    id: String(contextItem.series_id),
-                    type: 'series',
-                    title: contextItem.name,
-                    poster: contextItem.cover,
-                    rating: contextItem.rating,
-                });
-                setToast(added ? <><FaHeart /> Adicionado aos favoritos</> : <><FaRegHeart /> Removido dos favoritos</>);
-            },
-        },
-        {
             label: storage.isInWatchLater(String(contextItem.series_id), 'series')
-                ? <><FaBookmark /> Tirar da Minha Lista</> : <><FaRegBookmark /> Minha Lista</>,
+                ? <><FaBookmark /> Tirar da Minha Lista</> : <><FaRegBookmark /> Adicionar à Lista</>,
             run: () => {
                 const added = storage.toggleWatchLater({
                     id: String(contextItem.series_id),

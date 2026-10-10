@@ -634,7 +634,7 @@
 /* Action Buttons */
 .modal-actions {
     display: flex;
-    gap: 14px;
+    gap: 24px;
     flex-wrap: wrap;
 }
 
@@ -946,22 +946,6 @@
     margin-right: 12px;
 }
 
-.cast-photo {
-    display: block;
-    width: 92px;
-    height: 138px;
-    border-radius: 8px;
-    overflow: hidden;
-    background: rgba(255, 255, 255, 0.06);
-}
-
-.cast-photo img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-}
-
 .cast-name {
     display: block;
     margin-top: 6px;
@@ -972,11 +956,3 @@
     overflow: hidden;
 }
 
-.cast-character {
-    display: block;
-    font-size: 12px;
-    line-height: 1.2;
-    color: rgba(255, 255, 255, 0.5);
-    max-height: 29px;
-    overflow: hidden;
-}

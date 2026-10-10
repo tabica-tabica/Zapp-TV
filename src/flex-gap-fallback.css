@@ -73,8 +73,8 @@ html.no-flex-gap .episode-item > * + * {
 }
 
 html.no-flex-gap .modal-actions > * {
-    margin-right: 14px;
-    margin-bottom: 14px;
+    margin-right: 24px;
+    margin-bottom: 24px;
 }
 
 html.no-flex-gap .action-btn > * + * {

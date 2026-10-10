@@ -184,14 +184,6 @@ function buildTmdbUrl(path: string, params: Record<string, string>): string | nu
 }
 
 // TMDB Types
-/** Uma pessoa do elenco, já podada pro que a ficha mostra. */
-export interface TMDBAtor {
-    id: number;
-    name: string;
-    character: string;
-    profile_path: string | null;
-}
-
 /** A saga a que o filme pertence, sem os filmes (esses vêm em fetchColecao). */
 export interface TMDBColecaoResumo {
     id: number;
@@ -213,8 +205,6 @@ export interface TMDBMovieDetails {
     runtime?: number;
     /** Chave do vídeo no YouTube (item 18) — só a chave, nunca o array inteiro */
     trailerKey?: string;
-    /** Elenco podado (item 34) */
-    cast?: TMDBAtor[];
     /** Saga (item 29) */
     belongs_to_collection?: TMDBColecaoResumo | null;
 }
@@ -233,8 +223,6 @@ export interface TMDBSeriesDetails {
     number_of_seasons?: number;
     /** Chave do vídeo no YouTube (item 18) */
     trailerKey?: string;
-    /** Elenco podado (item 34) */
-    cast?: TMDBAtor[];
 }
 
 /**
@@ -273,9 +261,6 @@ export interface TMDBColecao {
     parts: Array<{ id: number; title: string; year: string; poster_path: string | null }>;
 }
 
-/** Quantos atores a faixa de elenco mostra. Além disso é peso morto no cache. */
-const MAX_ELENCO = 12;
-
 interface TMDBVideo {
     key?: string;
     site?: string;
@@ -300,28 +285,6 @@ function extrairTrailer(videos: unknown): string | undefined {
         || trailers[0]
         || doYoutube.find(v => v.type === 'Teaser');
     return escolhido?.key;
-}
-
-interface TMDBCastRaw {
-    id?: number;
-    name?: string;
-    character?: string;
-    profile_path?: string | null;
-}
-
-/** Elenco podado: só o que a faixa desenha, e só os primeiros MAX_ELENCO. */
-function extrairElenco(credits: unknown): TMDBAtor[] | undefined {
-    const lista = (credits as { cast?: TMDBCastRaw[] } | undefined)?.cast;
-    if (!Array.isArray(lista) || lista.length === 0) return undefined;
-    return lista
-        .filter(pessoa => pessoa?.id != null && pessoa.name)
-        .slice(0, MAX_ELENCO)
-        .map(pessoa => ({
-            id: Number(pessoa.id),
-            name: String(pessoa.name),
-            character: String(pessoa.character || ''),
-            profile_path: pessoa.profile_path ?? null,
-        }));
 }
 
 /**
@@ -350,7 +313,6 @@ function projetarFilme(data: Record<string, unknown>, certification?: string): T
             || ((data.external_ids as { imdb_id?: string } | undefined)?.imdb_id || undefined),
         runtime: typeof data.runtime === 'number' ? data.runtime : undefined,
         trailerKey: extrairTrailer(data.videos),
-        cast: extrairElenco(data.credits),
         belongs_to_collection: saga?.id != null
             ? { id: Number(saga.id), name: String(saga.name || ''), poster_path: saga.poster_path ?? null }
             : null,
@@ -371,7 +333,6 @@ function projetarSerie(data: Record<string, unknown>, certification?: string): T
         imdb_id: (data.external_ids as { imdb_id?: string } | undefined)?.imdb_id || undefined,
         number_of_seasons: typeof data.number_of_seasons === 'number' ? data.number_of_seasons : undefined,
         trailerKey: extrairTrailer(data.videos),
-        cast: extrairElenco(data.credits),
     };
 }
 
@@ -387,10 +348,9 @@ export async function fetchMovieDetails(tmdbId: string): Promise<TMDBMovieDetail
     try {
         const detailsUrl = buildTmdbUrl(`/movie/${tmdbId}`, {
             language: 'pt-BR',
-            // credits e videos entram no MESMO pedido: append_to_response não
-            // custa requisição extra, e é isso que torna elenco e trailer de
-            // graça em vez de mais duas viagens por ficha aberta.
-            append_to_response: 'release_dates,external_ids,credits,videos',
+            // videos entra no MESMO pedido: append_to_response não custa
+            // requisição extra. Elenco NÃO vem daqui — só do provedor.
+            append_to_response: 'release_dates,external_ids,videos',
             // Sem isto o `videos` HERDA o language=pt-BR e volta VAZIO na
             // maioria dos filmes — a maior parte dos trailers do TMDB está
             // cadastrada em inglês. O sintoma seria o botão de trailer
@@ -436,7 +396,7 @@ export async function fetchSeriesDetails(tmdbId: string): Promise<TMDBSeriesDeta
     try {
         const detailsUrl = buildTmdbUrl(`/tv/${tmdbId}`, {
             language: 'pt-BR',
-            append_to_response: 'content_ratings,external_ids,credits,videos',
+            append_to_response: 'content_ratings,external_ids,videos',
             include_video_language: 'pt-BR,pt,en,null',
         });
         if (!detailsUrl) return null;

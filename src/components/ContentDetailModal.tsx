@@ -1,7 +1,7 @@
 ﻿// ContentDetailModal.tsx - Premium modal matching original NeoStream app
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { FaStar, FaTheaterMasks, FaLayerGroup, FaBookmark, FaRegBookmark, FaHeart, FaRegHeart } from 'react-icons/fa';
+import { FaStar, FaTheaterMasks, FaLayerGroup, FaBookmark, FaRegBookmark } from 'react-icons/fa';
 import { api } from '../services/api';
 import { storage } from '../services/storage';
 import { searchMovieByName, searchSeriesByName, fetchMovieDetails, fetchSeriesDetails, getImageUrl, formatGenres, type TMDBMovieDetails, type TMDBSeriesDetails, IMAGE_SIZE_FICHA, IMAGE_SIZE_FUNDO } from '../services/tmdb';
@@ -89,6 +89,8 @@ export function ContentDetailModal({
     const [selectedSeason, setSelectedSeason] = useState(1);
     const [selectedEpisode, setSelectedEpisode] = useState(1);
     const [loading, setLoading] = useState(false);
+    // Elenco do filme: a listagem do provedor não traz `cast`, só o get_vod_info
+    const [vodCast, setVodCast] = useState('');
     const [isClosing, setIsClosing] = useState(false);
     const [, setRefresh] = useState(0);
     const modalRef = useRef<HTMLDivElement>(null);
@@ -112,7 +114,7 @@ export function ContentDetailModal({
     const [tmdbLoading, setTmdbLoading] = useState(false);
 
     // Focus management for TV navigation
-    type FocusZone = 'play' | 'watchLater' | 'favorite' | 'close' | 'season' | 'episode' | 'version' | 'collection' | 'trailer';
+    type FocusZone = 'play' | 'watchLater' | 'close' | 'season' | 'episode' | 'version' | 'collection' | 'trailer';
     const [focusZone, setFocusZone] = useState<FocusZone>('play');
     const [seasonFocusIndex, setSeasonFocusIndex] = useState(0);
     const [episodeFocusIndex, setEpisodeFocusIndex] = useState(0);
@@ -160,19 +162,22 @@ export function ContentDetailModal({
     // requisição /person/{id}/combined_credits por ator focado, um índice
     // sobre milhares de itens do catálogo, e só funcionaria nas duas telas que
     // passam o catálogo. Aqui o elenco é informação, como os selos de gênero.
-    // Sem chave do TMDB cai no `cast` que o próprio provedor manda.
-    const elenco = useMemo(() => {
-        const doTmdb = tmdbData?.cast;
-        if (doTmdb && doTmdb.length > 0) return doTmdb;
-        const doProvedor = (contentData.cast || '')
-            .split(',')
-            .map(nome => nome.trim())
-            .filter(Boolean)
-            .slice(0, 12);
-        return doProvedor.map((nome, i) => ({
-            id: -(i + 1), name: nome, character: '', profile_path: null,
-        }));
-    }, [tmdbData, contentData.cast]);
+    // Só os nomes que o próprio provedor manda — o TMDB não é consultado
+    // pro elenco (privacidade: nenhuma requisição a mais por ficha aberta).
+    const elenco = useMemo(() => (contentData.cast || vodCast)
+        .split(',')
+        .map(nome => nome.trim())
+        .filter(Boolean), [contentData.cast, vodCast]);
+
+    useEffect(() => {
+        setVodCast('');
+        if (!isOpen || contentType !== 'movie' || contentData.cast) return;
+        let ativo = true;
+        api.getVodInfo(Number(contentId))
+            .then(data => { if (ativo) setVodCast(data?.info?.cast || ''); })
+            .catch(() => { /* sem elenco, a faixa só não aparece */ });
+        return () => { ativo = false; };
+    }, [isOpen, contentType, contentId, contentData.cast]);
 
     // Quantos CABEM na faixa. A ficha tem ~528px úteis ao lado do pôster e
     // cada card ocupa 104px: mostrar doze deixaria sete fora da tela, e a
@@ -367,8 +372,7 @@ export function ContentDetailModal({
     const listaRica = episodiosComDetalhe.temSinopse || episodiosComDetalhe.temImagem;
 
     useEffect(() => {
-        if (focusZone !== 'play' && focusZone !== 'watchLater' && focusZone !== 'favorite'
-            && focusZone !== 'trailer') return;
+        if (focusZone !== 'play' && focusZone !== 'watchLater' && focusZone !== 'trailer') return;
         actionsRef.current?.scrollIntoView({ block: 'nearest' });
         // As dependencias incluem o que CRESCE depois: elenco, saga e a lista
         // de episodios chegam por rede, segundos depois do foco ja estar nos
@@ -389,14 +393,10 @@ export function ContentDetailModal({
                 else if (direction === 'down' && episodes.length > 0) setFocusZone('episode');
             } else if (focusZone === 'watchLater') {
                 if (direction === 'left') setFocusZone('play');
-                else if (direction === 'right') setFocusZone('favorite');
-                else if (direction === 'up') setFocusZone('close');
-            } else if (focusZone === 'favorite') {
-                if (direction === 'left') setFocusZone('watchLater');
                 else if (direction === 'right' && hasTrailer) setFocusZone('trailer');
                 else if (direction === 'up') setFocusZone('close');
             } else if (focusZone === 'trailer') {
-                if (direction === 'left') setFocusZone('favorite');
+                if (direction === 'left') setFocusZone('watchLater');
                 else if (direction === 'up') setFocusZone('close');
             } else if (focusZone === 'close') {
                 if (direction === 'down') setFocusZone('play');
@@ -453,14 +453,10 @@ export function ContentDetailModal({
                 else if (direction === 'up') setFocusZone(hasCollection ? 'collection' : 'close');
             } else if (focusZone === 'watchLater') {
                 if (direction === 'left') setFocusZone('play');
-                else if (direction === 'right') setFocusZone('favorite');
-                else if (direction === 'up') setFocusZone('close');
-            } else if (focusZone === 'favorite') {
-                if (direction === 'left') setFocusZone('watchLater');
                 else if (direction === 'right' && hasTrailer) setFocusZone('trailer');
                 else if (direction === 'up') setFocusZone('close');
             } else if (focusZone === 'trailer') {
-                if (direction === 'left') setFocusZone('favorite');
+                if (direction === 'left') setFocusZone('watchLater');
                 else if (direction === 'up') setFocusZone('close');
             } else if (focusZone === 'close') {
                 if (direction === 'down') setFocusZone(abaixoDoClose);
@@ -491,9 +487,6 @@ export function ContentDetailModal({
             );
         } else if (focusZone === 'watchLater') {
             storage.toggleWatchLater(buildSavedItem());
-            setRefresh(r => r + 1);
-        } else if (focusZone === 'favorite') {
-            storage.toggleFavorite(buildSavedItem());
             setRefresh(r => r + 1);
         } else if (focusZone === 'trailer') {
             if (!trailerKey) return;
@@ -673,24 +666,9 @@ export function ContentDetailModal({
                         <div className="modal-cast">
                             <span className="modal-cast-label"><FaTheaterMasks /> Elenco</span>
                             <div className="cast-row">
-                                {elencoVisivel.map(pessoa => (
-                                    <div className="cast-card" key={pessoa.id} title={pessoa.name}>
-                                        <span className="cast-photo">
-                                            {pessoa.profile_path && (
-                                                <img
-                                                    src={getImageUrl(pessoa.profile_path, 'w185') || ''}
-                                                    alt=""
-                                                    loading="lazy"
-                                                    onError={(e) => {
-                                                        (e.currentTarget as HTMLImageElement).style.display = 'none';
-                                                    }}
-                                                />
-                                            )}
-                                        </span>
-                                        <span className="cast-name">{pessoa.name}</span>
-                                        {pessoa.character && (
-                                            <span className="cast-character">{pessoa.character}</span>
-                                        )}
+                                {elencoVisivel.map(nome => (
+                                    <div className="cast-card" key={nome} title={nome}>
+                                        <span className="cast-name">{nome}</span>
                                     </div>
                                 ))}
                             </div>
@@ -765,21 +743,32 @@ export function ContentDetailModal({
                                         <div
                                             key={ep.id || index}
                                             className={`episode-item ${isSelected ? 'selected' : ''} ${focusZone === 'episode' && episodeFocusIndex === index ? 'focused' : ''}`}
-                                            onClick={() => setSelectedEpisode(epNum)}
+                                            // Clique (mouse/Magic Remote) toca, igual ao OK do D-pad
+                                            onClick={() => {
+                                                setSelectedEpisode(epNum);
+                                                onPlay(selectedSeason, epNum);
+                                            }}
                                         >
                                             <span className="episode-number default">{epNum}</span>
                                             {episodiosComDetalhe.temImagem && (
                                                 <span className="episode-thumb">
-                                                    {ep.info?.movie_image && (
+                                                    {(ep.info?.movie_image || contentData.cover) && (
                                                         <img
-                                                            src={ep.info.movie_image}
+                                                            src={ep.info?.movie_image || contentData.cover}
                                                             alt=""
                                                             loading="lazy"
-                                                            // Miniatura quebrada é comum: o provedor
-                                                            // aponta pra um host que já saiu do ar.
-                                                            // Some sem deixar o ícone de imagem quebrada.
+                                                            // Sem miniatura, ou miniatura quebrada (o
+                                                            // provedor aponta pra um host que já saiu do
+                                                            // ar): cai no pôster da série. Se nem o pôster
+                                                            // carregar, some sem o ícone de imagem quebrada.
                                                             onError={(e) => {
-                                                                (e.currentTarget as HTMLImageElement).style.display = 'none';
+                                                                const img = e.currentTarget as HTMLImageElement;
+                                                                if (contentData.cover && !img.dataset.fallback) {
+                                                                    img.dataset.fallback = '1';
+                                                                    img.src = contentData.cover;
+                                                                } else {
+                                                                    img.style.display = 'none';
+                                                                }
                                                             }}
                                                         />
                                                     )}
@@ -855,19 +844,7 @@ export function ContentDetailModal({
                             }}
                         >
                             {storage.isInWatchLater(contentId, contentType) ? <FaBookmark /> : <FaRegBookmark />}
-                            {storage.isInWatchLater(contentId, contentType) ? 'Salvo' : 'Assistir Depois'}
-                        </button>
-
-                        {/* Favorite Button */}
-                        <button
-                            className={`action-btn favorite-btn ${storage.isFavorite(contentId, contentType) ? 'active' : ''} ${focusZone === 'favorite' ? 'focused' : ''}`}
-                            onClick={() => {
-                                storage.toggleFavorite(buildSavedItem());
-                                setRefresh(r => r + 1);
-                            }}
-                            title={storage.isFavorite(contentId, contentType) ? 'Remover dos Favoritos' : 'Adicionar aos Favoritos'}
-                        >
-                            {storage.isFavorite(contentId, contentType) ? <FaHeart /> : <FaRegHeart />}
+                            {storage.isInWatchLater(contentId, contentType) ? 'Na Minha Lista' : 'Adicionar à Lista'}
                         </button>
 
                         {/* Trailer (item 18). A MESMA expressão `hasTrailer`

@@ -7,7 +7,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { installFakeStorage } from '../testing/fakeStorage';
-import { computeDefaultVisibleChannels, type VisibilityCheckChannel } from './liveVisibility';
+import { computeDefaultVisibleChannels, withMinimum, type VisibilityCheckChannel } from './liveVisibility';
 import { hiddenChannels, hiddenCategories } from './liveExtras';
 import { curatedHiddenPrefs } from './curatedHiddenGroups';
 import { regionalPrefs } from './regionalPrefs';
@@ -128,5 +128,20 @@ describe('computeDefaultVisibleChannels', () => {
 
     it('catálogo vazio devolve lista vazia', () => {
         expect(computeDefaultVisibleChannels([], CATEGORIES)).toEqual([]);
+    });
+});
+
+describe('withMinimum', () => {
+    const ch = (id: number) => ({ stream_id: id });
+    const ids = (l: { stream_id: number }[]) => l.map(c => c.stream_id);
+
+    it('completa os favoritos com os visíveis até o mínimo, sem repetir', () => {
+        expect(ids(withMinimum([ch(1), ch(2)], [ch(2), ch(3), ch(4), ch(5)], 4))).toEqual([1, 2, 3, 4]);
+    });
+    it('mantém todos os favoritos quando já passam do mínimo', () => {
+        expect(ids(withMinimum([ch(1), ch(2), ch(3)], [ch(4)], 2))).toEqual([1, 2, 3]);
+    });
+    it('sem favoritos, usa só os visíveis', () => {
+        expect(ids(withMinimum([], [ch(7), ch(8), ch(9)], 2))).toEqual([7, 8]);
     });
 });

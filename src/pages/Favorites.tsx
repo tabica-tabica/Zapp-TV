@@ -1,7 +1,7 @@
 // Favorites Page - Matching NeoStream Desktop Style
 
 import { useCallback, useMemo, useState } from 'react';
-import { FaChild, FaHeart } from 'react-icons/fa';
+import { FaChild, FaStar } from 'react-icons/fa';
 import { Grid, type CellComponentProps } from 'react-window';
 import { RemoteColorHint } from '../components/RemoteColorHint';
 import { storage, type FavoriteItem } from '../services/storage';
@@ -12,12 +12,8 @@ import { useMeasuredColumns } from '../hooks/useMeasuredColumns';
 import { useVariantFailover } from '../hooks/useVariantFailover';
 import { useFocusZone } from '../contexts/FocusContext';
 import { kidsFilter } from '../services/kidsFilter';
-import { ContentDetailModal } from '../components/ContentDetailModal';
-import { MoviePlayer } from '../components/MoviePlayer';
-import { SeriesQueuePlayer } from '../components/SeriesQueuePlayer';
 import { VideoPlayer } from '../components/VideoPlayer';
 import { CatalogCard } from '../components/CatalogCard/CatalogCard';
-import { buildEpisodeQueue, type EpisodeQueue } from '../services/seriesPlayback';
 import './Favorites.css';
 
 interface FavoritesProps {
@@ -30,11 +26,11 @@ const CARD_INFO_HEIGHT = 76;
 // Vermelho — tema original do Favorites (o do MyList é teal, o default do CatalogCard).
 const ACCENT_RGB = '239, 68, 68';
 
-function rotuloDoTipo(type: FavoriteItem['type']): string {
-    if (type === 'movie') return 'Filme';
-    if (type === 'series') return 'Série';
-    return 'Canal';
-}
+const rotuloDoTipo = () => 'Canal';
+
+// Só canais: filmes/séries favoritados continuam no storage (alimentam as
+// recomendações da Home e o badge de episódio novo), mas não aparecem aqui.
+const getChannelFavorites = () => storage.getFavorites().filter(item => item.type === 'channel');
 
 interface FavoritesCellProps {
     items: FavoriteItem[];
@@ -69,76 +65,49 @@ function FavoritesCell({
 }
 
 export function Favorites({ onNavigate }: FavoritesProps) {
-    const [items, setItems] = useState<FavoriteItem[]>(() => storage.getFavorites());
-    const [activeTab, setActiveTab] = useState<'all' | 'movies' | 'series' | 'channels'>('all');
+    const [items, setItems] = useState<FavoriteItem[]>(getChannelFavorites);
     const [removingId, setRemovingId] = useState<string | null>(null);
     const { focusZone, setFocusZone } = useFocusZone();
     const [kidsActive] = useState(() => kidsFilter.isKidsActive());
 
-    // Playback / modal
-    const [modalItem, setModalItem] = useState<FavoriteItem | null>(null);
-    const [playingMovie, setPlayingMovie] = useState<FavoriteItem | null>(null);
     const [playingChannel, setPlayingChannel] = useState<FavoriteItem | null>(null);
-    const [seriesQueue, setSeriesQueue] = useState<EpisodeQueue | null>(null);
 
-    // Focus states for TV navigation
-    const [focusArea, setFocusArea] = useState<'tabs' | 'items'>('items');
+    // Focus states for TV navigation ('header' = o botão "Limpar Tudo")
+    const [focusArea, setFocusArea] = useState<'header' | 'items'>('items');
     // Confirmação de dois toques pro "Limpar Tudo" (mesmo padrão do reset das
     // Configurações): apagar a lista inteira sem confirmar seria cruel
     const [clearArmed, setClearArmed] = useState(false);
-    const [focusedTabIndex, setFocusedTabIndex] = useState(0);
-    const [emptyFocusIndex, setEmptyFocusIndex] = useState(0);
     const { containerRef: gridContainerRef, columns, columnWidth } = useMeasuredColumns({
         cardWidth: CARD_WIDTH, gap: CARD_GAP, minColumns: 3, maxColumns: 8,
     });
 
     const loadItems = useCallback(() => {
-        const saved = storage.getFavorites();
-        setItems(saved);
+        setItems(getChannelFavorites());
     }, []);
 
+    // Limpa só os canais — clearFavorites() levaria junto filmes/séries
     const clearAll = () => {
-        storage.clearFavorites();
+        for (const item of getChannelFavorites()) storage.removeFavorite(item.id, item.type);
         loadItems();
     };
-
-    const movies = items.filter(item => item.type === 'movie');
-    const series = items.filter(item => item.type === 'series');
-    const channels = items.filter(item => item.type === 'channel');
-
-    const displayItems = activeTab === 'all' ? items :
-        activeTab === 'movies' ? movies :
-            activeTab === 'series' ? series : channels;
-
-    const tabs = ['all', 'movies', 'series', 'channels'] as const;
-    // Slots da faixa do cabeçalho: as abas + "Limpar Tudo" (que só existe
-    // quando há algo pra limpar — slot invisível vira parada morta do D-pad)
-    const headerSlots = tabs.length + (items.length > 0 ? 1 : 0);
 
     const channelFailover = useVariantFailover(
         playingChannel && { stream_id: playingChannel.id, name: playingChannel.title },
         next => setPlayingChannel(prev => prev && { ...prev, id: String(next.stream_id), title: next.name }),
     );
 
-    // Abrir item: canal toca direto; filme/série abrem a ficha
-    const openItem = useCallback((item: FavoriteItem) => {
-        if (item.type === 'channel') {
-            setPlayingChannel(item);
-        } else {
-            setModalItem(item);
-        }
-    }, []);
+    const openItem = useCallback((item: FavoriteItem) => setPlayingChannel(item), []);
 
     const {
         focusedIndex, setFocusedIndex, gridRef, handleNavigate: handleGridNavigate, handleSelect: handleGridSelect,
     } = useVirtualGridNavigation({
-        itemCount: displayItems.length,
+        itemCount: items.length,
         columns,
         enabled: focusArea === 'items',
-        onExitUp: () => setFocusArea('tabs'),
+        onExitUp: () => setFocusArea('header'),
         onExitLeft: () => setFocusZone('sidebar'),
         onSelect: (index) => {
-            const item = displayItems[index];
+            const item = items[index];
             if (item) openItem(item);
         },
     });
@@ -152,18 +121,6 @@ export function Favorites({ onNavigate }: FavoritesProps) {
         }, 300);
     }, [loadItems]);
 
-    const playSeriesEpisode = async (item: FavoriteItem, season?: number, episode?: number) => {
-        try {
-            const queue = await buildEpisodeQueue(item.id, item.title, item.poster, season, episode);
-            if (queue) {
-                setSeriesQueue(queue);
-                setModalItem(null);
-            }
-        } catch (err) {
-            console.error('Error building episode queue:', err);
-        }
-    };
-
     // TV Navigation
     const handleNavigate = (direction: 'up' | 'down' | 'left' | 'right') => {
         setClearArmed(false); // sair da linha cancela a confirmação
@@ -172,23 +129,13 @@ export function Favorites({ onNavigate }: FavoritesProps) {
             return;
         }
         if (items.length === 0) {
-            if (direction === 'left') {
-                if (emptyFocusIndex === 0) setFocusZone('sidebar');
-                else setEmptyFocusIndex(0);
-            } else if (direction === 'right') {
-                setEmptyFocusIndex(1);
-            }
+            if (direction === 'left') setFocusZone('sidebar');
             return;
         }
 
-        if (focusArea === 'tabs') {
+        if (focusArea === 'header') {
             if (direction === 'left') {
-                if (focusedTabIndex === 0) setFocusZone('sidebar');
-                else setFocusedTabIndex(prev => Math.max(0, prev - 1));
-            } else if (direction === 'right') {
-                // O último slot é o "Limpar Tudo" — botão que existia no
-                // desenho e que nenhuma tecla alcançava
-                setFocusedTabIndex(prev => Math.min(headerSlots - 1, prev + 1));
+                setFocusZone('sidebar');
             } else if (direction === 'down') {
                 setFocusArea('items');
                 setFocusedIndex(0);
@@ -201,22 +148,18 @@ export function Favorites({ onNavigate }: FavoritesProps) {
     const handleEnter = () => {
         if (kidsActive) return;
         if (items.length === 0) {
-            onNavigate?.(emptyFocusIndex === 0 ? 'movies' : 'series');
+            onNavigate?.('live');
             return;
         }
 
-        if (focusArea === 'tabs') {
-            if (focusedTabIndex >= tabs.length) {
-                // Apagar tudo é irreversível: o primeiro OK arma, o segundo faz
-                if (clearArmed) {
-                    clearAll();
-                    setClearArmed(false);
-                } else {
-                    setClearArmed(true);
-                }
-                return;
+        if (focusArea === 'header') {
+            // Apagar tudo é irreversível: o primeiro OK arma, o segundo faz
+            if (clearArmed) {
+                clearAll();
+                setClearArmed(false);
+            } else {
+                setClearArmed(true);
             }
-            setActiveTab(tabs[focusedTabIndex]);
         } else if (focusArea === 'items') {
             handleGridSelect();
         }
@@ -233,24 +176,24 @@ export function Favorites({ onNavigate }: FavoritesProps) {
         onAction: (action) => {
             // 🔴 remove o item em foco — mesma convenção do resto do app
             if (action !== 'red' || focusArea !== 'items') return;
-            const item = displayItems[focusedIndex];
+            const item = items[focusedIndex];
             if (item) removeItem(item);
         },
-        enabled: focusZone === 'content' && !modalItem && !playingMovie && !playingChannel && !seriesQueue,
+        enabled: focusZone === 'content' && !playingChannel,
     });
 
     // Altura da linha: pôster 2:3 + a faixa de título/nota + o gap entre linhas.
     const cardHeight = Math.round((columnWidth - CARD_GAP) * 1.5) + CARD_INFO_HEIGHT + CARD_GAP;
-    const rowCount = Math.max(1, Math.ceil(displayItems.length / columns));
+    const rowCount = Math.max(1, Math.ceil(items.length / columns));
     const favoritesCellProps = useMemo<FavoritesCellProps>(() => ({
-        items: displayItems,
+        items: items,
         columns,
         focusedIndex: focusArea === 'items' ? focusedIndex : -1,
         removingId,
         gap: CARD_GAP,
         onSelect: openItem,
         onRemove: removeItem,
-    }), [displayItems, columns, focusArea, focusedIndex, removingId, openItem, removeItem]);
+    }), [items, columns, focusArea, focusedIndex, removingId, openItem, removeItem]);
 
     // Perfil Kids: listas sao globais do aparelho e podem conter conteudo
     // adulto salvo por outros perfis — bloqueadas no modo Kids
@@ -279,28 +222,21 @@ export function Favorites({ onNavigate }: FavoritesProps) {
                 <div className="favorites-backdrop" />
                 <div className="empty-state">
                     <div className="empty-icon-container">
-                        <div className="empty-icon"><FaHeart /></div>
+                        <div className="empty-icon"><FaStar /></div>
                         <div className="empty-icon-glow" />
                     </div>
-                    <h2 className="empty-title">Nenhum favorito ainda</h2>
+                    <h2 className="empty-title">Nenhum canal favorito ainda</h2>
                     <p className="empty-text">
-                        Seus filmes, séries e canais favoritos aparecerão aqui.
-                        Clique no <strong>coração</strong> em qualquer conteúdo para adicionar aos favoritos.
+                        Seus canais favoritos aparecerão aqui.
+                        Favorite um canal na <strong>TV ao Vivo</strong> para adicioná-lo.
                     </p>
                     <div className="empty-suggestions">
                         <button
-                            className={`suggestion-btn ${emptyFocusIndex === 0 ? 'tv-focused' : ''}`}
-                            onClick={() => onNavigate?.('movies')}
+                            className="suggestion-btn tv-focused"
+                            onClick={() => onNavigate?.('live')}
                         >
-                            <span>Filmes</span>
-                            <span>Explorar Filmes</span>
-                        </button>
-                        <button
-                            className={`suggestion-btn ${emptyFocusIndex === 1 ? 'tv-focused' : ''}`}
-                            onClick={() => onNavigate?.('series')}
-                        >
-                            <span>Séries</span>
-                            <span>Explorar Séries</span>
+                            <span>TV ao Vivo</span>
+                            <span>Explorar Canais</span>
                         </button>
                     </div>
                 </div>
@@ -315,15 +251,15 @@ export function Favorites({ onNavigate }: FavoritesProps) {
             {/* Header */}
             <header className="favorites-header">
                 <div className="header-title">
-                    <div className="title-icon"><FaHeart /></div>
+                    <div className="title-icon"><FaStar /></div>
                     <div>
-                        <h1>Meus Favoritos</h1>
-                        <p className="subtitle">{items.length} itens salvos</p>
+                        <h1>Canais Favoritos</h1>
+                        <p className="subtitle">{items.length} {items.length === 1 ? 'canal' : 'canais'}</p>
                     </div>
                 </div>
                 {items.length > 0 && (
                     <button
-                        className={`clear-btn ${focusArea === 'tabs' && focusedTabIndex >= tabs.length ? 'tv-focused' : ''} ${clearArmed ? 'armed' : ''}`}
+                        className={`clear-btn ${focusArea === 'header' ? 'tv-focused' : ''} ${clearArmed ? 'armed' : ''}`}
                         onClick={clearAll}
                     >
                         <span>Excluir</span>
@@ -331,38 +267,6 @@ export function Favorites({ onNavigate }: FavoritesProps) {
                     </button>
                 )}
             </header>
-
-            {/* Tabs */}
-            <div className="tabs-container">
-                <button
-                    className={`tab ${activeTab === 'all' ? 'active' : ''} ${focusArea === 'tabs' && focusedTabIndex === 0 ? 'tv-focused' : ''}`}
-                    onClick={() => setActiveTab('all')}
-                >
-                    <span>Todos</span>
-                    <span className="tab-count">{items.length}</span>
-                </button>
-                <button
-                    className={`tab ${activeTab === 'movies' ? 'active' : ''} ${focusArea === 'tabs' && focusedTabIndex === 1 ? 'tv-focused' : ''}`}
-                    onClick={() => setActiveTab('movies')}
-                >
-                    <span>Filmes</span>
-                    <span className="tab-count">{movies.length}</span>
-                </button>
-                <button
-                    className={`tab ${activeTab === 'series' ? 'active' : ''} ${focusArea === 'tabs' && focusedTabIndex === 2 ? 'tv-focused' : ''}`}
-                    onClick={() => setActiveTab('series')}
-                >
-                    <span>Séries</span>
-                    <span className="tab-count">{series.length}</span>
-                </button>
-                <button
-                    className={`tab ${activeTab === 'channels' ? 'active' : ''} ${focusArea === 'tabs' && focusedTabIndex === 3 ? 'tv-focused' : ''}`}
-                    onClick={() => setActiveTab('channels')}
-                >
-                    <span>Canais</span>
-                    <span className="tab-count">{channels.length}</span>
-                </button>
-            </div>
 
             {/* Cards Grid — virtualizado (react-window), mesmo padrão do MyList. */}
             <div className="cards-grid" ref={gridContainerRef}>
@@ -388,41 +292,6 @@ export function Favorites({ onNavigate }: FavoritesProps) {
                 <span>Voltar</span>
             </div>
 
-            {/* Content Detail Modal */}
-            {modalItem && (
-                <ContentDetailModal
-                    isOpen={true}
-                    onClose={() => { setModalItem(null); loadItems(); }}
-                    contentId={modalItem.id}
-                    contentType={modalItem.type === 'series' ? 'series' : 'movie'}
-                    contentData={{
-                        name: modalItem.title,
-                        cover: modalItem.poster || '',
-                        rating: modalItem.rating,
-                        container_extension: modalItem.container,
-                    }}
-                    onPlay={(season, episode) => {
-                        if (modalItem.type === 'movie') {
-                            setPlayingMovie(modalItem);
-                            setModalItem(null);
-                        } else {
-                            void playSeriesEpisode(modalItem, season, episode);
-                        }
-                    }}
-                />
-            )}
-
-            {/* Movie Player */}
-            {playingMovie && (
-                <MoviePlayer
-                    movieId={playingMovie.id}
-                    title={playingMovie.title}
-                    poster={playingMovie.poster}
-                    container={playingMovie.container}
-                    onClose={() => setPlayingMovie(null)}
-                />
-            )}
-
             {/* Live Channel Player */}
             {playingChannel && (
                 <VideoPlayer
@@ -437,13 +306,6 @@ export function Favorites({ onNavigate }: FavoritesProps) {
                 />
             )}
 
-            {/* Series Player */}
-            {seriesQueue && (
-                <SeriesQueuePlayer
-                    queue={seriesQueue}
-                    onClose={() => setSeriesQueue(null)}
-                />
-            )}
         </div>
     );
 }
