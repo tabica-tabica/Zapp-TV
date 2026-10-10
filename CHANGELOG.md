@@ -4,6 +4,27 @@ All notable project changes should be documented in this file.
 
 Maintained by **Tabica**. Originally created by Rakjsu.
 
+## 1.1.2 - 2026-10-10
+
+### Fixed
+
+- Desktop (Linux/WebKitGTK): Movies/Series grids scrolled at ~13 fps — the frosted-glass
+  (`backdrop-filter`) badge on every card was re-blurred each frame. Removed from the cards
+  (~55 fps now).
+- Cards vanished while scrolling: the per-card fade-in replayed on every virtualized mount.
+  Removed from all grid cards.
+- Desktop (Linux): the web process crashed (SIGBUS in GStreamer GL on Mesa radeonsi) when the
+  Home live preview played. The app now sets `WEBKIT_GST_DISABLE_GL_SINK=1` unless already set.
+- Images without a URL no longer render `<img src="">`.
+- Grids no longer show a horizontal scrollbar.
+
+### Performance
+
+- TV builds (webOS/Tizen): always-on decorative animations (sidebar glow, waving hand, live dot,
+  pulses) are off via `html.tv-lite`. Home idle CPU went from 23% to ~3% in a 6x-throttled run.
+- Card posters from TMDB load at `w342` instead of `w600_and_h900` (~60% smaller, 1/3 the
+  pixels to decode).
+
 ## 1.1.1 - 2026-10-10
 
 ### Changed
