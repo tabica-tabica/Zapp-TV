@@ -4,10 +4,21 @@ All notable project changes should be documented in this file.
 
 Maintained by **Tabica**. Originally created by Rakjsu.
 
-## Unreleased
+## 1.1.1 - 2026-10-10
 
 ### Changed
 
+- Favorites is now a channels-only page (star icon in the sidebar). The heart/"Favoritar" action
+  was removed from movie and series screens; existing movie/series favorites are kept and still
+  feed Home recommendations and the new-episode badge. "Limpar Tudo" clears only channels.
+- Home live channel row: favorite channels first, filled with other visible channels up to at
+  least 10.
+- Detail screen: cast comes only from the provider (names only, no TMDB request); movies fetch it
+  via `get_vod_info`. "Assistir Depois" renamed to "Adicionar à Lista".
+- Wider spacing between the detail screen action buttons.
+- Clicking an episode (mouse / Magic Remote) plays it, same as OK on the D-pad.
+- Episodes without a thumbnail, or with a broken one, show the series poster instead.
+- webOS: `requiredACG: []` in `appinfo.json` for store eligibility.
 - Package identity moved to Tabica: webOS `com.tabica.zapptv` (vendor Tabica), Tizen
   `TabicaZapp.ZappTV` (widget `http://tabica.zapp.tv`). Installs under the old ids are separate
   apps on the TV.
