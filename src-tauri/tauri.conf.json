@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Zapp TV",
   "version": "1.0.0",
-  "identifier": "tv.neostream.app",
+  "identifier": "com.tabica-tabica.zapptv",
   "build": {
     "frontendDist": "../dist-tauri",
     "devUrl": "http://localhost:5173",

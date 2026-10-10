@@ -217,6 +217,9 @@ export function useHls({
                     // alto estourava a RAM de TVs de 1GB só com o buffer
                     maxBufferSize: seconds * 1000 * 1000,
                     startLevel: -1, // Auto quality selection
+                    // Tauri: FetchLoader (fetch) em vez de XHR, pra passar
+                    // pelo tauri-plugin-http — ver rotearFetchPeloTauri
+                    progressive: __BUILD_TARGET__ === 'tauri',
                 });
 
                 // Dev no browser: ver /stream-redirect no vite.config.ts (CORS do 1º redirect)
