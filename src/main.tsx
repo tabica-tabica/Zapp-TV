@@ -1,3 +1,4 @@
+import './legacyPolyfills'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
@@ -5,6 +6,9 @@ import './theme.css'
 import App from './App.tsx'
 import { AppErrorBoundary } from './components/AppErrorBoundary'
 import { preconnectProvider, loadBrandFont } from './services/preconnect'
+import { rotearFetchPeloTauri } from './services/tauriApp'
+
+if (__BUILD_TARGET__ === 'tauri') rotearFetchPeloTauri()
 
 // Antes do render: a conexão com o provedor sobe em paralelo com o resto
 preconnectProvider()

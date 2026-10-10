@@ -18,6 +18,7 @@ interface TauriOpenerApi {
 interface TauriGlobal {
     window?: { getCurrentWindow?: () => TauriWindowApi };
     opener?: TauriOpenerApi;
+    http?: { fetch?: typeof fetch };
 }
 
 function tauriGlobal(): TauriGlobal | undefined {
@@ -38,6 +39,30 @@ export function abrirExterno(url: string): boolean {
     } catch {
         return false;
     }
+}
+
+/**
+ * Requisições pro provedor saem pelo Rust (tauri-plugin-http), não pelo
+ * WebKitGTK: a página roda em tauri://localhost, então todo pedido ao painel
+ * é cross-origin — e o 1º redirect do provedor vem sem
+ * Access-Control-Allow-Origin ("Load failed" no login). No Rust não existe
+ * CORS. Só URL http(s) de OUTRA origem; o resto segue no fetch nativo.
+ * Vale pro hls.js também, que no Tauri roda em modo progressive (FetchLoader
+ * em vez de XHR) — ver useHls.
+ */
+export function rotearFetchPeloTauri(): void {
+    const httpFetch = tauriGlobal()?.http?.fetch;
+    if (typeof httpFetch !== 'function') return;
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = input instanceof Request ? input.url : String(input);
+        const externa = /^https?:/i.test(url) && !url.startsWith(window.location.origin);
+        if (!externa) return nativeFetch(input, init);
+        // O plugin só lê o signal do `init` — o hls.js manda um Request com o
+        // signal dentro, e o abort de fragmento seria ignorado
+        const signal = init?.signal ?? (input instanceof Request ? input.signal : undefined);
+        return httpFetch(input, { ...init, signal });
+    };
 }
 
 /** Fecha a janela do app. Fora do Tauri (navegador comum) não faz nada. */

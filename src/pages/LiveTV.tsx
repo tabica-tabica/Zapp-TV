@@ -19,6 +19,7 @@ import { zapHistory, hiddenChannels, hiddenCategories, liveToggles } from '../se
 import { kidsFilter } from '../services/kidsFilter';
 import { contentFlags } from '../services/contentFlags';
 import { useWatchSession } from '../hooks/useWatchSession';
+import { FAILOVER_RECONNECT_ATTEMPTS } from '../hooks/useVariantFailover';
 import { groupChannelVariants, qualityLabel, channelDisplayName } from '../services/channelVariants';
 import {
     curatedHiddenPrefs, detectJunkCategories, detectQualityOnlyCategories,
@@ -606,6 +607,10 @@ export function LiveTV() {
             : [],
         [playingChannel, representativeOf, variantsOf]
     );
+
+    // Ainda há variante depois da atual → failover rápido (ver handleStreamFailed)
+    const playingVariantIndex = playingChannel ? playingVariants.findIndex(v => v.stream_id === playingChannel.stream_id) : -1;
+    const hasNextVariant = playingVariantIndex >= 0 && playingVariantIndex < playingVariants.length - 1;
 
     const playerQualityVariants = useMemo(
         () => playingVariants.length > 1
@@ -1330,6 +1335,7 @@ export function LiveTV() {
                     onSwitchChannel={handleSwitchChannel}
                     contentKey={`live-${playingChannel.stream_id}`}
                     onStreamFailed={handleStreamFailed}
+                    maxReconnectAttempts={hasNextVariant ? FAILOVER_RECONNECT_ATTEMPTS : undefined}
                     onRequestPauseLive={handleRequestPauseLive}
                     isRadio={isRadioChannel(playingChannel, categoryNameById.get(playingChannel.category_id))}
                     qualityVariants={playerQualityVariants}

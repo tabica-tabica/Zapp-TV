@@ -1,17 +1,19 @@
 // Home Page - Matching NeoStream Desktop
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
-    FaExclamationTriangle, FaClock, FaSync, FaBroadcastTower, FaFilm, FaTv, FaPlay,
-    FaListOl, FaCalendarPlus, FaLightbulb, FaBolt, FaHeart, FaCog, FaRandom,
+    FaExclamationTriangle, FaClock, FaSync, FaFilm, FaTv, FaPlay,
+    FaListOl, FaCalendarPlus, FaLightbulb,
 } from 'react-icons/fa';
 import { api } from '../services/api';
 import type { VODStream, Series, LiveStream } from '../types';
 import { useTVNavigation } from '../hooks/useTVNavigation';
+import { useTranslation } from '../hooks/useTranslation';
+import type { Language } from '../i18n';
 import { useFocusZone } from '../contexts/FocusContext';
 import { progressService, type MovieProgress, type SeriesProgress } from '../services/progressService';
 import { storage } from '../services/storage';
-import { categoryAffinity, scoreRecommendations, spinRoulette, newEpisodes, normalizeSearch } from '../services/catalogExtras';
+import { categoryAffinity, scoreRecommendations, newEpisodes, normalizeSearch } from '../services/catalogExtras';
 import { usageStats } from '../services/usageStats';
 import { kidsFilter, isAdultCategoryName } from '../services/kidsFilter';
 import { parentalService } from '../services/parentalService';
@@ -45,16 +47,46 @@ interface HomeProps {
     onCancelExit: () => void;
 }
 
-interface ContentCounts {
-    live: number;
-    vod: number;
-    series: number;
+const LOCALES: Record<Language, string> = { pt: 'pt-BR', en: 'en-US', es: 'es-ES' };
+
+/** Promise.allSettled de uma promessa só — o nativo não existe no Chrome 69 (Tizen 5.5). */
+function settle<T>(p: Promise<T>): Promise<PromiseSettledResult<T>> {
+    return p.then(
+        (value): PromiseFulfilledResult<T> => ({ status: 'fulfilled', value }),
+        (reason: unknown): PromiseRejectedResult => ({ status: 'rejected', reason }),
+    );
+}
+
+/** Valor de um resultado assentado, ou null se a promessa falhou. */
+function settled<T>(r: PromiseSettledResult<T>): T | null {
+    return r.status === 'fulfilled' ? r.value : null;
+}
+
+function getId(item: VODStream | Series) {
+    return 'stream_id' in item ? item.stream_id : item.series_id;
+}
+
+/** Fisher–Yates in place. */
+function shuffle<T>(arr: T[]): T[] {
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+}
+
+/** Até `k` itens distintos ao acaso, sem copiar o array inteiro. */
+function sample<T>(arr: readonly T[], k: number): T[] {
+    if (k >= arr.length) return shuffle([...arr]);
+    const picked = new Set<number>();
+    while (picked.size < k) picked.add(Math.floor(Math.random() * arr.length));
+    return [...picked].map(i => arr[i]);
 }
 
 export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
+    const { t, currentLang } = useTranslation();
+    const locale = LOCALES[currentLang];
     const { focusZone, setFocusZone } = useFocusZone();
-    const [loading, setLoading] = useState(true);
-    const [counts, setCounts] = useState<ContentCounts>({ live: 0, vod: 0, series: 0 });
     const [recentMovies, setRecentMovies] = useState<VODStream[]>([]);
     const [recentSeries, setRecentSeries] = useState<Series[]>([]);
     const [recommendations, setRecommendations] = useState<(VODStream | Series)[]>([]);
@@ -64,7 +96,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
     const [currentTime, setCurrentTime] = useState(new Date());
     // Foco por ID de seção: as seções condicionais (continue/newepisodes)
     // entram ASSINCRONAMENTE e deslocariam um índice posicional
-    const [focusedSectionId, setFocusedSectionId] = useState('stats');
+    const [focusedSectionId, setFocusedSectionId] = useState('');
     const [focusedItem, setFocusedItem] = useState(0);
 
     // Continuar assistindo (fileira some no perfil Kids: o progresso é
@@ -79,7 +111,8 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
     // A Home engolia qualquer falha e mostrava "0 canais / 0 filmes / 0
     // séries" sem uma palavra: o usuário concluía que a lista tinha sido
     // cancelada, não que a rede tinha caído
-    const [loadError, setLoadError] = useState('');
+    // null = sem erro; '' = erro sem mensagem (cai no texto traduzido)
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [playingMovie, setPlayingMovie] = useState<PlayableMovie | null>(null);
     const [seriesQueue, setSeriesQueue] = useState<EpisodeQueue | null>(null);
 
@@ -88,7 +121,6 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
 
     // Novos episódios de séries seguidas + roleta 🎲
     const [newEpisodesList, setNewEpisodesList] = useState<Series[]>([]);
-    const rouletteRef = useRef<{ pool: VODStream[]; affinity: Map<string, number> } | null>(null);
 
     // Prévia de canal ao vivo (último assistido, ou sugestão aleatória
     // dentre os visíveis por padrão — ver src/services/liveVisibility.ts),
@@ -105,17 +137,25 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
         setContinueItems(kidsActive ? [] : progressService.getContinueWatching());
     }, [kidsActive]);
 
-    // Update clock every minute
+    // Update clock on each minute boundary. Um setInterval(60s) a partir do
+    // mount deixava o relógio até 59s atrasado. Fusos são minutos inteiros,
+    // então a virada do minuto em UTC é a mesma do horário local.
     useEffect(() => {
-        const timer = setInterval(() => setCurrentTime(new Date()), 60000);
-        return () => clearInterval(timer);
+        let timer: ReturnType<typeof setTimeout>;
+        const schedule = () => {
+            timer = setTimeout(() => {
+                setCurrentTime(new Date());
+                schedule();
+            }, 60000 - (Date.now() % 60000));
+        };
+        schedule();
+        return () => clearTimeout(timer);
     }, []);
 
     // Fetch data
     useEffect(() => {
         async function fetchData() {
             try {
-                setLoading(true);
                 // "Incluir canais de TV"/"Incluir VOD" desmarcados no login:
                 // nem busca esse tipo — a fileira correspondente fica vazia
                 // sozinha, sem precisar mudar a renderização de cada uma.
@@ -127,17 +167,31 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 // PIN precisa sumir incondicionalmente de toda fileira, senão
                 // um filme "adulto" aparecia normal em Recentes/Recomendados/
                 // Surpreenda-me sem NUNCA pedir PIN.
-                const [rawStreams, rawMovies, rawSeries, liveCats, vodCats, seriesCats] = await Promise.all([
-                    includeTV ? api.getLiveStreams() : Promise.resolve([]),
-                    includeVOD ? api.getVODStreams() : Promise.resolve([]),
-                    includeVOD ? api.getSeries() : Promise.resolve([]),
-                    includeTV ? api.getLiveCategories() : Promise.resolve([]),
-                    includeVOD ? api.getVodCategories() : Promise.resolve([]),
-                    includeVOD ? api.getSeriesCategories() : Promise.resolve([])
+                // Cada promessa passa por settle(): um endpoint falhando (ex.: categorias de
+                // séries) zerava TODAS as fileiras. Agora cada tipo só entra
+                // se itens E categorias vieram — sem as categorias o filtro
+                // de adulto/PIN abaixo não tem como agir, e mostrar os itens
+                // sem filtro vazaria categoria travada.
+                const results = await Promise.all([
+                    settle(includeTV ? api.getLiveStreams() : Promise.resolve([])),
+                    settle(includeVOD ? api.getVODStreams() : Promise.resolve([])),
+                    settle(includeVOD ? api.getSeries() : Promise.resolve([])),
+                    settle(includeTV ? api.getLiveCategories() : Promise.resolve([])),
+                    settle(includeVOD ? api.getVodCategories() : Promise.resolve([])),
+                    settle(includeVOD ? api.getSeriesCategories() : Promise.resolve([])),
                 ]);
-                let streams = rawStreams;
-                let movies = rawMovies;
-                let series = rawSeries;
+                const [rStreams, rMovies, rSeries, rLiveCats, rVodCats, rSeriesCats] = results;
+                const firstFailure = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
+                if (firstFailure) {
+                    console.error('Failed to fetch data:', firstFailure.reason);
+                    setLoadError(firstFailure.reason instanceof Error ? firstFailure.reason.message : '');
+                }
+                const liveCats = settled(rLiveCats) ?? [];
+                const vodCats = settled(rVodCats) ?? [];
+                const seriesCats = settled(rSeriesCats) ?? [];
+                let streams = rLiveCats.status === 'fulfilled' ? settled(rStreams) ?? [] : [];
+                let movies = rVodCats.status === 'fulfilled' ? settled(rMovies) ?? [] : [];
+                let series = rSeriesCats.status === 'fulfilled' ? settled(rSeries) ?? [] : [];
 
                 // Gate do perfil Kids (some com mais categoria que só a
                 // adulta) tem prioridade; perfil normal ainda assim não vê
@@ -154,12 +208,6 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                     movies = movies.filter(m => !lockedVod.has(m.category_id));
                     series = series.filter(s => !lockedSeries.has(s.category_id));
                 }
-
-                setCounts({
-                    live: streams.length,
-                    vod: movies.length,
-                    series: series.length
-                });
 
                 // Prévia de canal ao vivo: o último assistido (se ainda
                 // existir no catálogo já filtrado por Kids/adulto) puxa a
@@ -236,9 +284,14 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                     ];
                 }
                 if (recommended.length < 5) {
-                    const randomMovies = [...movies].sort(() => Math.random() - 0.5).slice(0, 8);
-                    const randomSeries = [...series].sort(() => Math.random() - 0.5).slice(0, 7);
-                    recommended = [...randomMovies, ...randomSeries].sort(() => Math.random() - 0.5);
+                    // Completa com sorteio em vez de jogar fora os 1–4 por
+                    // afinidade; sorteia só 15 índices em vez de copiar e
+                    // embaralhar o catálogo inteiro (sort com Math.random é
+                    // lento no main thread da TV e nem embaralha por igual)
+                    const jaTem = new Set<VODStream | Series>(recommended);
+                    const sorteados = shuffle([...sample(movies, 8), ...sample(series, 7)])
+                        .filter(item => !jaTem.has(item));
+                    recommended = [...recommended, ...sorteados].slice(0, 15);
                 }
                 setRecommendations(recommended);
 
@@ -292,9 +345,6 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                     setTopItems(top);
                 }
 
-                // Pool da roleta 🎲 (filmes não vistos, ponderados pelo gosto)
-                rouletteRef.current = { pool: unwatchedMovies, affinity };
-
                 // Novos episódios de séries seguidas (diff de last_modified)
                 const followedIds = new Set([...seriesIdsWatched, ...favSeriesIds]);
                 const followedSeries = series.filter(s => followedIds.has(String(s.series_id)));
@@ -312,9 +362,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 console.error('Failed to fetch data:', error);
                 // Mostrar "0 canais / 0 filmes / 0 séries" sem uma palavra
                 // fazia o usuário concluir que a lista dele foi cancelada
-                setLoadError(error instanceof Error ? error.message : 'Não foi possível falar com o provedor.');
-            } finally {
-                setLoading(false);
+                setLoadError(error instanceof Error ? error.message : '');
             }
         }
 
@@ -323,11 +371,11 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
 
     // Time formatting
     const formatTime = (date: Date) => {
-        return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        return date.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
     };
 
     const formatDate = (date: Date) => {
-        return date.toLocaleDateString('pt-BR', {
+        return date.toLocaleDateString(locale, {
             weekday: 'long',
             day: 'numeric',
             month: 'long'
@@ -337,37 +385,9 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
     // Greeting based on time of day (as per original app)
     const getGreeting = () => {
         const hour = currentTime.getHours();
-        if (hour < 12) return 'Bom dia';
-        if (hour < 18) return 'Boa tarde';
-        return 'Boa noite';
-    };
-
-    // Cards de estatística e Acesso Rápido: ancorados por ARRAY, não por
-    // índice fixo — "Incluir canais de TV"/"Incluir VOD" desligados tiram um
-    // card, e um índice hardcoded (o padrão antigo) apontaria pro card
-    // errado. Mesmo defeito que já mandou o foco pro botão errado em
-    // Movies.tsx (toolbar ancorada por id, não por posição) — aqui a lição já
-    // vale desde o primeiro commit.
-    const includeTV = contentFlags.includeTV();
-    const includeVOD = contentFlags.includeVOD();
-
-    // Roleta 🎲: filme não visto, ponderado pelas categorias que o usuário curte
-    const surpriseMe = () => {
-        const data = rouletteRef.current;
-        if (!data || data.pool.length === 0) return;
-        // Refiltra na hora do sorteio: o pool do fetch pode conter um filme
-        // que o usuário acabou de assistir nesta mesma sessão
-        const watched = progressService.getMovieIdsWithProgress();
-        const pool = data.pool.filter(m => !watched.has(String(m.stream_id)));
-        const pick = spinRoulette(pool.length > 0 ? pool : data.pool, data.affinity);
-        if (pick) {
-            setPlayingMovie({
-                id: String(pick.stream_id),
-                name: pick.name,
-                poster: pick.stream_icon || pick.cover,
-                container: pick.container_extension,
-            });
-        }
+        if (hour < 12) return t('home_good_morning');
+        if (hour < 18) return t('home_good_afternoon');
+        return t('home_good_evening');
     };
 
     // Canal selecionado na prévia (hero) + os demais candidatos, com o
@@ -381,28 +401,11 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
         : previewChannels;
     const isLastWatchedSelected = !!selectedPreviewChannel && selectedPreviewChannel.stream_id === channelPreviewPool?.lastWatchedId;
 
-    const statsCards = [
-        ...(includeTV ? [{ page: 'live', icon: FaBroadcastTower, value: counts.live, label: 'Canais', cls: 'stat-card-live' }] : []),
-        ...(includeVOD ? [{ page: 'movies', icon: FaFilm, value: counts.vod, label: 'Filmes', cls: 'stat-card-vod' }] : []),
-        ...(includeVOD ? [{ page: 'series', icon: FaTv, value: counts.series, label: 'Séries', cls: 'stat-card-series' }] : []),
-    ];
-    const quickItems = [
-        ...(includeTV ? [{ page: 'live', icon: FaBroadcastTower, label: 'TV ao Vivo', action: () => onNavigate?.('live') }] : []),
-        ...(includeVOD ? [{ page: 'movies', icon: FaFilm, label: 'Filmes', action: () => onNavigate?.('movies') }] : []),
-        ...(includeVOD ? [{ page: 'series', icon: FaTv, label: 'Séries', action: () => onNavigate?.('series') }] : []),
-        { page: 'favorites', icon: FaHeart, label: 'Favoritos', action: () => onNavigate?.('favorites') },
-        { page: 'settings', icon: FaCog, label: 'Configurações', action: () => onNavigate?.('settings') },
-        // "Surpreenda-me" sorteia um filme não visto — sem VOD não há pool
-        // nenhum, então o botão nem entra na lista quando includeVOD=false.
-        ...(includeVOD ? [{ page: 'roulette', icon: FaRandom, label: 'Surpreenda-me', action: surpriseMe }] : []),
-    ];
-
     // TV Navigation - seções dinâmicas ("continue"/"newepisodes" condicionais)
     // A ORDEM aqui tem que ser a MESMA do DOM, senão ↓ move o foco pra cima na
     // tela. E seção sem item nenhum não pode entrar: o foco sumia por três
     // apertos de ↓ numa playlist só de canais.
     const sections = [
-        ...(statsCards.length > 0 ? [{ id: 'stats', items: statsCards.length }] : []),
         ...(selectedPreviewChannel ? [{ id: 'channelpreview', items: 1 + otherPreviewChannels.length }] : []),
         ...(continueItems.length > 0 ? [{ id: 'continue', items: continueItems.length }] : []),
         ...(seedRow ? [{ id: 'seed', items: seedRow.itens.length }] : []),
@@ -410,12 +413,15 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
         ...(newEpisodesList.length > 0 ? [{ id: 'newepisodes', items: newEpisodesList.length }] : []),
         ...(recommendations.length > 0 ? [{ id: 'recommendations', items: recommendations.length }] : []),
         ...(recentSeries.length > 0 ? [{ id: 'series', items: recentSeries.length }] : []),
-        ...(recentMovies.length > 0 ? [{ id: 'movies', items: recentMovies.length }] : []),
-        { id: 'quick', items: quickItems.length }
+        ...(recentMovies.length > 0 ? [{ id: 'movies', items: recentMovies.length }] : [])
     ];
 
     const sectionIndex = (id: string) => sections.findIndex(s => s.id === id);
     const focusedSection = Math.max(0, sectionIndex(focusedSectionId));
+    // A fileira focada pode ENCOLHER (Continuar Assistindo depois de fechar o
+    // player): sem o clamp, o foco apontava pra um card que não existe mais
+    const maxFocusedItem = Math.max(0, (sections[focusedSection]?.items ?? 1) - 1);
+    if (focusedItem > maxFocusedItem) setFocusedItem(maxFocusedItem);
 
     /** Abre a ficha do título (mesmo caminho de Filmes, Séries e Favoritos). */
     const openDetail = useCallback((item: VODStream | Series) => setDetailItem(item), []);
@@ -459,20 +465,15 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
     }, []);
 
     // Callbacks estáveis por FILEIRA (não por card) — é o que faz o
-    // React.memo do HomeCard funcionar. `onNavigate?.('stream_id' in item
-    // ? 'movies' : 'series')` se repete em Top10 e Recomendados: mesmo
-    // comportamento, uma função só.
+    // React.memo do HomeCard funcionar. Clique (Magic Remote/mouse/toque)
+    // faz o MESMO que o OK do D-pad: abre a ficha. Antes o clique levava pra
+    // página Filmes/Séries inteira e o usuário perdia o título que achou.
     const handleSelectContinue = useCallback((item: ContinueItem) => { void playContinueItem(item); }, [playContinueItem]);
-    const handleSelectCatalogNav = useCallback((item: VODStream | Series) => {
-        onNavigate?.('stream_id' in item ? 'movies' : 'series');
-    }, [onNavigate]);
     const handleSelectNewEpisode = useCallback((s: Series) => {
-        // Marca como visto (o selo some) e vai pra Séries
+        // Marca como visto (o selo some) e abre a ficha da série
         newEpisodes.markSeen(String(s.series_id), s.last_modified || '0');
-        onNavigate?.('series');
-    }, [onNavigate]);
-    const handleSelectRecentSeries = useCallback(() => onNavigate?.('series'), [onNavigate]);
-    const handleSelectRecentMovie = useCallback(() => onNavigate?.('movies'), [onNavigate]);
+        openDetail(s);
+    }, [openDetail]);
 
     // Mesmo padrão do fluxo "ligar e assistir" pós-login (App.tsx): grava o
     // canal SELECIONADO (não necessariamente o último assistido de
@@ -488,19 +489,22 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
     }, [selectedPreviewChannel, onNavigate]);
 
     // Clicar uma capa da fileira de "outros canais" só TROCA a prévia
-    // grande (nova seleção) — não navega. Clicar de novo na prévia (agora
-    // já mostrando esse canal) é que chama handleWatchChannelPreview.
+    // grande (nova seleção) — não navega. O foco vai pra prévia: o canal
+    // escolhido sai da fileira, e manter o índice deixava o destaque no
+    // vizinho. Assim o segundo OK (agora na prévia) abre o player.
     const handleSelectOtherChannel = useCallback((channel: LiveStream) => {
         setSelectedPreviewChannelId(channel.stream_id);
+        setFocusedSectionId('channelpreview');
+        setFocusedItem(0);
     }, []);
 
     const handleNavigate = (direction: 'up' | 'down' | 'left' | 'right') => {
         onCancelExit(); // mexeu no controle: não estava saindo
         if (direction === 'up') {
-            setFocusedSectionId(sections[Math.max(0, focusedSection - 1)].id);
+            setFocusedSectionId(sections[Math.max(0, focusedSection - 1)]?.id ?? '');
             setFocusedItem(0);
         } else if (direction === 'down') {
-            setFocusedSectionId(sections[Math.min(sections.length - 1, focusedSection + 1)].id);
+            setFocusedSectionId(sections[Math.min(sections.length - 1, focusedSection + 1)]?.id ?? '');
             setFocusedItem(0);
         } else if (direction === 'left') {
             if (focusedItem === 0) {
@@ -517,10 +521,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
 
     const handleEnter = () => {
         const section = sections.find(s => s.id === focusedSectionId) || sections[0];
-        if (section?.id === 'stats') {
-            const card = statsCards[focusedItem];
-            if (card) onNavigate?.(card.page);
-        } else if (section?.id === 'channelpreview') {
+        if (section?.id === 'channelpreview') {
             if (focusedItem === 0) {
                 handleWatchChannelPreview();
             } else {
@@ -535,14 +536,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
             if (item) openDetail(item);
         } else if (section?.id === 'newepisodes') {
             const s = newEpisodesList[focusedItem];
-            if (s) {
-                // Marca como visto (o selo some) e abre a ficha da série
-                newEpisodes.markSeen(String(s.series_id), s.last_modified || '0');
-                openDetail(s);
-            }
-        } else if (section?.id === 'quick') {
-            const item = quickItems[focusedItem];
-            if (item) item.action();
+            if (s) handleSelectNewEpisode(s);
         } else if (section?.id === 'movies') {
             const item = recentMovies[focusedItem];
             if (item) openDetail(item);
@@ -579,7 +573,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 setExpiryWarning(null);
                 return;
             }
-            if (loadError) window.location.reload();
+            if (loadError !== null) window.location.reload();
         },
         onBack: onRequestExit,
         enabled: focusZone === 'content' && !detailItem && !playingMovie && !seriesQueue,
@@ -598,8 +592,11 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
     // imóvel — parecia que o app tinha travado.
     useEffect(() => {
         const secao = document.getElementById(`home-${focusedSectionId}`);
-        const fileira = secao?.querySelector('.content-row');
-        const card = fileira?.children[focusedItem] as HTMLElement | undefined;
+        // A fileira de capas de canais também rola (overflow-x, barra
+        // escondida); nela o item 0 da seção é a prévia grande, fora da fileira
+        const fileira = secao?.querySelector('.content-row, .home-channel-cover-row');
+        const indice = focusedSectionId === 'channelpreview' ? focusedItem - 1 : focusedItem;
+        const card = indice >= 0 ? fileira?.children[indice] as HTMLElement | undefined : undefined;
         card?.scrollIntoView({ block: 'nearest', inline: 'center' });
     }, [focusedSectionId, focusedItem]);
 
@@ -615,10 +612,6 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
 
     const getName = (item: VODStream | Series) => {
         return item.name;
-    };
-
-    const getId = (item: VODStream | Series) => {
-        return 'stream_id' in item ? item.stream_id : item.series_id;
     };
 
     // Filme e série têm espaços de id INDEPENDENTES no provedor — um filme
@@ -639,12 +632,12 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                     <span className="home-expiry-text">
                         <FaExclamationTriangle className="home-expiry-icon" />{' '}
                         {expiryWarning < 0
-                            ? 'Sua lista venceu — fale com o provedor pra renovar.'
+                            ? t('home_expired')
                             : expiryWarning === 0
-                                ? 'Sua lista vence hoje.'
-                                : `Sua lista vence em ${expiryWarning} dia(s).`}
+                                ? t('home_expires_today')
+                                : t('home_expires_in').replace('{n}', String(expiryWarning))}
                     </span>
-                    <span className="home-expiry-hint"><FaClock className="home-expiry-icon" /> lembrar depois</span>
+                    <span className="home-expiry-hint"><FaClock className="home-expiry-icon" /> {t('home_remind_later')}</span>
                 </div>
             )}
 
@@ -655,37 +648,20 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                     <h1 className="home-greeting">
                         {getGreeting()}! <span className="waving-hand">👋</span>
                     </h1>
-                    <p className="home-subtitle">O que você quer assistir hoje?</p>
+                    <p className="home-subtitle">{t('home_subtitle')}</p>
                 </div>
                 <div className="home-clock">{formatTime(currentTime)}</div>
             </header>
 
-            {loadError && (
+            {loadError !== null && (
                 <div className="home-load-error">
-                    <span className="home-load-error-text"><FaExclamationTriangle className="home-expiry-icon" /> {loadError}</span>
+                    <span className="home-load-error-text"><FaExclamationTriangle className="home-expiry-icon" /> {loadError || t('home_load_error')}</span>
                     <span className="home-load-error-hint">
                         {expiryWarning !== null
-                            ? <><FaClock className="home-expiry-icon" /> adia o aviso acima</>
-                            : <><FaSync className="home-expiry-icon" /> tentar de novo</>}
+                            ? <><FaClock className="home-expiry-icon" /> {t('home_snooze_above')}</>
+                            : <><FaSync className="home-expiry-icon" /> {t('home_retry')}</>}
                     </span>
                 </div>
-            )}
-
-            {/* Stats Cards */}
-            {statsCards.length > 0 && (
-            <section id="home-stats" className="home-stats">
-                {statsCards.map((card, index) => (
-                    <button
-                        key={card.page}
-                        className={`stat-card ${card.cls} ${focusedSection === sectionIndex('stats') && focusedItem === index ? 'tv-focused' : ''}`}
-                        onClick={() => onNavigate?.(card.page)}
-                    >
-                        <div className="stat-icon"><card.icon /></div>
-                        <div className="stat-value">{loading ? '...' : card.value.toLocaleString()}</div>
-                        <div className="stat-label">{card.label}</div>
-                    </button>
-                ))}
-            </section>
             )}
 
             {/* Content Rows - Matching Original App */}
@@ -694,7 +670,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 {selectedPreviewChannel && (
                     <div id="home-channelpreview" className="content-section home-channel-preview-section">
                         <h2 className="section-title">
-                            {isLastWatchedSelected ? 'Continue assistindo ao vivo' : 'Prévia de canal ao vivo'}
+                            {isLastWatchedSelected ? t('home_live_continue') : t('home_live_preview')}
                         </h2>
                         <div className="home-channel-preview-row">
                             <HomeChannelPreview
@@ -717,7 +693,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 {/* Continue Watching */}
                 {continueItems.length > 0 && (
                     <div id="home-continue" className="content-section">
-                        <h2 className="section-title"><FaPlay className="section-title-icon" /> Continuar Assistindo</h2>
+                        <h2 className="section-title"><FaPlay className="section-title-icon" /> {t('home_continue_watching')}</h2>
                         <div className="content-row">
                             {continueItems.map((item, index) => {
                                 const isMovie = item.kind === 'movie';
@@ -757,7 +733,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                     lista de foco vira uma fileira que o D-pad nunca alcança. */}
                 {seedRow && (
                     <div id="home-seed" className="content-section">
-                        <h2 className="section-title"><FaPlay className="section-title-icon" /> Porque você assistiu {seedRow.nome}</h2>
+                        <h2 className="section-title"><FaPlay className="section-title-icon" /> {t('home_because_watched').replace('{name}', seedRow.nome)}</h2>
                         <div className="content-row">
                             {seedRow.itens.map((item, index) => (
                                 <HomeCard
@@ -778,7 +754,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 {/* Top 10 (item 33) */}
                 {topItems.length > 0 && (
                     <div id="home-top10" className="content-section">
-                        <h2 className="section-title"><FaListOl className="section-title-icon" /> Top 10 do seu aparelho</h2>
+                        <h2 className="section-title"><FaListOl className="section-title-icon" /> {t('home_top10')}</h2>
                         <div className="content-row">
                             {topItems.map((item, index) => (
                                 <HomeCard
@@ -788,7 +764,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                                     focused={focusedSection === sectionIndex('top10') && focusedItem === index}
                                     title={getName(item)}
                                     image={getCover(item)}
-                                    onSelect={handleSelectCatalogNav}
+                                    onSelect={openDetail}
                                     cardClassName="top10-card"
                                     rankBadge={<span className="top10-rank">{index + 1}</span>}
                                 />
@@ -800,7 +776,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 {/* Novos episódios de séries seguidas */}
                 {newEpisodesList.length > 0 && (
                     <div id="home-newepisodes" className="content-section">
-                        <h2 className="section-title"><FaCalendarPlus className="section-title-icon" /> Novos Episódios</h2>
+                        <h2 className="section-title"><FaCalendarPlus className="section-title-icon" /> {t('home_new_episodes')}</h2>
                         <div className="content-row">
                             {newEpisodesList.map((s, index) => (
                                 <HomeCard
@@ -812,7 +788,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                                     image={s.cover}
                                     fallbackIcon={FaTv}
                                     onSelect={handleSelectNewEpisode}
-                                    imageOverlay={<div className="new-episodes-badge">NOVOS EPS</div>}
+                                    imageOverlay={<div className="new-episodes-badge">{t('home_new_episodes_badge')}</div>}
                                 />
                             ))}
                         </div>
@@ -824,7 +800,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                     "Recomendados Para Você" com uma fileira vazia embaixo. */}
                 {recommendations.length > 0 && (
                 <div id="home-recommendations" className="content-section">
-                    <h2 className="section-title"><FaLightbulb className="section-title-icon" /> Recomendados Para Você</h2>
+                    <h2 className="section-title"><FaLightbulb className="section-title-icon" /> {t('home_recommended')}</h2>
                     <div className="content-row">
                         {recommendations.map((item, index) => (
                             <HomeCard
@@ -835,7 +811,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                                 title={getName(item)}
                                 image={getCover(item)}
                                 fallbackIcon={FaFilm}
-                                onSelect={handleSelectCatalogNav}
+                                onSelect={openDetail}
                             />
                         ))}
                     </div>
@@ -845,7 +821,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 {/* Recent Series — condicional IGUAL ao array `sections` */}
                 {recentSeries.length > 0 && (
                 <div id="home-series" className="content-section">
-                    <h2 className="section-title"><FaCalendarPlus className="section-title-icon" /> Séries Recentes</h2>
+                    <h2 className="section-title"><FaCalendarPlus className="section-title-icon" /> {t('home_recent_series')}</h2>
                     <div className="content-row">
                         {recentSeries.map((series, index) => (
                             <HomeCard
@@ -856,7 +832,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                                 title={series.name}
                                 image={series.cover}
                                 fallbackIcon={FaTv}
-                                onSelect={handleSelectRecentSeries}
+                                onSelect={openDetail}
                             />
                         ))}
                     </div>
@@ -867,7 +843,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 {/* Recent Movies — condicional IGUAL ao array `sections` */}
                 {recentMovies.length > 0 && (
                 <div id="home-movies" className="content-section">
-                    <h2 className="section-title"><FaFilm className="section-title-icon" /> Filmes Recentes</h2>
+                    <h2 className="section-title"><FaFilm className="section-title-icon" /> {t('home_recent_movies')}</h2>
                     <div className="content-row">
                         {recentMovies.map((movie, index) => (
                             <HomeCard
@@ -878,29 +854,12 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                                 title={movie.name}
                                 image={movie.stream_icon || movie.cover}
                                 fallbackIcon={FaFilm}
-                                onSelect={handleSelectRecentMovie}
+                                onSelect={openDetail}
                             />
                         ))}
                     </div>
                 </div>
                 )}
-            </section>
-
-            {/* Quick Access */}
-            <section id="home-quick" className="home-quick-access">
-                <h2 className="section-title"><FaBolt className="section-title-icon" /> Acesso Rápido</h2>
-                <div className="quick-grid">
-                    {quickItems.map((item, index) => (
-                        <button
-                            key={item.page}
-                            className={`quick-item ${focusedSection === sectionIndex('quick') && focusedItem === index ? 'tv-focused' : ''}`}
-                            onClick={item.action}
-                        >
-                            <span className="quick-icon"><item.icon /></span>
-                            <span className="quick-label">{item.label}</span>
-                        </button>
-                    ))}
-                </div>
             </section>
 
             {/* Footer */}
