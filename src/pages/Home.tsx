@@ -1,6 +1,6 @@
 // Home Page - Matching NeoStream Desktop
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     FaExclamationTriangle, FaClock, FaSync, FaFilm, FaTv, FaPlay,
     FaListOl, FaCalendarPlus, FaLightbulb,
@@ -16,7 +16,6 @@ import { storage } from '../services/storage';
 import { categoryAffinity, scoreRecommendations, newEpisodes, normalizeSearch } from '../services/catalogExtras';
 import { usageStats } from '../services/usageStats';
 import { kidsFilter, isAdultCategoryName } from '../services/kidsFilter';
-import { parentalService } from '../services/parentalService';
 import { contentFlags } from '../services/contentFlags';
 import { computeDefaultVisibleChannels, withMinimum } from '../services/liveVisibility';
 import { ContentDetailModal } from '../components/ContentDetailModal';
@@ -104,10 +103,17 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
 
     // Continuar assistindo (fileira some no perfil Kids: o progresso é
     // global do aparelho e pode conter títulos adultos)
-    const [kidsActive] = useState(() => kidsFilter.isKidsActive());
-    const [continueItems, setContinueItems] = useState<ContinueItem[]>(() =>
-        kidsFilter.isKidsActive() ? [] : progressService.getContinueWatching()
-    );
+    const lerContinue = (): ContinueItem[] =>
+        kidsFilter.isKidsActive() ? [] : progressService.getContinueWatching();
+    const [continueRaw, setContinueRaw] = useState<ContinueItem[]>(lerContinue);
+    // Títulos de categoria adulta ('m-<id>' / 's-<id>'), conhecidos depois que
+    // o catálogo carrega. Até lá o filtro do Continuar vai só pelo nome.
+    const [adultContinueIds, setAdultContinueIds] = useState<Set<string>>(() => new Set());
+    const continueItems = useMemo(() => continueRaw.filter(item => {
+        const nome = item.kind === 'movie' ? item.progress.name : item.progress.seriesName;
+        const chave = item.kind === 'movie' ? `m-${item.progress.id}` : `s-${item.progress.seriesId}`;
+        return !isAdultCategoryName(nome || '') && !adultContinueIds.has(chave);
+    }), [continueRaw, adultContinueIds]);
     // OK num pôster abria a página Filmes inteira, no topo, sem o item
     // selecionado — o usuário perdia o que tinha achado
     const [detailItem, setDetailItem] = useState<VODStream | Series | null>(null);
@@ -137,8 +143,8 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
     const [selectedPreviewChannelId, setSelectedPreviewChannelId] = useState<number | null>(null);
 
     const refreshContinue = useCallback(() => {
-        setContinueItems(kidsActive ? [] : progressService.getContinueWatching());
-    }, [kidsActive]);
+        setContinueRaw(kidsFilter.isKidsActive() ? [] : progressService.getContinueWatching());
+    }, []);
 
     // Update clock on each minute boundary. Um setInterval(60s) a partir do
     // mount deixava o relógio até 59s atrasado. Fusos são minutos inteiros,
@@ -196,21 +202,30 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 let movies = rVodCats.status === 'fulfilled' ? settled(rMovies) ?? [] : [];
                 let series = rSeriesCats.status === 'fulfilled' ? settled(rSeries) ?? [] : [];
 
-                // Gate do perfil Kids (some com mais categoria que só a
-                // adulta) tem prioridade; perfil normal ainda assim não vê
-                // categoria travada por PIN nas fileiras da Home.
+                // A Home NUNCA mostra conteúdo adulto — nem com o bloqueio
+                // parental desligado: é a vitrine que abre com o app, na sala.
+                // Fica de fora por categoria adulta OU por nome adulto (canal
+                // "[XX] ADULTO 23" pode estar fora da categoria "Adultos").
+                // O perfil Kids continua com o filtro dele, mais amplo.
+                const adultas = (cats: Array<{ category_id: string; category_name: string }>) =>
+                    new Set(cats.filter(c => isAdultCategoryName(c.category_name || '')).map(c => c.category_id));
+                const adultLive = adultas(liveCats);
+                const adultVod = adultas(vodCats);
+                const adultSeries = adultas(seriesCats);
+                const ehAdulto = (item: { category_id: string; name?: string }, cats: Set<string>) =>
+                    cats.has(item.category_id) || isAdultCategoryName(item.name || '');
+                setAdultContinueIds(new Set([
+                    ...movies.filter(m => ehAdulto(m, adultVod)).map(m => `m-${m.stream_id}`),
+                    ...series.filter(s => ehAdulto(s, adultSeries)).map(s => `s-${s.series_id}`),
+                ]));
                 if (kidsFilter.isKidsActive()) {
                     streams = kidsFilter.apply(streams, liveCats).items;
                     movies = kidsFilter.apply(movies, vodCats).items;
                     series = kidsFilter.apply(series, seriesCats).items;
-                } else if (parentalService.getGates().adultCategories) {
-                    const lockedLive = new Set(liveCats.filter(c => isAdultCategoryName(c.category_name || '')).map(c => c.category_id));
-                    const lockedVod = new Set(vodCats.filter(c => isAdultCategoryName(c.category_name || '')).map(c => c.category_id));
-                    const lockedSeries = new Set(seriesCats.filter(c => isAdultCategoryName(c.category_name || '')).map(c => c.category_id));
-                    streams = streams.filter(s => !lockedLive.has(s.category_id));
-                    movies = movies.filter(m => !lockedVod.has(m.category_id));
-                    series = series.filter(s => !lockedSeries.has(s.category_id));
                 }
+                streams = streams.filter(s => !ehAdulto(s, adultLive));
+                movies = movies.filter(m => !ehAdulto(m, adultVod));
+                series = series.filter(s => !ehAdulto(s, adultSeries));
 
                 // Prévia de canal ao vivo: o último assistido (se ainda
                 // existir no catálogo já filtrado por Kids/adulto) puxa a

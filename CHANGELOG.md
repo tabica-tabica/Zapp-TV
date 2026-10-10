@@ -6,6 +6,12 @@ Maintained by **Tabica**. Originally created by Rakjsu.
 
 ## Unreleased
 
+### Changed
+
+- Home never shows adult content, even with the parental lock off: adult categories and
+  adult-named items (e.g. "[XX] …") are dropped from every row, the live preview and its channel
+  row, "Continuar Assistindo" and "Porque você assistiu". Live TV, Movies and Series are unchanged.
+
 ### Removed
 
 - The Favorites page and its sidebar entry. Favorite channels live in Live TV: the "Favoritos"
