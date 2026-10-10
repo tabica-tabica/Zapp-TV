@@ -4,7 +4,7 @@ All notable project changes should be documented in this file.
 
 Maintained by **Tabica**. Originally created by Rakjsu.
 
-## Unreleased
+## 1.1.3 - 2026-10-10
 
 ### Fixed
 
