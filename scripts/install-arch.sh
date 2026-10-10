@@ -15,7 +15,8 @@ ICON="$HOME/.local/share/icons/hicolor/512x512/apps/zapp-tv.png"
 DESKTOP="$HOME/.local/share/applications/zapp-tv.desktop"
 
 if [ "${1:-}" = "--uninstall" ]; then
-    rm -f "$BIN" "$ICON" "$DESKTOP"
+    # .version e o ícone 128px vêm do install-arch-bin.sh (binário do release)
+    rm -f "$BIN" "$BIN.version" "$ICON" "$DESKTOP" "$HOME/.local/share/icons/hicolor/128x128/apps/zapp-tv.png"
     update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
     echo "Zapp TV removido."
     exit 0

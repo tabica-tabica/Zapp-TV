@@ -202,6 +202,19 @@ Keys beyond the arrows, OK, and Back are only delivered to the app on a real Sam
 `http://tizen.org/privilege/tv.inputdevice` privilege is declared in `tizen/config.xml` and the keys
 are registered through `tizen.tvinputdevice.registerKey` at startup. Both are already configured.
 
+## Desktop (Arch Linux)
+
+Install or update from the latest GitHub release (no compiling — the release binary uses the
+system WebKitGTK). Run the same command again to update; it works with the app open, and the new
+version starts the next time you open it:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tabica-tabica/Zapp-TV/main/scripts/install-arch-bin.sh | bash
+```
+
+To build from source instead, run `scripts/install-arch.sh` from a checkout. Both install to
+`~/.local/bin/zapp-tv`; `scripts/install-arch.sh --uninstall` removes it.
+
 ## Samsung Tizen
 
 The current Tizen package identity is:
