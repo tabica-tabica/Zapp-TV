@@ -4,6 +4,32 @@ All notable project changes should be documented in this file.
 
 Created by **Rakjsu**.
 
+## 1.1.0 - 2026-10-10
+
+### Added
+
+- Live TV: HD is now the default variant of a channel group (plays first and provides the logo);
+  other qualities follow as fallback (HD → FHD → 4K → untagged → SD).
+- Quality failover: when another variant exists, the player gives up after one reconnect (~2 s)
+  instead of four (~30 s), and the same failover now works from Favorites and Global Search.
+- LG webOS 4.x support (Chromium 53, 2018 TVs): lower build target plus `AbortController` and
+  `ResizeObserver` fallbacks in `src/legacyPolyfills.ts`. Verified on a real device.
+- Desktop (Tauri): provider requests go through Rust (`tauri-plugin-http`), so the provider's
+  CORS-less redirect no longer breaks login ("Load failed"); `scripts/install-arch.sh` installs
+  the app natively on Arch Linux. App identifier is now `com.tabica-tabica.zapptv`.
+
+### Changed
+
+- Home: removed the stats and quick-access cards; translated the Home strings (pt/en/es).
+
+### Fixed
+
+- Home: card click opens the detail modal; preview row scrolls with focus; one failed endpoint no
+  longer empties every row (Chrome 69-safe `settle`); focus clamps when a row shrinks.
+- TV CSS: flex `gap` / `aspect-ratio` fallbacks for the live-channel preview, zap preview and
+  dialogs, which had broken the Chromium 69 CSS check in CI.
+- Dev server: API and stream-redirect proxies for the provider's CORS-less first redirect.
+
 ## Unreleased
 
 ### Added
