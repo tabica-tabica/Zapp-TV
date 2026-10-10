@@ -1,10 +1,10 @@
-// Escolha de gênero de Filmes/Séries: todos os gêneros de uma vez, em chips.
+// Escolha de gênero em Filmes: todos os gêneros de uma vez, em chips.
 // Substitui o botão que CICLAVA um gênero por clique/OK — chegar no 12º era
 // apertar 12 vezes. Mouse clica direto; no controle, ←→↑↓ andam pelos chips,
 // OK escolhe e Voltar fecha.
 
 import { useState } from 'react';
-import { FaLock, FaTheaterMasks, FaTimes } from 'react-icons/fa';
+import { FaTheaterMasks, FaTimes } from 'react-icons/fa';
 import type { Genero } from '../services/catalogGenres';
 import { useTVNavigation } from '../hooks/useTVNavigation';
 import './GenrePicker.css';
@@ -18,11 +18,9 @@ interface GenrePickerProps {
     selecionado: string | null;
     onEscolher: (id: string | null) => void;
     onFechar: () => void;
-    /** Gêneros que vão pedir PIN (cadeado no chip) */
-    bloqueados?: ReadonlySet<string>;
 }
 
-export function GenrePicker({ generos, selecionado, onEscolher, onFechar, bloqueados }: GenrePickerProps) {
+export function GenrePicker({ generos, selecionado, onEscolher, onFechar }: GenrePickerProps) {
     // Chip 0 = "Todos"; os demais seguem a ordem de `generos`
     const opcoes: Array<{ id: string | null; rotulo: string }> = [
         { id: null, rotulo: 'Todos' },
@@ -63,7 +61,6 @@ export function GenrePicker({ generos, selecionado, onEscolher, onFechar, bloque
                             onClick={() => escolher(opcao.id)}
                             onMouseEnter={() => setFoco(index)}
                         >
-                            {opcao.id && bloqueados?.has(opcao.id) && <FaLock className="genre-chip-lock" />}
                             <span>{opcao.rotulo}</span>
                         </button>
                     ))}

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback, type ReactNode } from 'react';
 import {
     FaTv, FaBookmark, FaRegBookmark, FaSort, FaEyeSlash,
-    FaCalendarAlt, FaTheaterMasks, FaStar,
+    FaCalendarAlt, FaStar,
 } from 'react-icons/fa';
 import { RemoteColorHint } from '../components/RemoteColorHint';
 import { Grid, type CellComponentProps } from 'react-window';
@@ -17,8 +17,6 @@ import { useAdultLock } from '../hooks/useAdultLock';
 import { parentalService } from '../services/parentalService';
 import { PinPrompt } from '../components/PinPrompt';
 import { useFocusZone } from '../contexts/FocusContext';
-import { mapaDeGeneros, generosDisponiveis, rotuloDoGenero, GENERO_ADULTO } from '../services/catalogGenres';
-import { GenrePicker } from '../components/GenrePicker';
 import { CategoryMenu, type CategoryMenuHandle } from '../components/CategoryMenu';
 import { AnimatedSearchBar, type AnimatedSearchBarHandle } from '../components/AnimatedSearchBar';
 import { ContentDetailModal } from '../components/ContentDetailModal';
@@ -80,8 +78,6 @@ export function Series() {
     const [error, setError] = useState('');
     const [series, setSeries] = useState<SeriesType[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
-    // Gênero (item 31): extraído do NOME da categoria — ver catalogGenres.ts
-    const [genero, setGenero] = useState<string | null>(null);
     const [selectedCategory, setSelectedCategory] = useState<string>('all');
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedSeries, setSelectedSeries] = useState<SeriesType | null>(null);
@@ -93,11 +89,8 @@ export function Series() {
     });
     const {
         lockedCategoryIds, guardSelect: guardCategorySelect, pendingCategoryId,
-        setPendingCategoryId, setUnlocked: setAdultUnlocked, justProvisioned, unlocked: adultUnlocked,
+        setPendingCategoryId, setUnlocked: setAdultUnlocked, justProvisioned,
     } = useAdultLock(categories);
-    // Painel de gêneros (todos de uma vez) e o "Adulto" esperando o PIN
-    const [generoPickerOpen, setGeneroPickerOpen] = useState(false);
-    const [pendingAdultGenre, setPendingAdultGenre] = useState(false);
 
     // Ordenação / esconder assistidos / selo NOVO / novos episódios (Fase 3)
     const [sortMode, setSortMode] = useState<CatalogSort>(() => catalogSort.get('series'));
@@ -185,16 +178,8 @@ export function Series() {
     // tecla da busca) preserva a ordem — nunca re-ordenar por tecla
     const sortedSeries = useMemo(() => sortCatalog(series, sortMode), [series, sortMode]);
 
-    const generoPorCategoria = useMemo(() => mapaDeGeneros(categories), [categories]);
-    const generosDoCatalogo = useMemo(() => generosDisponiveis(categories), [categories]);
-
-    // Botões da barra ancorados por id (o de gênero é condicional; índice
-    // posicional com item condicional já mandou o foco pro botão errado aqui)
-    const toolbarItems = [
-        'sort', 'hidewatched', 'decade',
-        ...(generosDoCatalogo.length > 0 ? ['genero'] : []),
-        'nota',
-    ] as const;
+    // Botões da barra ancorados por id, não por posição
+    const toolbarItems = ['sort', 'hidewatched', 'decade', 'nota'] as const;
     const HEADER_BASE = 2; // 0 = busca, 1 = menu de categorias
     const toolbarFocusIndex = (item: string) =>
         HEADER_BASE + toolbarItems.indexOf(item as typeof toolbarItems[number]);
@@ -210,10 +195,8 @@ export function Series() {
             if (!matchesSearch || !matchesCategory) return false;
             // Categoria travada por PIN só aparece quando ela mesma está
             // selecionada — mesmo motivo do gate em Movies.tsx.
-            if (lockedCategoryIds.has(s.category_id) && selectedCategory !== s.category_id
-                && !(genero === GENERO_ADULTO && adultUnlocked)) return false;
+            if (lockedCategoryIds.has(s.category_id) && selectedCategory !== s.category_id) return false;
             if (hasFilters && !matchesFilters(s, filters)) return false;
-            if (genero && generoPorCategoria.get(s.category_id) !== genero) return false;
             return true;
         });
         if (finishedSeriesIds) {
@@ -225,14 +208,13 @@ export function Series() {
             );
         }
         return list;
-    }, [sortedSeries, searchQuery, selectedCategory, finishedSeriesIds, filters, genero, generoPorCategoria, lockedCategoryIds, adultUnlocked]);
+    }, [sortedSeries, searchQuery, selectedCategory, finishedSeriesIds, filters, lockedCategoryIds]);
 
     // Grade vazia numa TV e indistinguivel de defeito: dizer QUAIS filtros
     // estao ligados e o que fecha a duvida
     const filtrosLigados = [
         searchQuery ? `busca "${searchQuery}"` : '',
         selectedCategory !== 'all' ? 'categoria' : '',
-        genero ? `genero ${rotuloDoGenero(genero)}` : '',
         filters.decade > 0 ? `${filters.decade}s` : '',
         filters.minRating > 0 ? `nota ${filters.minRating}+` : '',
         hideWatchedOn ? 'esconder assistidos' : '',
@@ -303,19 +285,6 @@ export function Series() {
         });
     };
 
-    // Gênero: escolhido no painel. "Adulto" com categoria travada pede o PIN
-    // primeiro — o mesmo prompt de abrir uma categoria adulta.
-    const escolherGenero = (id: string | null) => {
-        const travado = id === GENERO_ADULTO && !adultUnlocked;
-        const categoriaAdulta = [...lockedCategoryIds][0];
-        if (travado && categoriaAdulta) {
-            setPendingAdultGenre(true);
-            guardCategorySelect(categoriaAdulta, () => setGenero(GENERO_ADULTO));
-            return;
-        }
-        setGenero(id);
-    };
-
     // Nota mínima (item 32): existia em matchesFilters e nenhuma tela escrevia
     const cycleNota = () => {
         setFilters(prev => {
@@ -375,7 +344,6 @@ export function Series() {
                 if (item === 'sort') cycleSort();
                 else if (item === 'hidewatched') toggleHideWatched();
                 else if (item === 'decade') cycleFilters();
-                else if (item === 'genero') setGeneroPickerOpen(true);
                 else if (item === 'nota') cycleNota();
             }
         } else if (focusArea === 'series') {
@@ -390,7 +358,7 @@ export function Series() {
         onAction: (action) => {
             if (action === 'yellow' && focusArea === 'series') openContextMenu();
         },
-        enabled: focusZone === 'content' && !error && !showModal && !seriesQueue && !categoryMenuOpen && !contextItem && !pendingCategoryId && !generoPickerOpen,
+        enabled: focusZone === 'content' && !error && !showModal && !seriesQueue && !categoryMenuOpen && !contextItem && !pendingCategoryId,
     });
 
     useTVNavigation({
@@ -514,28 +482,12 @@ export function Series() {
                         const ok = await parentalService.verify(pin);
                         if (ok) {
                             setAdultUnlocked(true);
-                            // Veio do gênero "Adulto": liga o gênero, não troca de categoria
-                            if (pendingAdultGenre) setGenero(GENERO_ADULTO);
-                            else setSelectedCategory(pendingCategoryId);
-                            setPendingAdultGenre(false);
+                            setSelectedCategory(pendingCategoryId);
                             setPendingCategoryId(null);
                         }
                         return ok;
                     }}
-                    onCancel={() => {
-                        setPendingAdultGenre(false);
-                        setPendingCategoryId(null);
-                    }}
-                />
-            )}
-
-            {generoPickerOpen && (
-                <GenrePicker
-                    generos={generosDoCatalogo}
-                    selecionado={genero}
-                    onEscolher={escolherGenero}
-                    onFechar={() => setGeneroPickerOpen(false)}
-                    bloqueados={lockedCategoryIds.size > 0 && !adultUnlocked ? new Set([GENERO_ADULTO]) : undefined}
+                    onCancel={() => setPendingCategoryId(null)}
                 />
             )}
 
@@ -562,15 +514,6 @@ export function Series() {
                 >
                     {filters.decade > 0 ? `${filters.decade}s` : <><FaCalendarAlt /> Década</>}
                 </button>
-                {generosDoCatalogo.length > 0 && (
-                    <button
-                        className={`toolbar-btn ${genero ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('genero') ? 'tv-focused' : ''}`}
-                        onClick={() => setGeneroPickerOpen(true)}
-                        title="Filtrar por gênero"
-                    >
-                        {genero ? rotuloDoGenero(genero) : <><FaTheaterMasks /> Gênero</>}
-                    </button>
-                )}
                 <button
                     className={`toolbar-btn ${filters.minRating > 0 ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('nota') ? 'tv-focused' : ''}`}
                     onClick={cycleNota}

@@ -97,11 +97,10 @@ export function Movies() {
     });
     const {
         lockedCategoryIds, guardSelect: guardCategorySelect, pendingCategoryId,
-        setPendingCategoryId, setUnlocked: setAdultUnlocked, justProvisioned, unlocked: adultUnlocked,
+        setPendingCategoryId, setUnlocked: setAdultUnlocked, justProvisioned,
     } = useAdultLock(categories);
-    // Painel de gêneros (todos de uma vez) e o "Adulto" esperando o PIN
+    // Painel de gêneros (todos de uma vez)
     const [generoPickerOpen, setGeneroPickerOpen] = useState(false);
-    const [pendingAdultGenre, setPendingAdultGenre] = useState(false);
 
     // Ordenação / esconder assistidos / selo NOVO (Fase 3)
     const [sortMode, setSortMode] = useState<CatalogSort>(() => catalogSort.get('movies'));
@@ -175,7 +174,14 @@ export function Movies() {
     const generoPorCategoria = useMemo(() => mapaDeGeneros(categories), [categories]);
     // Só os gêneros que ESTE provedor realmente tem: oferecer "Guerra" numa
     // lista sem nenhum filme de guerra devolve uma grade vazia e parece bug
-    const generosDoCatalogo = useMemo(() => generosDisponiveis(categories), [categories]);
+    // "Adulto" só com conteúdo adulto LIGADO em Configurações → Controle
+    // parental ("Bloquear categorias adultas" desligado). Com a trava ligada
+    // (padrão) o gênero nem aparece; a categoria segue acessível com PIN.
+    const adultoLiberado = !parentalService.getGates().adultCategories;
+    const generosDoCatalogo = useMemo(
+        () => generosDisponiveis(categories).filter(g => g.id !== GENERO_ADULTO || adultoLiberado),
+        [categories, adultoLiberado],
+    );
 
     // Botões da barra na ORDEM do JSX, ancorados por id e não por posição.
     // O botão de gênero é condicional (some quando o provedor não organiza o
@@ -206,8 +212,7 @@ export function Movies() {
             // acontece depois que guardCategorySelect já exigiu o PIN. Sem
             // isto, um filme "adulto" categorizado sob uma categoria travada
             // aparecia normalmente em "Todos", sem pedir PIN nenhum.
-            if (lockedCategoryIds.has(stream.category_id) && selectedCategory !== stream.category_id
-                && !(genero === GENERO_ADULTO && adultUnlocked)) return false;
+            if (lockedCategoryIds.has(stream.category_id) && selectedCategory !== stream.category_id) return false;
             // Chips de tag: item precisa ter TODAS as tags marcadas
             if (activeTags.length > 0 && !activeTags.every(tag => hasTag(stream.name || '', tag))) return false;
             if (hasFilters && !matchesFilters(stream, filters)) return false;
@@ -218,7 +223,7 @@ export function Movies() {
             list = list.filter(stream => !completedMovieIds.has(String(stream.stream_id)));
         }
         return list;
-    }, [streams, searchQuery, selectedCategory, completedMovieIds, activeTags, filters, genero, generoPorCategoria, lockedCategoryIds, adultUnlocked]);
+    }, [streams, searchQuery, selectedCategory, completedMovieIds, activeTags, filters, genero, generoPorCategoria, lockedCategoryIds]);
 
     // Agrupa versões do mesmo filme (DUB/LEG/4K) sobre a lista JÁ filtrada
     const { groups: groupedStreams, versionsOf } = useMemo(
@@ -399,18 +404,6 @@ export function Movies() {
         });
     };
 
-    // Gênero: escolhido no painel. "Adulto" com categoria travada pede o PIN
-    // primeiro — o mesmo prompt de abrir uma categoria adulta.
-    const escolherGenero = (id: string | null) => {
-        const travado = id === GENERO_ADULTO && !adultUnlocked;
-        const categoriaAdulta = [...lockedCategoryIds][0];
-        if (travado && categoriaAdulta) {
-            setPendingAdultGenre(true);
-            guardCategorySelect(categoriaAdulta, () => setGenero(GENERO_ADULTO));
-            return;
-        }
-        setGenero(id);
-    };
 
     // Nota mínima (item 32): o filtro EXISTIA em matchesFilters e nenhuma tela
     // o escrevia — filtro morto atrás de um comentário que prometia "← → ajustam
@@ -630,18 +623,12 @@ export function Movies() {
                         const ok = await parentalService.verify(pin);
                         if (ok) {
                             setAdultUnlocked(true);
-                            // Veio do gênero "Adulto": liga o gênero, não troca de categoria
-                            if (pendingAdultGenre) setGenero(GENERO_ADULTO);
-                            else setSelectedCategory(pendingCategoryId);
-                            setPendingAdultGenre(false);
+                            setSelectedCategory(pendingCategoryId);
                             setPendingCategoryId(null);
                         }
                         return ok;
                     }}
-                    onCancel={() => {
-                        setPendingAdultGenre(false);
-                        setPendingCategoryId(null);
-                    }}
+                    onCancel={() => setPendingCategoryId(null)}
                 />
             )}
 
@@ -649,9 +636,8 @@ export function Movies() {
                 <GenrePicker
                     generos={generosDoCatalogo}
                     selecionado={genero}
-                    onEscolher={escolherGenero}
+                    onEscolher={setGenero}
                     onFechar={() => setGeneroPickerOpen(false)}
-                    bloqueados={lockedCategoryIds.size > 0 && !adultUnlocked ? new Set([GENERO_ADULTO]) : undefined}
                 />
             )}
 
