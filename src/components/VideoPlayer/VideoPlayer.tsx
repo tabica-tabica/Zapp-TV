@@ -3,7 +3,7 @@ import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, Fra
 import {
     FaPlay, FaPause, FaCog, FaStepForward, FaStepBackward, FaListUl, FaMoon, FaExpand,
     FaVolumeUp, FaVolumeDown, FaVolumeMute, FaTimes, FaBroadcastTower, FaSync,
-    FaExclamationTriangle, FaHeadphones, FaThumbtack,
+    FaExclamationTriangle, FaHeadphones, FaThumbtack, FaBackward, FaForward,
 } from 'react-icons/fa';
 import { useHls, type StreamErrorCause } from '../../hooks/useHls';
 import {
@@ -117,7 +117,13 @@ export interface VideoPlayerProps {
      * Momentos salvos do filme (lista secreta): 🟢 ou 📌 marca o instante,
      * CH+/CH− pulam entre eles, e eles aparecem como marcas na barra.
      */
-    moments?: { list: number[]; onAdd: (t: number) => void };
+    moments?: { list: number[]; onAdd: (t: number, thumb?: string) => void };
+    /**
+     * `crossorigin="anonymous"` no <video>: só com uma URL cujo servidor manda
+     * CORS em TODOS os saltos (o SecretPlayer resolve o redirect antes). É o
+     * que deixa capturar o quadro do momento sem "sujar" o canvas.
+     */
+    crossOrigin?: 'anonymous';
     /**
      * Começa EXATAMENTE aqui (segundos), ignorando a preferência de retomar e
      * o recuo de 5s do resume — é o "abrir no momento salvo".
@@ -126,7 +132,7 @@ export interface VideoPlayerProps {
 }
 
 // Control buttons: close, prev, play, next, options, channels, volume, sleep, aspect
-type ControlButton = 'close' | 'prev' | 'play' | 'golive' | 'next' | 'pin' | 'options' | 'channels' | 'volume' | 'sleep' | 'aspect';
+type ControlButton = 'close' | 'prev' | 'play' | 'golive' | 'next' | 'momprev' | 'pin' | 'momnext' | 'options' | 'channels' | 'volume' | 'sleep' | 'aspect';
 // 'seekbar' = barra de progresso focada (seek por D-pad, item 37)
 type PlayerFocus = 'controls' | 'menu' | 'zap-list' | 'seekbar';
 // Uma tela por vez; 'root' lista as seções (item 39/40/41/48)
@@ -215,6 +221,28 @@ function RadioClock() {
     );
 }
 
+/**
+ * Quadro atual em JPEG pequeno (160px de largura, ~3 KB) pra miniatura do
+ * momento. Vídeo de outra origem sem CORS "suja" o canvas e o toDataURL lança
+ * — aí não tem miniatura e o momento é salvo mesmo assim.
+ */
+function capturarQuadro(video: HTMLVideoElement): string | undefined {
+    try {
+        if (!video.videoWidth || !video.videoHeight) return undefined;
+        const largura = 160;
+        const altura = Math.round(largura * video.videoHeight / video.videoWidth);
+        const canvas = document.createElement('canvas');
+        canvas.width = largura;
+        canvas.height = altura;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return undefined;
+        ctx.drawImage(video, 0, 0, largura, altura);
+        return canvas.toDataURL('image/jpeg', 0.6);
+    } catch {
+        return undefined;
+    }
+}
+
 export function VideoPlayer({
     src,
     title,
@@ -249,6 +277,7 @@ export function VideoPlayer({
     hasAlternativeSource = false,
     moments,
     startAt,
+    crossOrigin,
 }: VideoPlayerProps) {
     // Um overlay do App (o aviso de lembrete) toma as teclas mudando a zona
     // pra 'overlay'. Sem consultar isso aqui, o MESMO OK pausava o vídeo por
@@ -898,7 +927,10 @@ export function VideoPlayer({
         buttons.push('play');
         if (isLiveContent && isBehindLive) buttons.push('golive');
         if (canGoNext && onNextEpisode) buttons.push('next');
+        // Botões de momento pra quem usa mouse (CH+/CH− só existem no controle/teclado)
+        if (moments && moments.list.length > 0) buttons.push('momprev');
         if (moments) buttons.push('pin');
+        if (moments && moments.list.length > 0) buttons.push('momnext');
         // ⚙ sempre aparece: mesmo sem níveis de qualidade ele dá acesso a
         // áudio, legenda e estatísticas
         buttons.push('options');
@@ -1381,10 +1413,10 @@ export function VideoPlayer({
     }, []);
 
     // ----- Momentos (lista secreta) -----
-    const [momentToast, setMomentToast] = useState<string | null>(null);
+    const [momentToast, setMomentToast] = useState<{ text: string; img?: string } | null>(null);
     const momentToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const flashMoment = useCallback((text: string) => {
-        setMomentToast(text);
+    const flashMoment = useCallback((text: string, img?: string) => {
+        setMomentToast({ text, img });
         if (momentToastTimerRef.current) clearTimeout(momentToastTimerRef.current);
         momentToastTimerRef.current = setTimeout(() => setMomentToast(null), 2200);
     }, []);
@@ -1399,8 +1431,9 @@ export function VideoPlayer({
         const m = momentsRef.current;
         if (!video || !m) return;
         const t = video.currentTime;
-        m.onAdd(t);
-        flashMoment(`📌 Momento salvo ${formatTime(t)}`);
+        const thumb = capturarQuadro(video);
+        m.onAdd(t, thumb);
+        flashMoment(`📌 Momento salvo ${formatTime(t)}`, thumb);
     }, [flashMoment]);
 
     const jumpMoment = useCallback((direction: 1 | -1) => {
@@ -1819,8 +1852,14 @@ export function VideoPlayer({
             case 'pin':
                 pinMoment();
                 break;
+            case 'momprev':
+                jumpMoment(-1);
+                break;
+            case 'momnext':
+                jumpMoment(1);
+                break;
         }
-    }, [focusedControl, handleClose, onPreviousEpisode, togglePlay, onNextEpisode, openMenu, openZapList, toggleMute, cycleSleep, cycleAspect, seekToLive, pinMoment]);
+    }, [focusedControl, handleClose, onPreviousEpisode, togglePlay, onNextEpisode, openMenu, openZapList, toggleMute, cycleSleep, cycleAspect, seekToLive, pinMoment, jumpMoment]);
 
     // TV Navigation handler
     const handleNavigate = useCallback((direction: 'up' | 'down' | 'left' | 'right') => {
@@ -2041,6 +2080,7 @@ export function VideoPlayer({
                 ) : (
                 <video
                     ref={videoRef}
+                    crossOrigin={crossOrigin}
                     className={videoClassName}
                     poster={isRadio ? undefined : poster}
                     onClick={togglePlay}
@@ -2227,7 +2267,12 @@ export function VideoPlayer({
                 </div>
             )}
 
-            {momentToast && <div className="moment-toast">{momentToast}</div>}
+            {momentToast && (
+                <div className="moment-toast">
+                    {momentToast.img && <img className="moment-toast-thumb" src={momentToast.img} alt="" />}
+                    <span>{momentToast.text}</span>
+                </div>
+            )}
 
             {/* Reconectando (R1 item 44) */}
             {reconnecting && !error && (
@@ -2376,7 +2421,16 @@ export function VideoPlayer({
                             </button>
                         )}
 
-                        {/* Marcar momento (lista secreta) */}
+                        {/* Momentos (lista secreta): ◀ anterior · 📌 marcar · próximo ▶ */}
+                        {moments && moments.list.length > 0 && (
+                            <button
+                                className={`control-btn ${focusedControl === 'momprev' && playerFocus === 'controls' ? 'focused' : ''}`}
+                                onClick={() => jumpMoment(-1)}
+                                title="Momento anterior (CH−)"
+                            >
+                                <FaBackward />
+                            </button>
+                        )}
                         {moments && (
                             <button
                                 className={`control-btn ${focusedControl === 'pin' && playerFocus === 'controls' ? 'focused' : ''}`}
@@ -2385,6 +2439,15 @@ export function VideoPlayer({
                             >
                                 <FaThumbtack />
                                 {moments.list.length > 0 && <span className="quality-label">{moments.list.length}</span>}
+                            </button>
+                        )}
+                        {moments && moments.list.length > 0 && (
+                            <button
+                                className={`control-btn ${focusedControl === 'momnext' && playerFocus === 'controls' ? 'focused' : ''}`}
+                                onClick={() => jumpMoment(1)}
+                                title="Próximo momento (CH+)"
+                            >
+                                <FaForward />
                             </button>
                         )}
 

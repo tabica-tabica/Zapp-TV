@@ -15,6 +15,15 @@ Maintained by **Tabica**. Originally created by Rakjsu.
   the previous/next movie of the list, and a movie opens at its first moment (or the chip you
   click). Stored per profile, outside the QR backup and config snapshots; secret playback records
   no progress and no usage stats.
+- Secret list: each pinned moment saves a snapshot of the frame (~3 KB JPEG, max 300 overall),
+  shown in the "Momento salvo" toast and on the list chips. Works where the movie's final URL can
+  be resolved (dev, desktop); otherwise the moment is saved without the image.
+- Player: clickable ◀ / ▶ buttons for previous/next moment (mouse users), beside 📌.
+
+### Changed
+
+- Adult movies with the secret list on show only "Lista secreta" (no "Adicionar à Lista") on the
+  detail screen and in the Ações menu.
 - Movies: the "Gênero" button opens a panel with every genre at once (mouse clicks a chip;
   D-pad moves, OK picks, Back closes) instead of cycling one genre per press.
 - Movies: "Adulto" genre (all adult titles together), offered only when adult content is turned

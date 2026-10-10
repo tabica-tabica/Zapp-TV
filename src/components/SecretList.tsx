@@ -96,10 +96,15 @@ export function SecretList({ onClose, onPlay }: SecretListProps) {
                                     {item.moments.map((t, j) => (
                                         <span
                                             key={t}
-                                            className={`secret-chip ${i === linha && coluna === j + 1 ? 'tv-focused' : ''}`}
+                                            className={`secret-chip ${item.thumbs?.[String(t)] ? 'with-thumb' : ''} ${i === linha && coluna === j + 1 ? 'tv-focused' : ''}`}
                                             onMouseEnter={() => { setLinha(i); setColuna(j + 1); }}
                                         >
-                                            <button className="secret-chip-time" onClick={() => tocar(i, t)}>{formatMoment(t)}</button>
+                                            <button className="secret-chip-time" onClick={() => tocar(i, t)}>
+                                                {item.thumbs?.[String(t)] && (
+                                                    <img className="secret-chip-thumb" src={item.thumbs[String(t)]} alt="" />
+                                                )}
+                                                <span>{formatMoment(t)}</span>
+                                            </button>
                                             <button
                                                 className="secret-chip-remove"
                                                 onClick={() => removerMomento(item.id, t)}

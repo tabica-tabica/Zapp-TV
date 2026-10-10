@@ -443,7 +443,8 @@ export function ContentDetailModal({
                 : hasVersions ? 'version' : 'play';
 
             if (focusZone === 'play') {
-                if (direction === 'right') setFocusZone('watchLater');
+                // Filme adulto com a lista secreta: só o botão secreto, sem Minha Lista
+                if (direction === 'right') setFocusZone(hasSecret ? 'secret' : 'watchLater');
                 else if (direction === 'up') setFocusZone(acimaDasAcoes);
             } else if (focusZone === 'collection') {
                 if (direction === 'left') setCollectionFocusIndex(prev => Math.max(0, prev - 1));
@@ -461,7 +462,7 @@ export function ContentDetailModal({
                 else if (direction === 'right' && hasTrailer) setFocusZone('trailer');
                 else if (direction === 'up') setFocusZone('close');
             } else if (focusZone === 'secret') {
-                if (direction === 'left') setFocusZone('watchLater');
+                if (direction === 'left') setFocusZone('play');
                 else if (direction === 'right' && hasTrailer) setFocusZone('trailer');
                 else if (direction === 'up') setFocusZone('close');
             } else if (focusZone === 'trailer') {
@@ -847,7 +848,8 @@ export function ContentDetailModal({
                             }
                         </button>
 
-                        {/* Watch Later Button */}
+                        {/* Watch Later Button — some no filme adulto (fica só o secreto) */}
+                        {!hasSecret && (
                         <button
                             className={`action-btn secondary-btn ${storage.isInWatchLater(contentId, contentType) ? 'active' : ''} ${focusZone === 'watchLater' ? 'focused' : ''}`}
                             onClick={() => {
@@ -858,6 +860,7 @@ export function ContentDetailModal({
                             {storage.isInWatchLater(contentId, contentType) ? <FaBookmark /> : <FaRegBookmark />}
                             {storage.isInWatchLater(contentId, contentType) ? 'Na Minha Lista' : 'Adicionar à Lista'}
                         </button>
+                        )}
 
                         {/* Lista secreta (só filme adulto, com adulto ligado) */}
                         {hasSecret && secretList && (

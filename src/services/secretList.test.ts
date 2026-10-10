@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { installFakeStorage } from '../testing/fakeStorage';
 import {
     insertMoment, nextMoment, prevMoment, firstMoment, formatMoment, secretList, MAX_MOMENTOS,
+    limitarMiniaturas, type ItemSecreto,
 } from './secretList';
 import { KEYS_LISTAS, KEYS_PREFERENCIAS } from './storageKeys';
 
@@ -78,5 +79,41 @@ describe('secretList', () => {
     it('a chave está nas listas, não nas preferências', () => {
         expect(KEYS_LISTAS).toContain('neostream_secret_list');
         expect(KEYS_PREFERENCIAS as readonly string[]).not.toContain('neostream_secret_list');
+    });
+});
+
+describe('miniaturas', () => {
+    const img = 'data:image/jpeg;base64,AAAA';
+
+    it('guarda a miniatura no segundo do momento e apaga junto', () => {
+        secretList.toggle({ id: '7', title: 'X' });
+        secretList.addMoment('7', 120.4, img);
+        expect(secretList.list()[0].thumbs).toEqual({ '120': img });
+        secretList.removeMoment('7', 120);
+        expect(secretList.list()[0].thumbs).toEqual({});
+    });
+
+    it('momento ignorado (perto de outro) não troca a miniatura', () => {
+        secretList.toggle({ id: '7', title: 'X' });
+        secretList.addMoment('7', 120, img);
+        secretList.addMoment('7', 121, 'data:image/jpeg;base64,BBBB');
+        expect(secretList.list()[0].thumbs).toEqual({ '120': img });
+    });
+
+    it('teto global corta pelos filmes mais antigos (fim da lista)', () => {
+        const item = (id: string, n: number): ItemSecreto => ({
+            id, title: id, addedAt: 0, moments: [],
+            thumbs: Object.fromEntries(Array.from({ length: n }, (_, i) => [String(i), img])),
+        });
+        const itens = limitarMiniaturas([item('novo', 3), item('velho', 3)], 4);
+        expect(Object.keys(itens[0].thumbs ?? {})).toHaveLength(3);
+        expect(Object.keys(itens[1].thumbs ?? {})).toHaveLength(1);
+    });
+
+    it('descarta o que não é imagem', () => {
+        localStorage.setItem('neostream_secret_list', JSON.stringify([
+            { id: '1', title: 'A', moments: [5], thumbs: { '5': 'javascript:alert(1)' } },
+        ]));
+        expect(secretList.list()[0].thumbs).toEqual({});
     });
 });

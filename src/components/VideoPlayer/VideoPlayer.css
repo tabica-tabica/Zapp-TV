@@ -1212,10 +1212,19 @@
     left: 50%;
     transform: translateX(-50%);
     z-index: 56;
+    display: flex;
+    align-items: center;
     background: rgba(0, 0, 0, 0.78);
     color: #fff;
     font-size: 18px;
-    padding: 12px 24px;
+    padding: 10px 22px 10px 10px;
     border-radius: 12px;
     pointer-events: none;
+}
+
+.moment-toast-thumb {
+    width: 96px;
+    border-radius: 6px;
+    margin-right: 14px;
+    display: block;
 }

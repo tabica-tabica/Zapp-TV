@@ -18,6 +18,12 @@ export const MAX_ITENS_SECRETOS = 200;
 export const MAX_MOMENTOS = 50;
 /** Dois momentos a menos disso são o mesmo momento (e o "anterior" pula ele). */
 export const TOLERANCIA_MOMENTO_S = 3;
+/**
+ * Teto GLOBAL de miniaturas (cada uma ~3 KB em JPEG 160px): a quota do
+ * aparelho é ~5 MB pra tudo. Passou disso, as dos filmes mais antigos da
+ * lista caem primeiro — o momento continua, só sem a imagem.
+ */
+export const MAX_MINIATURAS = 300;
 
 export interface ItemSecreto {
     /** stream_id do filme */
@@ -28,6 +34,8 @@ export interface ItemSecreto {
     addedAt: number;
     /** segundos, em ordem crescente */
     moments: number[];
+    /** Miniatura (data:image/jpeg) por segundo do momento, quando deu pra capturar */
+    thumbs?: Record<string, string>;
 }
 
 // ---- Momentos: funções puras ----
@@ -85,11 +93,30 @@ function ler(): ItemSecreto[] {
             moments: Array.isArray(item.moments)
                 ? item.moments.map(Number).filter(n => Number.isFinite(n) && n >= 0).sort((a, b) => a - b)
                 : [],
+            thumbs: item.thumbs && typeof item.thumbs === 'object'
+                ? Object.fromEntries(Object.entries(item.thumbs)
+                    .filter(([, v]) => typeof v === 'string' && v.startsWith('data:image/')))
+                : undefined,
         }));
 }
 
+/** Corta miniaturas além do teto global, começando pelo fim da lista (mais antigos). */
+export function limitarMiniaturas(itens: ItemSecreto[], max = MAX_MINIATURAS): ItemSecreto[] {
+    let total = itens.reduce((n, item) => n + Object.keys(item.thumbs ?? {}).length, 0);
+    for (let i = itens.length - 1; i >= 0 && total > max; i--) {
+        const thumbs = itens[i].thumbs;
+        if (!thumbs) continue;
+        for (const chave of Object.keys(thumbs)) {
+            if (total <= max) break;
+            delete thumbs[chave];
+            total--;
+        }
+    }
+    return itens;
+}
+
 function gravar(itens: ItemSecreto[]): void {
-    writeJson(KEY(), itens);
+    writeJson(KEY(), limitarMiniaturas(itens));
 }
 
 export type ItemSecretoInput = Pick<ItemSecreto, 'id' | 'title' | 'poster' | 'container'>;
@@ -122,12 +149,16 @@ export const secretList = {
         gravar(ler().filter(item => item.id !== id));
     },
 
-    /** Salva um momento; devolve a lista nova (igual à antiga se ignorado). */
-    addMoment(id: string, t: number): number[] {
+    /** Salva um momento (com miniatura, se houver); devolve a lista nova. */
+    addMoment(id: string, t: number, thumb?: string): number[] {
         const itens = ler();
         const item = itens.find(x => x.id === id);
         if (!item) return [];
+        const antes = item.moments.length;
         item.moments = insertMoment(item.moments, t);
+        if (thumb && item.moments.length > antes) {
+            item.thumbs = { ...item.thumbs, [String(Math.max(0, Math.round(t)))]: thumb };
+        }
         gravar(itens);
         return item.moments;
     },
@@ -137,6 +168,7 @@ export const secretList = {
         const item = itens.find(x => x.id === id);
         if (!item) return [];
         item.moments = item.moments.filter(m => m !== t);
+        if (item.thumbs) delete item.thumbs[String(t)];
         gravar(itens);
         return item.moments;
     },

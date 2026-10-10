@@ -464,8 +464,10 @@ export function Movies() {
         setContextIndex(0);
     };
 
+    // Filme adulto com a lista secreta ativa: só a opção secreta, sem Minha Lista
+    const contextSecreto = !!contextItem && listaSecretaAtiva && ehFilmeAdulto(contextItem);
     const contextActions = contextItem ? [
-        {
+        ...(contextSecreto ? [] : [{
             label: storage.isInWatchLater(String(contextItem.stream_id), 'movie')
                 ? <><FaBookmark /> Tirar da Minha Lista</> : <><FaRegBookmark /> Adicionar à Lista</>,
             run: () => {
@@ -479,9 +481,9 @@ export function Movies() {
                 });
                 setToast(added ? <><FaBookmark /> Salvo na Minha Lista</> : <><FaRegBookmark /> Removido da Minha Lista</>);
             },
-        },
+        }]),
         // Só filme adulto e só com a lista secreta ativa
-        ...(listaSecretaAtiva && ehFilmeAdulto(contextItem) ? [{
+        ...(contextSecreto ? [{
             label: secretList.has(String(contextItem.stream_id))
                 ? <><FaLock /> Tirar da lista secreta</> : <><FaLock /> Lista secreta</>,
             run: () => toggleSecreto(contextItem),
