@@ -1,5 +1,5 @@
 // VideoPlayer Component - Premium player with HLS support for TV
-import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, Fragment } from 'react';
 import {
     FaPlay, FaPause, FaCog, FaStepForward, FaStepBackward, FaListUl, FaMoon, FaExpand,
     FaVolumeUp, FaVolumeDown, FaVolumeMute, FaTimes, FaBroadcastTower, FaSync,
@@ -7,7 +7,7 @@ import {
 } from 'react-icons/fa';
 import { useHls, type StreamErrorCause } from '../../hooks/useHls';
 import {
-    MAX_RECONNECT_ATTEMPTS, isTerminalCause, reconnectDelayMs,
+    MAX_RECONNECT_ATTEMPTS, isTerminalCause, reconnectDelayMs, liveFeedStalled, CONNLIMIT_WINDOW_MS,
 } from '../../services/playerDecisions';
 import { playbackPrefs } from '../../services/playbackPrefs';
 import { useTVNavigation } from '../../hooks/useTVNavigation';
@@ -27,7 +27,7 @@ import {
 import { storage } from '../../services/storage';
 import { searchSubtitles, resolveSubtitleTrack, type SubtitleResult } from '../../services/openSubtitles';
 import { api } from '../../services/api';
-import { LiveChannelPreview } from '../LiveChannelPreview';
+import { LiveChannelPreview, type LivePipeline } from '../LiveChannelPreview';
 import './VideoPlayer.css';
 
 export interface PlayerChannel {
@@ -104,6 +104,14 @@ export interface VideoPlayerProps {
      * código extra lá.
      */
     subtitleQuery?: { title: string; year?: string; season?: number; episode?: number; imdbId?: string };
+    /**
+     * Pipeline da prévia já tocando (TV ao Vivo): o player assume o MESMO
+     * <video> + hls.js — sem requisição nova, sem segunda conexão no provedor.
+     * Lido só na montagem.
+     */
+    adopt?: LivePipeline | null;
+    /** Há outra fonte pra tentar (sessão → URL normal → variante): troca já no travamento. */
+    hasAlternativeSource?: boolean;
 }
 
 // Control buttons: close, prev, play, next, options, channels, volume, sleep, aspect
@@ -147,6 +155,7 @@ const CAUSE_MESSAGES: Record<string, string> = {
     network: 'Falha de rede. Verifique a conexão da TV.',
     media: 'Falha ao decodificar o vídeo (codec não suportado?).',
     stall: 'O stream congelou.',
+    connlimit: 'O provedor não liberou a conexão a tempo (limite de conexões da conta).',
     fatal: 'Erro no stream.',
 };
 
@@ -225,6 +234,8 @@ export function VideoPlayer({
     qualityVariants,
     onSelectQualityVariant,
     subtitleQuery,
+    adopt,
+    hasAlternativeSource = false,
 }: VideoPlayerProps) {
     // Um overlay do App (o aviso de lembrete) toma as teclas mudando a zona
     // pra 'overlay'. Sem consultar isso aqui, o MESMO OK pausava o vídeo por
@@ -232,6 +243,19 @@ export function VideoPlayer({
     const { focusZone: appFocusZone } = useFocusZone();
 
     const videoRef = useRef<HTMLVideoElement>(null);
+    // Pipeline adotado (congelado na montagem). O <video> dele é colocado no
+    // host no MESMO commit em que o React tira a prévia da tela — volta pro
+    // documento antes do "stable state" em que o navegador pausaria um
+    // elemento de mídia removido, então segue tocando sem engasgar.
+    const [adopted] = useState<LivePipeline | null>(() => adopt ?? null);
+    const hostRef = useRef<HTMLDivElement>(null);
+    useLayoutEffect(() => {
+        const host = hostRef.current;
+        if (!adopted || !host) return;
+        host.appendChild(adopted.video);
+        adopted.video.playsInline = true;
+        videoRef.current = adopted.video;
+    }, [adopted]);
     const containerRef = useRef<HTMLDivElement>(null);
     const progressRef = useRef<HTMLDivElement>(null);
     const resumeAppliedRef = useRef(false);
@@ -467,6 +491,9 @@ export function VideoPlayer({
     const [reconnecting, setReconnecting] = useState(false);
     const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const reconnectAttemptRef = useRef(0);
+    // Espera pelo limite de conexões do provedor (ver scheduleReconnect)
+    const connlimitSinceRef = useRef(0);
+    const [waitingConnection, setWaitingConnection] = useState(false);
     // VOD: posição capturada antes do reload (o pipeline recomeça em 0)
     const reloadResumeRef = useRef<number | null>(null);
     // O reload veio de uma RECONEXÃO com o vídeo tocando? Então a volta tem
@@ -504,6 +531,7 @@ export function VideoPlayer({
         isLive: isLive || contentType === 'live',
         onError: (cause) => setError(CAUSE_MESSAGES[cause || 'fatal']),
         onStreamError: (cause) => scheduleReconnect(cause || 'fatal'),
+        adopt: adopted?.hls,
     });
 
     // Qualidade manual lembrada por conteúdo (item 46). Guardada por ALTURA:
@@ -613,6 +641,29 @@ export function VideoPlayer({
     // Agenda uma reconexão com backoff exponencial; esgotou → erro + failover
     const scheduleReconnect = useCallback((cause: StreamErrorCause | 'stall') => {
         if (reconnectTimerRef.current || streamFailedRef.current) return; // já agendada / terminal
+        // Limite de conexões: a conexão anterior ainda conta no painel por uns
+        // 20s. Trocar de variante abriria OUTRA conexão (recusada igual) — o
+        // certo é insistir na MESMA fonte a cada 3s até a velha cair.
+        // A janela abre UMA vez por incidente (até voltar a tocar): sem isto,
+        // cada recusa depois dela abria outra e o player alternava entre
+        // "Aguardando…" e "Reconectando…" pra sempre, sem nunca desistir.
+        if (cause === 'connlimit') {
+            const agora = Date.now();
+            if (!connlimitSinceRef.current) connlimitSinceRef.current = agora;
+            if (agora - connlimitSinceRef.current < CONNLIMIT_WINDOW_MS) {
+                setWaitingConnection(true);
+                setReconnecting(true);
+                setError(null);
+                reconnectTimerRef.current = setTimeout(() => {
+                    reconnectTimerRef.current = null;
+                    reload();
+                }, 3000);
+                return;
+            }
+            // Passou da janela: segue o fluxo normal (tentativas → erro/failover).
+            // connlimitSinceRef só zera no `playing`.
+            setWaitingConnection(false);
+        }
         // 404/403 é o provedor dizendo que o canal não existe naquela URL —
         // repetir 4 vezes com backoff só gasta 30s antes de tentar a variante
         // seguinte, que é o que de fato pode funcionar.
@@ -620,7 +671,9 @@ export function VideoPlayer({
             streamFailedRef.current = true;
             videoRef.current?.pause();
             setReconnecting(false);
-            setError(CAUSE_MESSAGES.notfound);
+            // 403 depois de uma espera por limite de conexões é o mesmo
+            // incidente — "canal indisponível (404)" mandaria a pessoa pro lado errado
+            setError(connlimitSinceRef.current ? CAUSE_MESSAGES.connlimit : CAUSE_MESSAGES.notfound);
             onStreamFailedRef.current?.();
             return;
         }
@@ -661,6 +714,8 @@ export function VideoPlayer({
         if (!video) return;
         const handlePlaying = () => {
             reconnectAttemptRef.current = 0;
+            connlimitSinceRef.current = 0;
+            setWaitingConnection(false);
             streamFailedRef.current = false;
             setReconnectAttempt(0);
             setReconnecting(false);
@@ -732,6 +787,8 @@ export function VideoPlayer({
                 stalledSince = 0;
                 return;
             }
+            // Ao vivo usa o watchdog de quadros/buffer abaixo
+            if (isLiveContent) return;
             if (video.currentTime === lastTime) {
                 if (stalledSince === 0) stalledSince = Date.now();
                 else if (Date.now() - stalledSince >= STALL_LIMIT_MS && !reconnectTimerRef.current) {
@@ -746,6 +803,58 @@ export function VideoPlayer({
         return () => clearInterval(interval);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [scheduleReconnect, isLiveContent]);
+
+    // Watchdog AO VIVO por quadros e buffer: o feed parou de entregar (ou
+    // nunca subiu) → troca de fonte na hora se houver outra; senão reconecta.
+    // Diferente do de cima, NÃO pula vídeo pausado: stream que nunca subiu
+    // fica pausado pra sempre e era justamente o caso que ninguém pegava.
+    const hasAlternativeRef = useRef(hasAlternativeSource);
+    useEffect(() => { hasAlternativeRef.current = hasAlternativeSource; }, [hasAlternativeSource]);
+    useEffect(() => {
+        if (!isLiveContent) return;
+        const video = videoRef.current;
+        if (!video) return;
+        // Fonte nova: o "desistiu" da anterior não vale pra esta
+        streamFailedRef.current = false;
+        let startedAt = Date.now();
+        let lastFrameAt = 0;
+        let lastBufferGrowthAt = 0;
+        let lastFrames = -1;
+        let lastBufferEnd = -1;
+        const interval = setInterval(() => {
+            const v = videoRef.current;
+            if (!v) return;
+            const now = Date.now();
+            // Pausa do usuário (tem dado e está parado) ou timeshift da pausa:
+            // não é travamento. Reconexão em andamento também não.
+            if (pausedLiveSrcRef.current || reconnectTimerRef.current || streamFailedRef.current
+                || (v.paused && v.readyState >= 3)) {
+                lastFrameAt = lastBufferGrowthAt = now;
+                return;
+            }
+            const quality = typeof v.getVideoPlaybackQuality === 'function' ? v.getVideoPlaybackQuality() : null;
+            const frames = quality ? quality.totalVideoFrames : Math.round(v.currentTime * 25);
+            if (frames > lastFrames && lastFrames >= 0) lastFrameAt = now;
+            lastFrames = frames;
+            const bufferEnd = v.buffered.length > 0 ? v.buffered.end(v.buffered.length - 1) : 0;
+            if (bufferEnd > lastBufferEnd && lastBufferEnd >= 0) lastBufferGrowthAt = now;
+            lastBufferEnd = bufferEnd;
+            if (!liveFeedStalled({ now, startedAt, lastFrameAt, lastBufferGrowthAt })) return;
+            // Recomeça a contagem: depois da reconexão, a mesma fonte ganha
+            // outra janela inteira antes de ser julgada de novo
+            startedAt = now;
+            lastFrameAt = lastBufferGrowthAt = 0;
+            lastFrames = lastBufferEnd = -1;
+            if (hasAlternativeRef.current && onStreamFailedRef.current) {
+                streamFailedRef.current = true;
+                onStreamFailedRef.current();
+            } else {
+                scheduleReconnect('stall');
+            }
+        }, 1000);
+        return () => clearInterval(interval);
+        // effectiveSrc: fonte nova (troca/variante) reinicia a contagem
+    }, [isLiveContent, effectiveSrc, scheduleReconnect]);
 
     // Limpa o timer de reconexão ao desmontar
     useEffect(() => {
@@ -1068,16 +1177,27 @@ export function VideoPlayer({
         return () => clearTimeout(timeout);
     }, [stillWatching]);
 
-    // Cleanup on unmount
+    // Cleanup on unmount — adiado um tique: o StrictMode do dev desmonta e
+    // remonta na hora, e zerar o src aqui mataria o MediaSource do pipeline
+    // adotado da prévia (que não tem como ser recriado sem conexão nova).
+    // Remontou → cancela. Desmontou de verdade → limpa.
+    const teardownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     useEffect(() => {
+        if (teardownTimerRef.current) {
+            clearTimeout(teardownTimerRef.current);
+            teardownTimerRef.current = null;
+        }
         const video = videoRef.current;
         return () => {
-            cleanup();
-            if (video) {
-                video.pause();
-                video.src = '';
-                video.load();
-            }
+            teardownTimerRef.current = setTimeout(() => {
+                teardownTimerRef.current = null;
+                cleanup();
+                if (video) {
+                    video.pause();
+                    video.src = '';
+                    video.load();
+                }
+            }, 0);
         };
     }, [cleanup]);
 
@@ -1189,6 +1309,40 @@ export function VideoPlayer({
         }
          
     }, [isLiveContent, pausedLiveSrc, onRequestPauseLive]);
+
+    const videoClassName = `video-element aspect-${aspectMode} sub-${subSize} ${isRadio ? 'radio-hidden' : ''}`;
+
+    // <video> adotado não passa pelo JSX: espelha nele o que o JSX faria
+    const togglePlayRef = useRef(togglePlay);
+    useEffect(() => { togglePlayRef.current = togglePlay; }, [togglePlay]);
+    useLayoutEffect(() => {
+        if (!adopted) return;
+        const video = adopted.video;
+        video.className = videoClassName;
+        if (isRadio || !poster) video.removeAttribute('poster');
+        else video.poster = poster;
+    }, [adopted, videoClassName, isRadio, poster]);
+    useEffect(() => {
+        if (!adopted) return;
+        const onClick = () => togglePlayRef.current();
+        adopted.video.addEventListener('click', onClick);
+        return () => adopted.video.removeEventListener('click', onClick);
+    }, [adopted]);
+    useEffect(() => {
+        if (!adopted) return;
+        const video = adopted.video;
+        video.querySelectorAll('track').forEach(t => t.remove());
+        if (!activeTrack) return;
+        const track = document.createElement('track');
+        track.kind = 'subtitles';
+        track.src = activeTrack.blobUrl;
+        track.srclang = activeTrack.lang || 'und';
+        track.label = activeTrack.label;
+        track.default = true;
+        video.appendChild(track);
+        // Faixa inserida depois do load não liga sozinha como o `default` do JSX
+        track.track.mode = 'showing';
+    }, [adopted, activeTrack]);
 
     const seek = useCallback((time: number) => {
         const video = videoRef.current;
@@ -1788,9 +1942,13 @@ export function VideoPlayer({
             <div className="video-wrapper">
                 {/* Proporção via classes (o CSS base usa !important; style
                     inline sem !important perderia — achado da revisão) */}
+                {adopted ? (
+                    // O <video> adotado entra aqui (ver useLayoutEffect do adopted)
+                    <div ref={hostRef} className="video-element-host" />
+                ) : (
                 <video
                     ref={videoRef}
-                    className={`video-element aspect-${aspectMode} sub-${subSize} ${isRadio ? 'radio-hidden' : ''}`}
+                    className={videoClassName}
                     poster={isRadio ? undefined : poster}
                     onClick={togglePlay}
                     playsInline
@@ -1806,6 +1964,7 @@ export function VideoPlayer({
                         />
                     )}
                 </video>
+                )}
                 {/* Modo rádio (item 13): sem imagem no stream — logo + relógio */}
                 {isRadio && (
                     <div className="radio-stage">
@@ -1978,7 +2137,9 @@ export function VideoPlayer({
             {/* Reconectando (R1 item 44) */}
             {reconnecting && !error && (
                 <div className="reconnect-overlay">
-                    <FaSync /> Reconectando… tentativa {reconnectAttempt}/{maxReconnectAttempts}
+                    {waitingConnection
+                        ? <><FaSync /> Aguardando o provedor liberar a conexão…</>
+                        : <><FaSync /> Reconectando… tentativa {reconnectAttempt}/{maxReconnectAttempts}</>}
                 </div>
             )}
 

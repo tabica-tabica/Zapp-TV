@@ -5,7 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import {
     classifyStreamError, isTerminalCause, reconnectDelayMs, chooseCappedLevel,
-    MAX_RECONNECT_ATTEMPTS,
+    MAX_RECONNECT_ATTEMPTS, liveFeedStalled, LIVE_STALL_MS, LIVE_START_TIMEOUT_MS,
 } from './playerDecisions';
 
 describe('classifyStreamError', () => {
@@ -103,5 +103,48 @@ describe('chooseCappedLevel', () => {
 
     it('lista vazia não trava nada', () => {
         expect(chooseCappedLevel([], 720)).toBeNull();
+    });
+});
+
+describe('classifyStreamError: limite de conexões', () => {
+    it('reconhece a mensagem do painel no corpo', () => {
+        const body = '{"type":2,"message":"Maximum number of connections reached"}';
+        expect(classifyStreamError('network', 500, { body })).toBe('connlimit');
+        expect(isTerminalCause('connlimit')).toBe(false);
+    });
+
+    it.each([403, 500, 503])('%d logo depois de outro stream é a conexão velha ainda contando', (status) => {
+        expect(classifyStreamError('network', status, { recentStreamMs: 2000 })).toBe('connlimit');
+    });
+
+    it('403 sem stream recente continua sendo canal inexistente', () => {
+        expect(classifyStreamError('network', 403, { recentStreamMs: 120000 })).toBe('notfound');
+        expect(classifyStreamError('network', 403)).toBe('notfound');
+    });
+
+    it('404 nunca é limite de conexão', () => {
+        expect(classifyStreamError('network', 404, { recentStreamMs: 1000 })).toBe('notfound');
+    });
+});
+
+describe('liveFeedStalled', () => {
+    const base = { now: 100000, startedAt: 100000, lastFrameAt: 0, lastBufferGrowthAt: 0 };
+
+    it('stream que nunca subiu: espera o tempo de partida', () => {
+        expect(liveFeedStalled({ ...base, now: base.startedAt + LIVE_START_TIMEOUT_MS - 1 })).toBe(false);
+        expect(liveFeedStalled({ ...base, now: base.startedAt + LIVE_START_TIMEOUT_MS })).toBe(true);
+    });
+
+    it('tocando e entregando: não troca', () => {
+        expect(liveFeedStalled({ ...base, now: 200000, lastFrameAt: 199000, lastBufferGrowthAt: 195000 })).toBe(false);
+    });
+
+    it('buffer ainda crescendo segura a troca mesmo com o quadro parado', () => {
+        expect(liveFeedStalled({ ...base, now: 200000, lastFrameAt: 180000, lastBufferGrowthAt: 199000 })).toBe(false);
+    });
+
+    it('sem quadro e sem buffer por LIVE_STALL_MS: troca', () => {
+        const last = 200000 - LIVE_STALL_MS;
+        expect(liveFeedStalled({ ...base, now: 200000, lastFrameAt: last, lastBufferGrowthAt: last - 500 })).toBe(true);
     });
 });

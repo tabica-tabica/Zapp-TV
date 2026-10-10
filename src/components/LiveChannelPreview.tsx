@@ -4,8 +4,20 @@
 // estático de sempre (logo). Nunca é o player de verdade: o botão "Assistir"
 // continua abrindo VideoPlayer.tsx normalmente.
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
+import type Hls from 'hls.js';
 import { useHls } from '../hooks/useHls';
+
+/** Pipeline vivo da prévia, pronto pro player assumir (ver useHls `adopt`). */
+export interface LivePipeline {
+    video: HTMLVideoElement;
+    hls: Hls;
+}
+
+export interface LiveChannelPreviewHandle {
+    /** Entrega o <video> + hls.js tocando; null se a prévia ainda não está tocando. */
+    handOff: () => LivePipeline | null;
+}
 
 interface LiveChannelPreviewProps {
     src: string;
@@ -16,13 +28,14 @@ interface LiveChannelPreviewProps {
     onResolvedUrl?: (url: string) => void;
     /** O navegador barrou o autoplay com som e a prévia passou a tocar muda. */
     onAutoMuted?: () => void;
+    ref?: Ref<LiveChannelPreviewHandle>;
 }
 
-export function LiveChannelPreview({ src, onError, muted = true, onResolvedUrl, onAutoMuted }: LiveChannelPreviewProps) {
+export function LiveChannelPreview({ src, onError, muted = true, onResolvedUrl, onAutoMuted, ref }: LiveChannelPreviewProps) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const [failed, setFailed] = useState(false);
 
-    useHls({
+    const { handOff } = useHls({
         src,
         videoRef,
         autoPlay: true,
@@ -33,6 +46,17 @@ export function LiveChannelPreview({ src, onError, muted = true, onResolvedUrl, 
             onError?.();
         },
     });
+
+    useImperativeHandle(ref, () => ({
+        handOff: () => {
+            const video = videoRef.current;
+            // Só vale entregar o que já está tocando: um pipeline ainda
+            // carregando não poupa nada e pode estar preso num erro
+            if (!video || video.readyState < 3 || failed) return null;
+            const hls = handOff();
+            return hls ? { video, hls } : null;
+        },
+    }), [handOff, failed]);
 
     // `muted` do React só vale na montagem; o botão de mudo muda depois
     useEffect(() => {

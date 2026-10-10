@@ -20,8 +20,15 @@ Maintained by **Tabica**. Originally created by Rakjsu.
 ### Fixed
 
 - Live TV: channels that played in the preview failed when opened on 1-connection accounts
-  ("Maximum number of connections reached"). The player now reuses the preview's session URL
-  (`?token=`) instead of opening a second connection; if that fails it retries the normal URL.
+  ("Maximum number of connections reached"). The player now takes over the preview's running
+  `<video>` + hls.js pipeline (no new request, continues from the buffer); the session URL
+  (`?token=`) remains as fallback.
+- Live player: a frame/buffer watchdog switches source (session → normal URL → next variant) as
+  soon as the feed stops delivering, including streams that never start (the old watchdog skipped
+  paused video).
+- Connection-limit refusals (`500 Maximum number of connections`, or `403`/`500` right after
+  another stream) are retried on the same source for up to 30 s with "Aguardando o provedor
+  liberar a conexão…", instead of being treated as "channel not found" and burning variants.
 - Home: with something in "Continuar Assistindo", its progress bar was drawn as a line across the
   whole screen — the poster box wasn't positioned, so the bar anchored to the page.
 

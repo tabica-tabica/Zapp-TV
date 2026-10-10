@@ -45,7 +45,7 @@ import { favoriteOrder, isRadioChannel, isSportsCategory, type SportsEvent } fro
 import { AnimatedSearchBar, type AnimatedSearchBarHandle } from '../components/AnimatedSearchBar';
 import { VideoPlayer, type PlayerChannel } from '../components/VideoPlayer';
 import { readRaw, writeRaw } from '../services/safeStorage';
-import { LiveChannelPreview } from '../components/LiveChannelPreview';
+import { LiveChannelPreview, type LiveChannelPreviewHandle, type LivePipeline } from '../components/LiveChannelPreview';
 import { ChannelCard } from './ChannelCard';
 import './LiveTV.css';
 import { readCatalog, writeCatalog, dropCatalog, trimLive, trimCategory, type CachedLiveStream } from '../services/catalogCache';
@@ -158,6 +158,16 @@ export function LiveTV() {
     // conta de 1 conexão recusa ("Maximum number of connections reached")
     // porque a da prévia ainda conta por uns 20s depois de fechada.
     const [previewSession, setPreviewSession] = useState<{ id: number; url: string } | null>(null);
+    // Handoff do pipeline: a prévia entrega o <video> + hls.js TOCANDO pro
+    // player (ver VideoPlayer `adopt`). previewStreamIdRef diz de que canal é a
+    // prévia montada agora; handoffRef carrega o pipeline até o player montar.
+    const previewRef = useRef<LiveChannelPreviewHandle>(null);
+    const previewStreamIdRef = useRef<number | null>(null);
+    const handoffRef = useRef<LivePipeline | null>(null);
+    useEffect(() => {
+        previewStreamIdRef.current = selectedChannel && !playingChannel && previewSrc && !previewFailed
+            ? selectedChannel.stream_id : null;
+    }, [selectedChannel, playingChannel, previewSrc, previewFailed]);
 
     // Toast OSD da página (favorito/oculto/failover — R1 item 53)
     const [toast, setToast] = useState<ReactNode | null>(null);
@@ -592,6 +602,10 @@ export function LiveTV() {
 
     // Reproduzir canal (registra último canal + histórico de zapping)
     const playChannel = useCallback((stream: LiveStream) => {
+        // Mesmo canal da prévia tocando → o player assume o pipeline dela
+        handoffRef.current = previewStreamIdRef.current === stream.stream_id
+            ? previewRef.current?.handOff() ?? null
+            : null;
         setSelectedChannel(stream);
         setPlayingChannel(stream);
         storage.setLastChannel(stream.stream_id);
@@ -632,6 +646,9 @@ export function LiveTV() {
     // Ainda há variante depois da atual → failover rápido (ver handleStreamFailed)
     const playingVariantIndex = playingChannel ? playingVariants.findIndex(v => v.stream_id === playingChannel.stream_id) : -1;
     const hasNextVariant = playingVariantIndex >= 0 && playingVariantIndex < playingVariants.length - 1;
+    // Fontes que sobram pro watchdog trocar: sessão da prévia → URL normal → variante
+    const hasAlternativeSource = hasNextVariant
+        || (!!playingChannel && previewSession?.id === playingChannel.stream_id);
 
     const playerQualityVariants = useMemo(
         () => playingVariants.length > 1
@@ -1089,6 +1106,7 @@ export function LiveTV() {
                                 resolvido dê na mesma URL por acidente. */}
                             {previewSrc && !previewFailed ? (
                                 <LiveChannelPreview
+                                    ref={previewRef}
                                     key={selectedChannel.stream_id}
                                     src={previewSrc}
                                     muted={previewMuted}
@@ -1369,12 +1387,17 @@ export function LiveTV() {
                     onSwitchChannel={handleSwitchChannel}
                     contentKey={`live-${playingChannel.stream_id}`}
                     onStreamFailed={handleStreamFailed}
-                    maxReconnectAttempts={hasNextVariant ? FAILOVER_RECONNECT_ATTEMPTS : undefined}
+                    maxReconnectAttempts={hasAlternativeSource ? FAILOVER_RECONNECT_ATTEMPTS : undefined}
+                    hasAlternativeSource={hasAlternativeSource}
+                    adopt={handoffRef.current}
                     onRequestPauseLive={handleRequestPauseLive}
                     isRadio={isRadioChannel(playingChannel, categoryNameById.get(playingChannel.category_id))}
                     qualityVariants={playerQualityVariants}
                     onSelectQualityVariant={handleSelectQualityVariant}
-                    onClose={() => setPlayingChannel(null)}
+                    onClose={() => {
+                        handoffRef.current = null;
+                        setPlayingChannel(null);
+                    }}
                 />
             )}
         </div>

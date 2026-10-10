@@ -1,6 +1,6 @@
 // useHls hook - Manages HLS.js for streaming playback with quality selection
 import { useEffect, useRef, useCallback, useState, type MutableRefObject, type RefObject } from 'react';
-import Hls from 'hls.js';
+import Hls, { type HlsListeners } from 'hls.js';
 import { qualityCap } from '../services/playerPrefs';
 import { playbackPrefs } from '../services/playbackPrefs';
 
@@ -37,6 +37,33 @@ interface UseHlsOptions {
      * conexão em vez de abrir outra (conta de 1 conexão recusa a segunda).
      */
     onResolvedUrl?: (url: string) => void;
+    /**
+     * Pipeline já tocando (o da prévia da TV ao Vivo) pra assumir em vez de
+     * criar um novo: o hls.js segue preso ao MESMO <video> e à mesma sessão
+     * do provedor — nenhuma requisição nova, nenhuma conexão a mais.
+     */
+    adopt?: Hls | null;
+}
+
+/** Última vez que QUALQUER pipeline deste app recebeu fragmento (ver connlimit). */
+let lastStreamActivityAt = 0;
+
+// Listeners que ESTE hook pôs em cada instância. O hls.js usa o mesmo emissor
+// pros controladores internos (recarga da playlist, carga de fragmento):
+// removeAllListeners() desligava o pipeline inteiro na hora do handoff — o
+// vídeo seguia só do buffer e congelava ~40s depois.
+const ownListeners = new WeakMap<Hls, Array<() => void>>();
+
+function listen<E extends keyof HlsListeners>(hls: Hls, event: E, fn: HlsListeners[E]): void {
+    hls.on(event, fn);
+    const list = ownListeners.get(hls) ?? [];
+    list.push(() => hls.off(event, fn));
+    ownListeners.set(hls, list);
+}
+
+function releaseOwnListeners(hls: Hls): void {
+    ownListeners.get(hls)?.forEach(off => off());
+    ownListeners.delete(hls);
 }
 
 interface UseHlsReturn {
@@ -44,6 +71,8 @@ interface UseHlsReturn {
     cleanup: () => void;
     /** Re-inicializa o pipeline do zero (mesmo src) — usado pelo retry */
     reload: () => void;
+    /** Entrega o pipeline vivo pra outro dono sem destruí-lo (prévia → player) */
+    handOff: () => Hls | null;
     qualityLevels: QualityLevel[];
     currentQualityIndex: number;
     setQuality: (index: number) => void;
@@ -67,6 +96,7 @@ export function useHls({
     autoPlay = false,
     isLive = false,
     onResolvedUrl,
+    adopt = null,
 }: UseHlsOptions): UseHlsReturn {
     const hlsRef = useRef<Hls | null>(null);
     const srcRef = useRef<string>('');
@@ -80,6 +110,15 @@ export function useHls({
     const preferredTracksSrcRef = useRef<string>('');
     const preferredAudioRef = useRef<number | null>(null);
     const preferredSubtitleRef = useRef<number | null>(null);
+
+    // Adoção: consome o pipeline recebido UMA vez. O StrictMode do dev roda
+    // efeito → limpeza → efeito; a limpeza estaciona o adotado por um tique
+    // (adoptParkedRef) pra o segundo efeito pegar de volta em vez de destruir
+    // e abrir uma conexão nova — exatamente o que a adoção existe pra evitar.
+    const adoptConsumedRef = useRef(false);
+    const adoptedRef = useRef<Hls | null>(null);
+    const adoptParkedRef = useRef<{ hls: Hls; src: string; timer: ReturnType<typeof setTimeout> } | null>(null);
+    const reloadingRef = useRef(false);
 
     // Re-init sob demanda (retry/watchdog): bump re-roda o effect principal
     const [reloadTick, setReloadTick] = useState(0);
@@ -124,6 +163,7 @@ export function useHls({
     }, [destroyHlsInstance]);
 
     const reload = useCallback(() => {
+        reloadingRef.current = true; // reload de verdade: o adotado não volta
         srcRef.current = ''; // fura o guard de mesmo-src
         setReloadTick(t => t + 1);
     }, []);
@@ -187,6 +227,22 @@ export function useHls({
             return;
         }
 
+        // Pipeline adotado: o estacionado pelo StrictMode (mesmo src) ou o
+        // recebido por prop, só na primeira vez
+        let adopted: Hls | null = null;
+        const parked = adoptParkedRef.current;
+        if (parked) {
+            clearTimeout(parked.timer);
+            adoptParkedRef.current = null;
+            if (parked.src === src && !reloadingRef.current) adopted = parked.hls;
+            else parked.hls.destroy();
+        } else if (adopt && !adoptConsumedRef.current) {
+            adopted = adopt;
+        }
+        if (adopt) adoptConsumedRef.current = true;
+        reloadingRef.current = false;
+        adoptedRef.current = adopted;
+
         // Cleanup previous instance
         destroyHlsInstance();
         // Conteúdo diferente = escolhas anteriores não valem mais. reload()
@@ -198,17 +254,19 @@ export function useHls({
         }
         srcRef.current = src;
 
-        // Reset video state
-        video.pause();
-        video.src = '';
-        video.removeAttribute('src');
-        video.load();
+        // Reset video state (o adotado já está tocando NESTE <video>)
+        if (!adopted) {
+            video.pause();
+            video.src = '';
+            video.removeAttribute('src');
+            video.load();
+        }
 
         // Check if source is HLS
-        const isHls = src.includes('.m3u8');
+        const isHls = adopted !== null || src.includes('.m3u8');
 
         if (isHls) {
-            if (Hls.isSupported()) {
+            if (adopted || Hls.isSupported()) {
                 // Live usa buffers curtos: 90s de back-buffer em RAM derruba
                 // TVs Tizen antigas (OOM). VOD mantém buffer maior pra seek.
                 // O perfil de buffer é escolhido nas Configurações (item 66);
@@ -216,7 +274,7 @@ export function useHls({
                 const buffers = playbackPrefs.buffers();
                 const seconds = isLive ? buffers.live : buffers.vod;
                 const maxSeconds = isLive ? buffers.maxLive : buffers.maxVod;
-                const hls = new Hls({
+                const hls = adopted ?? new Hls({
                     enableWorker: true,
                     lowLatencyMode: false,
                     backBufferLength: isLive ? seconds : seconds + 30,
@@ -231,15 +289,16 @@ export function useHls({
                     progressive: __BUILD_TARGET__ === 'tauri',
                 });
 
-                // Dev no browser: ver /stream-redirect no vite.config.ts (CORS do 1º redirect)
-                hls.loadSource(import.meta.env.DEV ? `/stream-redirect?url=${encodeURIComponent(src)}` : src);
-                hls.attachMedia(video);
-
-                // Legenda só aparece quando o usuário escolhe (item 40)
-                hls.subtitleDisplay = false;
+                if (!adopted) {
+                    // Dev no browser: ver /stream-redirect no vite.config.ts (CORS do 1º redirect)
+                    hls.loadSource(import.meta.env.DEV ? `/stream-redirect?url=${encodeURIComponent(src)}` : src);
+                    hls.attachMedia(video);
+                    // Legenda só aparece quando o usuário escolhe (item 40)
+                    hls.subtitleDisplay = false;
+                }
 
                 // Faixas de áudio embutidas (item 39)
-                hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, (_event, data) => {
+                listen(hls, Hls.Events.AUDIO_TRACKS_UPDATED, (_event, data) => {
                     setAudioTracks(data.audioTracks.map((track, index) => ({
                         id: index,
                         label: track.name || track.lang || `Faixa ${index + 1}`,
@@ -254,12 +313,12 @@ export function useHls({
                         setCurrentAudioTrack(hls.audioTrack);
                     }
                 });
-                hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, (_event, data) => {
+                listen(hls, Hls.Events.AUDIO_TRACK_SWITCHED, (_event, data) => {
                     setCurrentAudioTrack(data.id);
                 });
 
                 // Legendas embutidas (item 40)
-                hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, (_event, data) => {
+                listen(hls, Hls.Events.SUBTITLE_TRACKS_UPDATED, (_event, data) => {
                     setSubtitleTracks(data.subtitleTracks.map((track, index) => ({
                         id: index,
                         label: track.name || track.lang || `Legenda ${index + 1}`,
@@ -272,19 +331,19 @@ export function useHls({
                         setCurrentSubtitleTrack(wanted);
                     }
                 });
-                hls.on(Hls.Events.SUBTITLE_TRACK_SWITCH, (_event, data) => {
+                listen(hls, Hls.Events.SUBTITLE_TRACK_SWITCH, (_event, data) => {
                     // O hls.js seleciona sozinho a faixa DEFAULT=YES mesmo com
                     // subtitleDisplay=false. Reportar esse id deixaria o menu
                     // dizendo "Português" com a tela sem legenda nenhuma.
                     setCurrentSubtitleTrack(hls.subtitleDisplay ? data.id : -1);
                 });
 
-                hls.on(Hls.Events.MANIFEST_LOADED, (_event, data) => {
+                listen(hls, Hls.Events.MANIFEST_LOADED, (_event, data) => {
                     if (data.url) onResolvedUrlRef.current?.(data.url);
                 });
 
                 // Capture quality levels when manifest is parsed
-                hls.on(Hls.Events.MANIFEST_PARSED, (_event, data) => {
+                listen(hls, Hls.Events.MANIFEST_PARSED, (_event, data) => {
                     const levels: QualityLevel[] = data.levels.map((level, index) => ({
                         index,
                         height: level.height,
@@ -313,25 +372,38 @@ export function useHls({
                 });
 
                 // Track quality changes
-                hls.on(Hls.Events.LEVEL_SWITCHED, (_event, data) => {
+                listen(hls, Hls.Events.LEVEL_SWITCHED, (_event, data) => {
                     setCurrentQualityIndex(data.level);
                 });
 
                 // Falhas fatais de rede consecutivas: sinal de recuperação
                 // (fragmento carregado) zera o contador
                 let networkFatalCount = 0;
-                hls.on(Hls.Events.FRAG_LOADED, () => {
+                listen(hls, Hls.Events.FRAG_LOADED, () => {
                     networkFatalCount = 0;
+                    lastStreamActivityAt = Date.now();
                 });
 
-                hls.on(Hls.Events.ERROR, (_event, data) => {
+                listen(hls, Hls.Events.ERROR, (_event, data) => {
                     if (data.fatal) {
                         // Causa granular pro player mostrar mensagem acionável
                         const status = (data.response as { code?: number } | undefined)?.code;
+                        // Corpo legível só quando a resposta é texto (manifesto via XHR)
+                        const details = data.networkDetails as { responseText?: unknown } | undefined;
+                        let body: string | undefined;
+                        try {
+                            body = typeof details?.responseText === 'string' ? details.responseText : undefined;
+                        } catch {
+                            body = undefined; // responseText lança em XHR binário
+                        }
                         const cause: StreamErrorCause = classifyStreamError(
                             data.type === Hls.ErrorTypes.NETWORK_ERROR ? 'network'
                                 : data.type === Hls.ErrorTypes.MEDIA_ERROR ? 'media' : 'other',
-                            status
+                            status,
+                            {
+                                recentStreamMs: lastStreamActivityAt ? Date.now() - lastStreamActivityAt : undefined,
+                                body,
+                            }
                         );
                         switch (data.type) {
                             case Hls.ErrorTypes.NETWORK_ERROR:
@@ -373,6 +445,31 @@ export function useHls({
                 });
 
                 hlsRef.current = hls;
+
+                if (adopted) {
+                    // MANIFEST_PARSED / *_TRACKS_UPDATED já passaram na prévia
+                    const levels: QualityLevel[] = hls.levels.map((level, index) => ({
+                        index,
+                        height: level.height,
+                        width: level.width,
+                        bitrate: level.bitrate,
+                        label: getQualityLabel(level.height, level.bitrate),
+                    }));
+                    levels.sort((a, b) => b.height - a.height);
+                    setQualityLevels(levels);
+                    setAudioTracks(hls.audioTracks.map((track, index) => ({
+                        id: index,
+                        label: track.name || track.lang || `Faixa ${index + 1}`,
+                        lang: track.lang,
+                    })));
+                    setCurrentAudioTrack(hls.audioTrack);
+                    setSubtitleTracks(hls.subtitleTracks.map((track, index) => ({
+                        id: index,
+                        label: track.name || track.lang || `Legenda ${index + 1}`,
+                        lang: track.lang,
+                    })));
+                    if (autoPlay && video.paused) video.play().catch(() => { });
+                }
             } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
                 // Safari native HLS support (no quality selection)
                 video.src = src;
@@ -393,16 +490,50 @@ export function useHls({
         }
 
         return () => {
+            const atual = hlsRef.current;
+            if (atual && atual === adoptedRef.current && !reloadingRef.current) {
+                // Pode ser só o StrictMode: estaciona por um tique em vez de matar
+                releaseOwnListeners(atual);
+                hlsRef.current = null;
+                adoptParkedRef.current = {
+                    hls: atual,
+                    src,
+                    timer: setTimeout(() => {
+                        adoptParkedRef.current = null;
+                        atual.destroy();
+                    }, 0),
+                };
+            }
             cleanup();
             srcRef.current = '';
         };
      
+        // `adopt` de fora das deps de propósito: ele só vale na primeira montagem
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [src, autoPlay, isLive, cleanup, destroyHlsInstance, videoRef, reloadTick]);
+
+    /**
+     * Entrega o pipeline vivo pra outro dono (prévia → player): sai do hook
+     * sem ser destruído. Depois disto a limpeza deste hook não toca nele.
+     */
+    const handOff = useCallback((): Hls | null => {
+        const hls = hlsRef.current;
+        if (!hls) return null;
+        releaseOwnListeners(hls);
+        hlsRef.current = null;
+        adoptedRef.current = null;
+        if (retryTimeoutRef.current) {
+            clearTimeout(retryTimeoutRef.current);
+            retryTimeoutRef.current = null;
+        }
+        return hls;
+    }, []);
 
     return {
         hlsRef,
         cleanup,
         reload,
+        handOff,
         qualityLevels,
         currentQualityIndex,
         setQuality,

@@ -5,7 +5,23 @@
 // uma TV, um provedor e uma queda de rede na hora certa. Cada uma já causou um
 // bug de verdade — e cada uma agora tem teste.
 
-export type StreamErrorCause = 'notfound' | 'network' | 'media' | 'fatal';
+export type StreamErrorCause = 'notfound' | 'network' | 'media' | 'fatal' | 'connlimit';
+
+/**
+ * Depois que um stream nosso parou, o painel Xtream continua contando a
+ * conexão dele por ~20s. Nessa janela, abrir outra recebe 500 ("Maximum number
+ * of connections reached") ou um 403 seco — e isso NÃO quer dizer que o canal
+ * não existe: é só esperar a conexão velha cair.
+ */
+export const CONNLIMIT_WINDOW_MS = 30000;
+
+/** Contexto opcional pra separar "limite de conexões" de "canal não existe". */
+export interface StreamErrorContext {
+    /** ms desde a última atividade de stream deste app (fragmento recebido) */
+    recentStreamMs?: number;
+    /** corpo da resposta, quando dá pra ler (manifesto vem como texto) */
+    body?: string;
+}
 
 /** Quantas reconexões antes de desistir e passar pro failover de variante. */
 export const MAX_RECONNECT_ATTEMPTS = 4;
@@ -19,9 +35,15 @@ export const MAX_RECONNECT_ATTEMPTS = 4;
  */
 export function classifyStreamError(
     tipo: 'network' | 'media' | 'other',
-    status?: number
+    status?: number,
+    contexto: StreamErrorContext = {}
 ): StreamErrorCause {
-    if (tipo === 'network') return status === 404 || status === 403 ? 'notfound' : 'network';
+    if (tipo === 'network') {
+        if (contexto.body && /maximum number of connections/i.test(contexto.body)) return 'connlimit';
+        const recente = contexto.recentStreamMs != null && contexto.recentStreamMs < CONNLIMIT_WINDOW_MS;
+        if (recente && (status === 403 || status === 500 || status === 503)) return 'connlimit';
+        return status === 404 || status === 403 ? 'notfound' : 'network';
+    }
     if (tipo === 'media') return 'media';
     return 'fatal';
 }
@@ -73,4 +95,30 @@ export function chooseCappedLevel(
         // nada cabe: a MENOR das declaradas é o mais perto do que se pediu
         : declarados.reduce((melhor, nivel) => (nivel.height < melhor.height ? nivel : melhor));
     return escolhido.index;
+}
+
+/** Ao vivo: tempo sem quadro novo E sem buffer crescendo até trocar de fonte. */
+export const LIVE_STALL_MS = 8000;
+/** Ao vivo: tempo pro primeiro quadro antes de considerar que a fonte não sobe. */
+export const LIVE_START_TIMEOUT_MS = 10000;
+
+export interface LiveFeedSample {
+    now: number;
+    /** quando esta fonte começou a ser carregada */
+    startedAt: number;
+    /** último instante em que o contador de quadros (ou o relógio) andou; 0 = nunca */
+    lastFrameAt: number;
+    /** último instante em que o fim do buffer avançou; 0 = nunca */
+    lastBufferGrowthAt: number;
+}
+
+/**
+ * A fonte ao vivo parou de entregar? Olha QUADROS e BUFFER, não o estado de
+ * play: um stream que nunca subiu fica "pausado" pra sempre e o watchdog antigo
+ * (que pulava vídeo pausado) nunca o pegava.
+ */
+export function liveFeedStalled(s: LiveFeedSample): boolean {
+    const ultimaVida = Math.max(s.lastFrameAt, s.lastBufferGrowthAt);
+    if (ultimaVida === 0) return s.now - s.startedAt >= LIVE_START_TIMEOUT_MS;
+    return s.now - ultimaVida >= LIVE_STALL_MS;
 }
