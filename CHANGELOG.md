@@ -22,6 +22,14 @@ Maintained by **Tabica**. Originally created by Rakjsu.
 - Adult movies played from the Movies grid or detail screen (secret list on) use the secret player
   too: moments, snapshots, start at the first moment, no progress/usage. The first 📌 adds the
   movie to the secret list.
+- Adult player: 📌 / 🟢 is a toggle — on a saved moment (±3 s) it removes it (button turns yellow,
+  "Remover este momento"). ⏮/⏭ move between movies: the secret list's order when opened from 🔒,
+  the adult movies of the current grid when opened from Movies.
+
+### Changed
+
+- Pinning (or "Lista secreta") MOVES the movie to the secret list: it leaves Minha Lista,
+  favorites and named lists.
 
 ### Changed
 

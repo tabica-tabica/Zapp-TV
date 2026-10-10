@@ -11,6 +11,22 @@
 
 import { scopedKey } from './profileScope';
 import { readJson, writeJson } from './safeStorage';
+import { storage } from './storage';
+import { listsService } from './listsService';
+
+/**
+ * "Mover" pra lista secreta: o filme sai da Minha Lista, dos favoritos e das
+ * listas nomeadas — onde quem abre o app veria o título.
+ */
+function tirarDasListasVisiveis(id: string, title: string): void {
+    storage.removeWatchLater(id, 'movie');
+    storage.removeFavorite(id, 'movie');
+    for (const lista of listsService.list()) {
+        if (listsService.has(lista.id, id, 'movie')) {
+            listsService.toggleItem(lista.id, { id, type: 'movie', title });
+        }
+    }
+}
 
 const KEY = () => scopedKey('neostream_secret_list');
 
@@ -130,18 +146,27 @@ export const secretList = {
         return ler().some(item => item.id === id);
     },
 
-    /** Põe ou tira; devolve true se o filme ficou na lista. */
+    /** Põe (movendo, ver `mover`) ou tira; devolve true se o filme ficou na lista. */
     toggle(input: ItemSecretoInput): boolean {
-        const itens = ler();
-        const i = itens.findIndex(item => item.id === input.id);
-        if (i >= 0) {
-            itens.splice(i, 1);
-            gravar(itens);
+        if (this.has(input.id)) {
+            this.remove(input.id);
             return false;
         }
-        if (itens.length >= MAX_ITENS_SECRETOS) return false;
-        itens.unshift({ ...input, addedAt: Date.now(), moments: [] });
-        gravar(itens);
+        return this.mover(input);
+    },
+
+    /**
+     * Garante o filme na lista secreta e o TIRA das listas visíveis (Minha
+     * Lista, favoritos, listas nomeadas). Devolve true se ele está na lista.
+     */
+    mover(input: ItemSecretoInput): boolean {
+        const itens = ler();
+        if (!itens.some(item => item.id === input.id)) {
+            if (itens.length >= MAX_ITENS_SECRETOS) return false;
+            itens.unshift({ ...input, addedAt: Date.now(), moments: [] });
+            gravar(itens);
+        }
+        tirarDasListasVisiveis(input.id, input.title);
         return true;
     },
 

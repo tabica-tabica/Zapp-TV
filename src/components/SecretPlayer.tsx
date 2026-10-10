@@ -75,12 +75,16 @@ export function SecretPlayer({ itens, indiceInicial, momentoInicial, onClose }: 
 
     const marcar = useCallback((t: number, thumb?: string) => {
         if (!item) return;
-        // Aberto pela grade de Filmes com um filme que ainda não está na lista:
-        // o primeiro 📌 já o guarda — momento só existe pra filme da lista
-        if (!secretList.has(item.id)) {
-            secretList.toggle({ id: item.id, title: item.title, poster: item.poster, container: item.container });
-        }
+        // Marcou = o filme MUDA pra lista secreta (entra nela e sai da Minha
+        // Lista/listas visíveis). Momento só existe pra filme da lista.
+        secretList.mover({ id: item.id, title: item.title, poster: item.poster, container: item.container });
         const nova = secretList.addMoment(item.id, t, thumb);
+        setMomentos(atual => ({ ...atual, [item.id]: nova }));
+    }, [item]);
+
+    const desmarcar = useCallback((t: number) => {
+        if (!item) return;
+        const nova = secretList.removeMoment(item.id, t);
         setMomentos(atual => ({ ...atual, [item.id]: nova }));
     }, [item]);
 
@@ -99,7 +103,7 @@ export function SecretPlayer({ itens, indiceInicial, momentoInicial, onClose }: 
             autoPlay
             contentType="movie"
             startAt={inicio}
-            moments={{ list: lista, onAdd: marcar }}
+            moments={{ list: lista, onAdd: marcar, onRemove: desmarcar }}
             canGoPrevious={indice > 0}
             canGoNext={indice < itens.length - 1}
             onPreviousEpisode={() => irPara(indice - 1)}

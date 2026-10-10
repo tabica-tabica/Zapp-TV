@@ -857,22 +857,29 @@ export function Movies() {
                 miniaturas, abre no 1º momento, sem progresso/uso) — tocado da
                 grade ou da ficha, não só da 🔒 */}
             {showPlayer && playingMovie && listaSecretaAtiva && ehFilmeAdulto(playingMovie) && (() => {
+                // ⏮/⏭ andam pelos filmes ADULTOS da grade atual, na ordem dela;
+                // cada um traz os momentos que já tiver na lista secreta
                 const id = String(playingMovie.stream_id);
-                const salvos = secretList.list();
-                const indice = salvos.findIndex(item => item.id === id);
-                const itens = indice >= 0 ? salvos : [{
-                    id,
-                    title: playingMovie.name,
-                    poster: playingMovie.stream_icon || playingMovie.cover,
-                    container: playingMovie.container_extension,
+                const salvos = new Map(secretList.list().map(item => [item.id, item]));
+                const comoItem = (m: VODStream): ItemSecreto => salvos.get(String(m.stream_id)) ?? {
+                    id: String(m.stream_id),
+                    title: m.name,
+                    poster: m.stream_icon || m.cover,
+                    container: m.container_extension,
                     addedAt: 0,
                     moments: [],
-                }];
+                };
+                let itens = filteredStreams.filter(ehFilmeAdulto).map(comoItem);
+                let indice = itens.findIndex(item => item.id === id);
+                if (indice < 0) {
+                    itens = [comoItem(playingMovie), ...itens];
+                    indice = 0;
+                }
                 return (
                     <SecretPlayer
                         key={id}
                         itens={itens}
-                        indiceInicial={Math.max(0, indice)}
+                        indiceInicial={indice}
                         onClose={() => {
                             setShowPlayer(false);
                             setPlayingMovie(null);

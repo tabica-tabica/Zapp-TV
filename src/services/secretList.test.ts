@@ -5,6 +5,8 @@ import {
     limitarMiniaturas, type ItemSecreto,
 } from './secretList';
 import { KEYS_LISTAS, KEYS_PREFERENCIAS } from './storageKeys';
+import { storage } from './storage';
+import { listsService } from './listsService';
 
 beforeEach(() => {
     installFakeStorage();
@@ -115,5 +117,29 @@ describe('miniaturas', () => {
             { id: '1', title: 'A', moments: [5], thumbs: { '5': 'javascript:alert(1)' } },
         ]));
         expect(secretList.list()[0].thumbs).toEqual({});
+    });
+});
+
+describe('mover pra lista secreta', () => {
+    it('tira da Minha Lista e das listas nomeadas', () => {
+        const filme = { id: '42', type: 'movie' as const, title: 'Filme A' };
+        storage.toggleWatchLater(filme);
+        const lista = listsService.create('Clássicos');
+        expect(lista).not.toBeNull();
+        listsService.toggleItem(lista!.id, filme);
+        expect(storage.isInWatchLater('42', 'movie')).toBe(true);
+
+        expect(secretList.mover({ id: '42', title: 'Filme A' })).toBe(true);
+        expect(secretList.has('42')).toBe(true);
+        expect(storage.isInWatchLater('42', 'movie')).toBe(false);
+        expect(listsService.has(lista!.id, '42', 'movie')).toBe(false);
+    });
+
+    it('mover de novo não duplica nem apaga os momentos', () => {
+        secretList.mover({ id: '42', title: 'Filme A' });
+        secretList.addMoment('42', 60);
+        secretList.mover({ id: '42', title: 'Filme A' });
+        expect(secretList.list()).toHaveLength(1);
+        expect(secretList.list()[0].moments).toEqual([60]);
     });
 });

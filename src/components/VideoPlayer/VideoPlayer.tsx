@@ -28,7 +28,7 @@ import { storage } from '../../services/storage';
 import { searchSubtitles, resolveSubtitleTrack, type SubtitleResult } from '../../services/openSubtitles';
 import { api } from '../../services/api';
 import { LiveChannelPreview, type LivePipeline } from '../LiveChannelPreview';
-import { nextMoment, prevMoment } from '../../services/secretList';
+import { nextMoment, prevMoment, TOLERANCIA_MOMENTO_S } from '../../services/secretList';
 import './VideoPlayer.css';
 
 export interface PlayerChannel {
@@ -117,7 +117,7 @@ export interface VideoPlayerProps {
      * Momentos salvos do filme (lista secreta): 🟢 ou 📌 marca o instante,
      * CH+/CH− pulam entre eles, e eles aparecem como marcas na barra.
      */
-    moments?: { list: number[]; onAdd: (t: number, thumb?: string) => void };
+    moments?: { list: number[]; onAdd: (t: number, thumb?: string) => void; onRemove: (t: number) => void };
     /**
      * `crossorigin="anonymous"` no <video>: só com uma URL cujo servidor manda
      * CORS em TODOS os saltos (o SecretPlayer resolve o redirect antes). É o
@@ -1426,15 +1426,25 @@ export function VideoPlayer({
     const momentsRef = useRef(moments);
     useEffect(() => { momentsRef.current = moments; }, [moments]);
 
+    // 📌/🟢 é liga-desliga: em cima de um momento salvo (±3s) remove ele;
+    // fora disso marca um novo
     const pinMoment = useCallback(() => {
         const video = videoRef.current;
         const m = momentsRef.current;
         if (!video || !m) return;
         const t = video.currentTime;
+        const existente = m.list.find(x => Math.abs(x - t) <= TOLERANCIA_MOMENTO_S);
+        if (existente != null) {
+            m.onRemove(existente);
+            flashMoment(`Momento removido ${formatTime(existente)}`);
+            return;
+        }
         const thumb = capturarQuadro(video);
         m.onAdd(t, thumb);
         flashMoment(`📌 Momento salvo ${formatTime(t)}`, thumb);
     }, [flashMoment]);
+    // Em cima de um momento? O botão 📌 vira "remover"
+    const noMomento = !!moments && moments.list.some(x => Math.abs(x - currentTime) <= TOLERANCIA_MOMENTO_S);
 
     const jumpMoment = useCallback((direction: 1 | -1) => {
         const video = videoRef.current;
@@ -2433,9 +2443,9 @@ export function VideoPlayer({
                         )}
                         {moments && (
                             <button
-                                className={`control-btn ${focusedControl === 'pin' && playerFocus === 'controls' ? 'focused' : ''}`}
+                                className={`control-btn ${noMomento ? 'pin-active' : ''} ${focusedControl === 'pin' && playerFocus === 'controls' ? 'focused' : ''}`}
                                 onClick={pinMoment}
-                                title="Marcar este momento (🟢)"
+                                title={noMomento ? 'Remover este momento (🟢)' : 'Marcar este momento (🟢)'}
                             >
                                 <FaThumbtack />
                                 {moments.list.length > 0 && <span className="quality-label">{moments.list.length}</span>}
