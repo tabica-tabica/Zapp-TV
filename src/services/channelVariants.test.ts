@@ -5,7 +5,7 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-    variantBaseName, channelDisplayName, groupChannelVariants, isSubtitledVariant, qualityLabel, mirrorTag,
+    variantBaseName, channelDisplayName, groupChannelVariants, isSubtitledVariant, qualityLabel, mirrorTag, variantGroup,
 } from './channelVariants';
 
 describe('variantBaseName', () => {
@@ -173,15 +173,15 @@ describe('groupChannelVariants', () => {
         ];
         const { groups, variantsOf } = groupChannelVariants(channels);
 
-        // Representante do grupo GloboNews é a melhor qualidade (FHD).
-        expect(groups.map(c => c.stream_id)).toEqual([2, 3]);
-        const globoNewsVariants = variantsOf.get('2');
-        expect(globoNewsVariants?.map(c => c.stream_id)).toEqual([2, 1]);
+        // Representante do grupo GloboNews é o HD (padrão), FHD vem depois.
+        expect(groups.map(c => c.stream_id)).toEqual([1, 3]);
+        const globoNewsVariants = variantsOf.get('1');
+        expect(globoNewsVariants?.map(c => c.stream_id)).toEqual([1, 2]);
         // ESPN sozinho não entra em variantsOf.
         expect(variantsOf.has('3')).toBe(false);
     });
 
-    it('representante usa o stream_id/nome da melhor qualidade, mas o logo da variante de PIOR qualidade do grupo', () => {
+    it('sem HD no grupo, representante usa o stream_id/nome da melhor qualidade, mas o logo da variante de PIOR qualidade', () => {
         const channels = [
             { stream_id: 10, name: 'Canal Brasil FHD H265', stream_icon: 'http://x/quebrado.png' },
             { stream_id: 11, name: 'Canal Brasil', stream_icon: 'http://x/bom.png' }, // sem tag = pior rank do grupo
@@ -194,15 +194,28 @@ describe('groupChannelVariants', () => {
         expect(variantsOf.get('10')?.map(c => c.stream_id)).toEqual([10, 11]);
     });
 
-    it('com 3+ qualidades, o logo vem da pior do grupo (SD), não de uma intermediária', () => {
+    it('com HD no grupo, o HD toca por padrão e dá o próprio logo', () => {
         const channels = [
             { stream_id: 20, name: 'ESPN FHD', stream_icon: 'http://x/fhd.png' },
             { stream_id: 21, name: 'ESPN HD', stream_icon: 'http://x/hd.png' },
             { stream_id: 22, name: 'ESPN SD', stream_icon: 'http://x/sd.png' },
         ];
         const { groups } = groupChannelVariants(channels);
-        expect(groups[0].stream_id).toBe(20); // FHD continua tocando por padrão
+        expect(groups[0].stream_id).toBe(21); // HD é o padrão
+        expect(groups[0].stream_icon).toBe('http://x/hd.png');
+    });
+
+    it('HD sem logo empresta o da pior variante', () => {
+        const channels = [
+            { stream_id: 20, name: 'ESPN FHD', stream_icon: 'http://x/fhd.png' },
+            { stream_id: 21, name: 'ESPN HD', stream_icon: '' },
+            { stream_id: 22, name: 'ESPN SD', stream_icon: 'http://x/sd.png' },
+        ];
+        const { groups, variantsOf } = groupChannelVariants(channels);
+        expect(groups[0].stream_id).toBe(21);
         expect(groups[0].stream_icon).toBe('http://x/sd.png');
+        // failover: HD → FHD → SD
+        expect(variantsOf.get('21')?.map(c => c.stream_id)).toEqual([21, 20, 22]);
     });
 
     it('canal sozinho (sem variante) passa direto, com o próprio logo', () => {
@@ -227,24 +240,24 @@ describe('groupChannelVariants', () => {
         ];
         const { groups, variantsOf } = groupChannelVariants(channels);
         expect(groups).toHaveLength(1);
-        expect(groups[0].stream_id).toBe(2); // HBO FHD (dublado) continua tocando por padrão
+        expect(groups[0].stream_id).toBe(3); // HBO HD (dublado) toca por padrão
         // todas as 5 variantes ficam no MESMO grupo, dublado antes de legendado
-        expect(variantsOf.get('2')?.map(c => c.stream_id)).toEqual([2, 3, 1, 4, 5]);
+        expect(variantsOf.get('3')?.map(c => c.stream_id)).toEqual([3, 2, 1, 5, 4]);
     });
 
-    it('sem NENHUM irmão dublado, o legendado de melhor qualidade vira representante', () => {
+    it('sem NENHUM irmão dublado, o legendado HD vira representante', () => {
         const channels = [
             { stream_id: 1, name: 'Sony FHD [L]' },
             { stream_id: 2, name: 'Sony HD [L]' },
         ];
         const { groups } = groupChannelVariants(channels);
-        expect(groups[0].stream_id).toBe(1); // só sobrou legendado — o de melhor qualidade toca
+        expect(groups[0].stream_id).toBe(2); // só sobrou legendado — o HD toca
     });
 
     // Achado real: "Canais | Paramount+" tinha 17 canais soltos (4-5 por
     // número), nenhum agrupado — "organizar" significa virar 1 card por
     // número, com (A)/FHD(B)/HD(B)/SD(B) como opções dentro dele.
-    it('"Paramount+ 1 (A)"/"FHD (B)"/"HD (B)"/"SD (B)" viram 1 card só, com a melhor qualidade tocando', () => {
+    it('"Paramount+ 1 (A)"/"FHD (B)"/"HD (B)"/"SD (B)" viram 1 card só, com o HD tocando', () => {
         const channels = [
             { stream_id: 101, name: 'Paramount+ 1 (A)' },
             { stream_id: 102, name: 'Paramount+ 1 FHD (B)' },
@@ -254,8 +267,8 @@ describe('groupChannelVariants', () => {
         ];
         const { groups, variantsOf } = groupChannelVariants(channels);
         expect(groups).toHaveLength(2); // 1 por número, não 5 cards soltos
-        expect(groups[0].stream_id).toBe(102); // FHD (B) é a melhor qualidade do grupo 1
-        expect(variantsOf.get('102')?.map(c => c.stream_id)).toEqual([102, 103, 101, 104]);
+        expect(groups[0].stream_id).toBe(103); // HD (B) é o padrão do grupo 1
+        expect(variantsOf.get('103')?.map(c => c.stream_id)).toEqual([103, 102, 101, 104]);
         // Paramount+ 2 tem só 1 variante — passa direto, sem entrar em variantsOf.
         expect(groups[1].stream_id).toBe(201);
         expect(variantsOf.has('201')).toBe(false);
@@ -285,7 +298,23 @@ describe('groupChannelVariants', () => {
         ];
         const { groups, variantsOf } = groupChannelVariants(channels);
         expect(groups).toHaveLength(1);
-        expect(groups[0].stream_id).toBe(1); // FHD é a melhor qualidade
-        expect(variantsOf.get('1')?.map(c => c.stream_id).sort()).toEqual([1, 2, 3]);
+        expect(groups[0].stream_id).toBe(2); // HD é o padrão
+        expect(variantsOf.get('2')?.map(c => c.stream_id).sort()).toEqual([1, 2, 3]);
+    });
+});
+
+describe('variantGroup', () => {
+    it('acha as variantes do canal no catálogo inteiro, na ordem de failover', () => {
+        const all = [
+            { stream_id: 1, name: 'ESPN SD' },
+            { stream_id: 2, name: 'Globo HD' },
+            { stream_id: 3, name: 'ESPN FHD' },
+            { stream_id: 4, name: 'ESPN HD' },
+        ];
+        expect(variantGroup(all, 'ESPN FHD').map(c => c.stream_id)).toEqual([4, 3, 1]);
+    });
+
+    it('canal sem variante devolve só ele', () => {
+        expect(variantGroup([{ stream_id: 2, name: 'Globo HD' }], 'Globo HD').map(c => c.stream_id)).toEqual([2]);
     });
 });

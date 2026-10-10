@@ -85,13 +85,13 @@ describe('channelVariants', () => {
         expect(qualityLabel('Canal Sem Tag')).toBe('Canal Sem Ta');
     });
 
-    it('agrupa e elege a melhor qualidade como representante', () => {
+    it('agrupa e elege o HD como representante (demais por qualidade)', () => {
         const { groups, variantsOf } = groupChannelVariants([
             canal(1, 'ESPN SD'), canal(2, 'ESPN 4K'), canal(3, 'ESPN HD'),
         ]);
         expect(groups).toHaveLength(1);
-        expect(groups[0].name).toBe('ESPN 4K');
-        expect(variantsOf.get('2')?.map(c => c.name)).toEqual(['ESPN 4K', 'ESPN HD', 'ESPN SD']);
+        expect(groups[0].name).toBe('ESPN HD');
+        expect(variantsOf.get('3')?.map(c => c.name)).toEqual(['ESPN HD', 'ESPN 4K', 'ESPN SD']);
     });
 
     // A ordem da grade é a ordem que o provedor mandou; embaralhar faz o

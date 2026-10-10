@@ -63,6 +63,8 @@ export interface VideoPlayerProps {
     contentKey?: string;
     /** Todas as tentativas de reconexão falharam (LiveTV usa pra failover de variante) */
     onStreamFailed?: () => void;
+    /** Tentativas antes de desistir (e chamar onStreamFailed). Menor quando há variante pra failover. */
+    maxReconnectAttempts?: number;
     /**
      * Pause live (item 8): o canal tem catch-up, então pausar troca pro
      * timeshift daquele instante. A página devolve a URL; null = sem suporte.
@@ -213,6 +215,7 @@ export function VideoPlayer({
     onSwitchChannel,
     contentKey,
     onStreamFailed,
+    maxReconnectAttempts = MAX_RECONNECT_ATTEMPTS,
     onRequestPauseLive,
     isRadio = false,
     autoAdvanceCountRef,
@@ -601,9 +604,11 @@ export function VideoPlayer({
     // onStreamFailed via ref: o watchdog roda num effect de deps vazias e não
     // pode capturar a closure do primeiro render (variantes do LiveTV mudam)
     const onStreamFailedRef = useRef(onStreamFailed);
+    const maxReconnectAttemptsRef = useRef(maxReconnectAttempts);
     useEffect(() => {
         onStreamFailedRef.current = onStreamFailed;
-    }, [onStreamFailed]);
+        maxReconnectAttemptsRef.current = maxReconnectAttempts;
+    }, [onStreamFailed, maxReconnectAttempts]);
 
     // Agenda uma reconexão com backoff exponencial; esgotou → erro + failover
     const scheduleReconnect = useCallback((cause: StreamErrorCause | 'stall') => {
@@ -620,7 +625,7 @@ export function VideoPlayer({
             return;
         }
         const attempt = reconnectAttemptRef.current + 1;
-        if (attempt > MAX_RECONNECT_ATTEMPTS) {
+        if (attempt > maxReconnectAttemptsRef.current) {
             streamFailedRef.current = true;
             videoRef.current?.pause();
             setReconnecting(false);
@@ -1973,7 +1978,7 @@ export function VideoPlayer({
             {/* Reconectando (R1 item 44) */}
             {reconnecting && !error && (
                 <div className="reconnect-overlay">
-                    <FaSync /> Reconectando… tentativa {reconnectAttempt}/{MAX_RECONNECT_ATTEMPTS}
+                    <FaSync /> Reconectando… tentativa {reconnectAttempt}/{maxReconnectAttempts}
                 </div>
             )}
 
