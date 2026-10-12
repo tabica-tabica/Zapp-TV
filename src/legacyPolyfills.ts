@@ -57,27 +57,35 @@ if (typeof window !== 'undefined' && typeof window.ResizeObserver === 'undefined
     type Callback = (entries: Entry[], observer: unknown) => void;
     const observers = new Set<LegacyResizeObserver>();
     let timer: ReturnType<typeof setInterval> | null = null;
-    const checkAll = () => observers.forEach(o => o.check());
+    // Aba/app em segundo plano: nada muda de tamanho que importe
+    const checkAll = () => { if (!document.hidden) observers.forEach(o => o.check()); };
 
     class LegacyResizeObserver {
         private sizes = new Map<Element, string>();
+        // clientWidth×clientHeight da última passada: igual → nem calcula estilo
+        private brutos = new Map<Element, string>();
         private callback: Callback;
         constructor(callback: Callback) { this.callback = callback; }
         observe(el: Element) {
             this.sizes.set(el, '');
             observers.add(this);
             if (!timer) {
-                timer = setInterval(checkAll, 250);
+                // 1s (era 250ms): o único uso é a largura das grades, que só muda
+                // com a janela (o 'resize' abaixo pega na hora) ou com a sidebar.
+                // Cada passada força layout — 4×/s, pra sempre, pesava na TV.
+                timer = setInterval(checkAll, 1000);
                 window.addEventListener('resize', checkAll);
             }
             this.check();
         }
         unobserve(el: Element) {
             this.sizes.delete(el);
+            this.brutos.delete(el);
             if (this.sizes.size === 0) this.disconnect();
         }
         disconnect() {
             this.sizes.clear();
+            this.brutos.clear();
             observers.delete(this);
             if (observers.size === 0 && timer) {
                 clearInterval(timer);
@@ -88,6 +96,10 @@ if (typeof window !== 'undefined' && typeof window.ResizeObserver === 'undefined
         check() {
             const changed: Entry[] = [];
             this.sizes.forEach((last, el) => {
+                const html = el as HTMLElement;
+                const bruto = html.clientWidth + 'x' + html.clientHeight;
+                if (last && this.brutos.get(el) === bruto) return; // nada mudou: sem getComputedStyle
+                this.brutos.set(el, bruto);
                 // contentRect = caixa de conteúdo (sem padding/borda), como no nativo
                 const style = getComputedStyle(el);
                 const width = (el as HTMLElement).clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);

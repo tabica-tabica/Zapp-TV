@@ -204,6 +204,65 @@ html.tv-lite .play-btn {
     animation: none !important;
 }
 
+/* Hardening (11/10/2026): a lista acima era escolhida à mão e já tinha
+   ficado pra trás — o brilho do logo da sidebar (filter animado, na tela em
+   TODAS as páginas), as bordas que fluem, os orbes... 55 loops infinitos no
+   CSS. Agora a regra é geral: na TV todo loop roda UMA vez e para; só os
+   funcionais (spinners de carregamento, esqueletos enquanto carrega e a
+   deriva anti burn-in) continuam. Animação nova não precisa entrar em lista. */
+html.tv-lite *,
+html.tv-lite *::before,
+html.tv-lite *::after {
+    animation-iteration-count: 1 !important;
+}
+
+html.tv-lite .app-loading-spinner,
+html.tv-lite .loading-spinner,
+html.tv-lite .tmdb-loading-spinner,
+html.tv-lite .category-loading-spinner,
+html.tv-lite .login-spinner,
+html.tv-lite .spinner-ring,
+html.tv-lite .skeleton,
+html.tv-lite .skeleton-card,
+html.tv-lite .skeleton-poster,
+html.tv-lite .skeleton-title,
+html.tv-lite .skeleton-icon,
+html.tv-lite .skeleton-line,
+html.tv-lite .radio-stage {
+    animation-iteration-count: infinite !important;
+}
+
+/* backdrop-filter borra o que está ATRÁS do elemento a cada quadro que
+   muda — o efeito mais caro que existe pra GPU de TV (webOS novo suporta,
+   então paga; o 4.x nem desenha). Os painéis que usavam já têm fundo de
+   60-95% de opacidade: continuam legíveis sem o borrão. */
+html.tv-lite * {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+}
+
+/* Brilhos por filter (drop-shadow): repintura com blur em volta do ícone */
+html.tv-lite .logo-svg,
+html.tv-lite .search-btn-icon,
+html.tv-lite .category-toggle-btn,
+html.tv-lite .pm-modal-icon,
+html.tv-lite .language-logo {
+    filter: none !important;
+}
+
+/* Orbes e fundos borrados (blur de 30-100px): sem o blur virariam manchas
+   duras, então na TV somem — o fundo escuro do tema fica no lugar */
+html.tv-lite .pm-orb,
+html.tv-lite .item-glow,
+html.tv-lite .language-orb,
+html.tv-lite .login-orb,
+html.tv-lite .welcome-orb,
+html.tv-lite .movies-backdrop,
+html.tv-lite .series-backdrop,
+html.tv-lite .error-glow {
+    display: none !important;
+}
+
 /* As grades (react-window) só rolam na vertical. A barra vertical come uns
    pixels da largura e o conteúdo (colunas × pitch) passava do viewport,
    abrindo uma barra horizontal embaixo da grade. */

@@ -398,6 +398,9 @@ export function VideoPlayer({
     const [loading, setLoading] = useState(() => !(adopt && adopt.video.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA));
     const [error, setError] = useState<string | null>(null);
     const [showControls, setShowControls] = useState(true);
+    // Lido no listener de timeupdate (efeito de deps vazias)
+    const showControlsRef = useRef(showControls);
+    useEffect(() => { showControlsRef.current = showControls; }, [showControls]);
     const [hoverTime, setHoverTime] = useState<number | null>(null);
     const [hoverPosition, setHoverPosition] = useState(0);
 
@@ -1371,15 +1374,24 @@ export function VideoPlayer({
 
         const handlePlay = () => setPlaying(true);
         const handlePause = () => setPlaying(false);
-        const handleTimeUpdateLocal = () => setCurrentTime(video.currentTime);
+        // Performance na TV: timeupdate dispara ~4×/s e cada setState re-renderiza
+        // o player INTEIRO. currentTime só serve à tela (relógio, barra, momento
+        // perto): em segundos inteiros o React pula o render repetido, e com os
+        // controles escondidos nem atualiza — volta em ≤250ms quando aparecem.
+        // Quem precisa do instante exato lê videoRef.current.currentTime.
+        const handleTimeUpdateLocal = () => {
+            if (!showControlsRef.current) return;
+            setCurrentTime(Math.floor(video.currentTime));
+        };
         // Stream sem duração conhecida chega como Infinity: deixar isso passar
         // habilitava a barra de seek com ←→ que não faziam nada
         const handleDurationChange = () =>
             setDuration(Number.isFinite(video.duration) ? video.duration : 0);
+        // Mesmo motivo do timeupdate: 'progress' dispara várias vezes por
+        // segundo baixando, e o buffer só aparece na barra (com controles)
         const handleProgress = () => {
-            if (video.buffered.length > 0) {
-                setBuffered(video.buffered.end(video.buffered.length - 1));
-            }
+            if (!showControlsRef.current || video.buffered.length === 0) return;
+            setBuffered(Math.floor(video.buffered.end(video.buffered.length - 1)));
         };
         const handleWaiting = () => setLoading(true);
         const handlePlaying = () => setLoading(false);
