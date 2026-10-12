@@ -182,6 +182,15 @@ html[data-motion="reduzido"] .radio-stage {
    TV lite: animações decorativas em loop desligadas no webOS/Tizen
    =================================================================== */
 
+/* O vídeo da TV sai num plano de hardware POR BAIXO da página: recorte de
+   canto arredondado (border-radius + overflow: hidden) em volta do <video>
+   tira ele desse plano e a prévia ficava preta, só com áudio (visto numa LG
+   webOS 4). Canto reto só onde há <video>. */
+html.tv-lite .preview-video,
+html.tv-lite .home-channel-preview-video {
+    border-radius: 0;
+}
+
 /* Medido no build webOS com CPU 6x mais lenta: parada na Home, a CPU caía de
    23% pra 3% sem elas. Pulsos e brilhos repintam a cada quadro pra sempre;
    na TV isso disputa CPU com o vídeo e a navegação. Spinners de carregamento
