@@ -72,6 +72,7 @@ export default defineConfig({
     ...(process.env.ANALYZE ? [visualizer({ open: true, gzipSize: true, brotliSize: true })] : []),
   ],
   build: {
+    outDir: 'dist/web',
     minify: 'terser',
     chunkSizeWarningLimit: 650,
     rollupOptions: {

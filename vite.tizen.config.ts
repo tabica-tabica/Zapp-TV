@@ -29,7 +29,7 @@ export default defineConfig({
   build: {
     // Chromium 69 = Tizen 5.5, o minimo declarado no config.xml
     target: 'chrome69',
-    outDir: 'dist-tizen',
+    outDir: 'dist/tizen',
     minify: 'terser',
     cssCodeSplit: false,
     chunkSizeWarningLimit: 1200,

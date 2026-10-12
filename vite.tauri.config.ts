@@ -11,7 +11,7 @@ export default defineConfig({
   plugins: [react()],
   base: './',
   build: {
-    outDir: 'dist-tauri',
+    outDir: 'dist/tauri',
     minify: 'terser',
     rollupOptions: {
       output: {

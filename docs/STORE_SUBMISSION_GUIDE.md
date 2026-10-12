@@ -110,10 +110,10 @@ reabrir conta nem certificado.
 ### 2.2 Empacotar e testar em hardware real
 
 ```bash
-npm run build:webos   # valida + gera webos/assets
+npm run package:webos   # build + .ipk em dist/ipk, com as imagens da loja (brand/webos)
 ```
-Depois `ares-package`/`ares-install`/`ares-launch` (comandos exatos já no
-README, seção "LG webOS"). Usar `ares-inspect` pra DevTools remoto — de
+Depois `ares-install`/`ares-launch` (comandos exatos já no README, seção
+"LG webOS"). Usar `ares-inspect` pra DevTools remoto — de
 novo, emulador não reproduz a RAM real do aparelho.
 
 ### 2.3 Preencher os DOIS documentos obrigatórios com resultado real

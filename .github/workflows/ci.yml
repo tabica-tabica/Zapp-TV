@@ -97,7 +97,7 @@ jobs:
         run: npm run build:webos
 
       - name: Orçamento de bundle
-        run: node scripts/check-bundle-budget.mjs dist-webos/assets
+        run: node scripts/check-bundle-budget.mjs dist/webos/assets
 
       - name: Guardar o bundle
         uses: actions/upload-artifact@v4

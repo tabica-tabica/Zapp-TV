@@ -5,10 +5,10 @@ node_modules/
 
 # Build outputs
 dist/
-dist-tizen/
-dist-webos/
-dist-tauri/
-dist-ssr/
+# Bundle copiado pelos scripts build-tizen/build-webos — o CI e o
+# package:webos geram de novo, não precisa ir pro repositório
+tizen/assets/
+webos/assets/
 build/
 build-tizen/
 build-tizen-clean/
@@ -76,6 +76,8 @@ install_*.txt
 vd_install.txt
 
 # LG webOS
+# Cópia gerada de brand/webos/splash.png (scripts/package-webos.mjs)
+webos/splash.png
 *.ipk
 webos-package/
 
@@ -93,3 +95,5 @@ brand/*.tmp.svg
 # Claude Code (local agent config / memory)
 CLAUDE.md
 .claude/
+
+.cache

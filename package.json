@@ -13,6 +13,8 @@
     "build:web": "node scripts/sync-brand.mjs && tsc -b && vite build",
     "build:tizen": "node scripts/build-tizen.mjs",
     "build:webos": "node scripts/build-webos.mjs",
+    "package:webos": "node scripts/package-webos.mjs",
+    "install:webos": "sh scripts/install-tv.command",
     "build:tauri:web": "node scripts/sync-brand.mjs && tsc -b && vite build --config vite.tauri.config.ts",
     "dev:tauri": "tauri dev",
     "build:tauri": "tauri build",

@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { POLYFILLS_DO_BUILD, MARCA_NO_BUNDLE } from './tizen-polyfills.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const distDir = join(root, 'dist-tizen', 'assets');
+const distDir = join(root, 'dist', 'tizen', 'assets');
 const tizenDir = join(root, 'tizen');
 const assetsDir = join(tizenDir, 'assets');
 const configPath = join(tizenDir, 'config.xml');

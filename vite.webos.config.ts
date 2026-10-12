@@ -28,7 +28,7 @@ export default defineConfig({
   base: './',
   build: {
     target: 'chrome53',
-    outDir: 'dist-webos',
+    outDir: 'dist/webos',
     minify: 'terser',
     cssCodeSplit: false,
     chunkSizeWarningLimit: 1200,

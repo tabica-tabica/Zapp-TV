@@ -10,7 +10,7 @@
 // ser bonito: existe pra que um `npm i <coisa-grande>` apareça no CI como uma
 // falha, e não daqui a três meses como "a TV ficou lenta".
 //
-//   node scripts/check-bundle-budget.mjs [dist-tizen/assets]
+//   node scripts/check-bundle-budget.mjs [dist/tizen/assets]
 
 import { readdirSync, statSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -19,7 +19,7 @@ import { gzipSync } from 'node:zlib';
 import { readFileSync } from 'node:fs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const alvo = join(root, process.argv[2] || join('dist-tizen', 'assets'));
+const alvo = join(root, process.argv[2] || join('dist', 'tizen', 'assets'));
 
 /**
  * Tetos em KB (tamanho real do arquivo, que é o que a TV lê do disco;
@@ -68,7 +68,7 @@ const somaJs = js.reduce((total, f) => total + f.size, 0);
 const somaCss = css.reduce((total, f) => total + f.size, 0);
 const maiorJs = js.length > 0 ? js[0].size : 0;
 
-console.log(`\nBundle em ${process.argv[2] || 'dist-tizen/assets'}:`);
+console.log(`\nBundle em ${process.argv[2] || 'dist/tizen/assets'}:`);
 for (const f of arquivos) {
     console.log(`  ${String(kb(f.size)).padStart(5)} KB  (${String(kb(f.gzip)).padStart(4)} KB gz)  ${f.nome}`);
 }

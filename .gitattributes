@@ -1,0 +1,6 @@
+# Scripts que rodam em sh (TV LG, macOS, Linux): CRLF quebra
+*.sh text eol=lf
+*.command text eol=lf
+# Launcher do Windows
+*.bat text eol=crlf
+*.ps1 text eol=crlf

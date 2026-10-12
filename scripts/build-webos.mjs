@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { POLYFILLS_DO_BUILD, MARCA_NO_BUNDLE } from './tizen-polyfills.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const distDir = join(root, 'dist-webos', 'assets');
+const distDir = join(root, 'dist', 'webos', 'assets');
 const webosDir = join(root, 'webos');
 const assetsDir = join(webosDir, 'assets');
 const appinfoPath = join(webosDir, 'appinfo.json');
@@ -109,5 +109,4 @@ console.log(`polyfills: ${POLYFILLS_DO_BUILD.length} declarado(s) e conferido(s)
 // Empacotar exige o webOS CLI (ares-package): sem ele instalado não adianta
 // gerar nada aqui. O id em appinfo.json também é só um placeholder até a
 // conta na LG Seller Lounge existir e reservar o id de verdade.
-console.log('Pronto pra empacotar. Com o webOS CLI no PATH:');
-console.log(`  ares-package "${webosDir}"`);
+console.log('Pronto pra empacotar: npm run package:webos (gera dist/ipk com as imagens da loja)');
