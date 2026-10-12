@@ -1,6 +1,8 @@
 // Xtream Codes API Client - Ported from NeoStream IPTV
 
 import type { AuthResponse, LiveStream, VODStream, Series, Category, SeriesInfo, Credentials } from '../types';
+import { parentalService } from './parentalService';
+import { isHentaiName, semHentai } from './adultNames';
 
 type VodMovieData = Record<string, unknown>;
 
@@ -339,12 +341,14 @@ class XtreamAPI {
         return this.listagem<LiveStream[]>('get_live_streams');
     }
 
+    // Hentai sai AQUI, na fonte de todas as listagens de Filmes/Séries (páginas,
+    // busca, Home, novidades): uma checagem só, nenhuma tela esquece
     async getVODStreams(): Promise<VODStream[]> {
-        return this.listagem<VODStream[]>('get_vod_streams');
+        return this.ocultarHentai(await this.listagem<VODStream[]>('get_vod_streams'), 'get_vod_categories');
     }
 
     async getSeries(): Promise<Series[]> {
-        return this.listagem<Series[]>('get_series');
+        return this.ocultarHentai(await this.listagem<Series[]>('get_series'), 'get_series_categories');
     }
 
     async getSeriesInfo(seriesId: number): Promise<SeriesInfo> {
@@ -360,11 +364,25 @@ class XtreamAPI {
     }
 
     async getVodCategories(): Promise<Category[]> {
-        return this.listagem<Category[]>('get_vod_categories');
+        return this.ocultarCategoriasHentai(await this.listagem<Category[]>('get_vod_categories'));
     }
 
     async getSeriesCategories(): Promise<Category[]> {
-        return this.listagem<Category[]>('get_series_categories');
+        return this.ocultarCategoriasHentai(await this.listagem<Category[]>('get_series_categories'));
+    }
+
+    private ocultarCategoriasHentai(categorias: Category[]): Category[] {
+        if (!parentalService.getGates().hideHentai) return categorias;
+        return categorias.filter(c => !isHentaiName(c.category_name || ''));
+    }
+
+    private async ocultarHentai<T extends { category_id: string; name?: string }>(itens: T[], acaoCategorias: string): Promise<T[]> {
+        if (!parentalService.getGates().hideHentai) return itens;
+        // Categorias CRUAS (com as de hentai) pra saber quais esconder; já
+        // vêm do cache, os chamadores pedem as duas listas juntas. Sem elas,
+        // ainda cai o título com "hentai" no nome.
+        const categorias = await this.listagem<Category[]>(acaoCategorias).catch(() => [] as Category[]);
+        return semHentai(itens, categorias);
     }
 
     /** EPG curto por canal (agora/a seguir). Campos title/description em base64. */

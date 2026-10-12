@@ -21,9 +21,15 @@ export interface ParentalGates {
     leaveKids: boolean;
     /** Pedir PIN pra abrir uma categoria detectada como adulta */
     adultCategories: boolean;
+    /**
+     * Esconder hentai de todas as listas (categorias e títulos), MESMO com o
+     * conteúdo adulto liberado. Não é trava de PIN: vale com ou sem PIN
+     * criado (desligar pede o PIN, como as outras travas).
+     */
+    hideHentai: boolean;
 }
 
-const DEFAULT_GATES: ParentalGates = { settings: true, leaveKids: true, adultCategories: true };
+const DEFAULT_GATES: ParentalGates = { settings: true, leaveKids: true, adultCategories: true, hideHentai: true };
 
 // ---------------------------------------------------------------------------
 // Limite de tentativas.

@@ -145,7 +145,7 @@ describe('limite de tentativas', () => {
 
 describe('gates', () => {
     it('todos ligados por padrão', () => {
-        expect(parentalService.getGates()).toEqual({ settings: true, leaveKids: true, adultCategories: true });
+        expect(parentalService.getGates()).toEqual({ settings: true, leaveKids: true, adultCategories: true, hideHentai: true });
     });
 
     it('requires exige PIN configurado E gate ligado', () => {
@@ -168,7 +168,7 @@ describe('autoProvisionAdultLock', () => {
 
         expect(parentalService.isSet()).toBe(true);
         expect(await parentalService.verify('0000')).toBe(true);
-        expect(parentalService.getGates()).toEqual({ settings: false, leaveKids: false, adultCategories: true });
+        expect(parentalService.getGates()).toEqual({ settings: false, leaveKids: false, adultCategories: true, hideHentai: true });
     });
 
     it('com PIN já definido (pelo usuário), não faz nada', async () => {
@@ -177,6 +177,6 @@ describe('autoProvisionAdultLock', () => {
 
         expect(await parentalService.verify('0000')).toBe(false);
         expect(await parentalService.verify(CERTO)).toBe(true);
-        expect(parentalService.getGates()).toEqual({ settings: true, leaveKids: true, adultCategories: true });
+        expect(parentalService.getGates()).toEqual({ settings: true, leaveKids: true, adultCategories: true, hideHentai: true });
     });
 });

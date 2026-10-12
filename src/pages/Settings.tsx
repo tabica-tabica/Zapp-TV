@@ -23,7 +23,7 @@ import { playbackPrefs, BUFFER_PROFILES, BUFFER_LABELS, type BufferProfile } fro
 import { a11yService, TEXT_SCALES, type ContrastMode, type TextScale } from '../services/a11yService';
 import { burnIn } from '../services/burnIn';
 import { accountService, EXPIRY_WARN_DAYS } from '../services/accountService';
-import { parentalService } from '../services/parentalService';
+import { parentalService, type ParentalGates } from '../services/parentalService';
 import { configSnapshot } from '../services/configSnapshot';
 import { DATA_GROUPS, DATA_GROUP_IDS, resetGroup, groupSizeKb } from '../services/dataReset';
 import { PinPrompt } from '../components/PinPrompt';
@@ -41,7 +41,7 @@ type FocusZone =
     | 'qualitycap' | 'autonext' | 'resume' | 'buffer'
     | 'contrast' | 'textscale' | 'motion' | 'burnin'
     | 'account'
-    | 'parentalpin' | 'gatesettings' | 'gatekids' | 'gateadult'
+    | 'parentalpin' | 'gatesettings' | 'gatekids' | 'gateadult' | 'gatehentai'
     | 'guide' | 'diag' | 'qrbackup' | 'snapshot' | 'reset'
     | 'wrapped' | 'input' | 'save' | 'clear'
     | 'os-apikey' | 'os-username' | 'os-password' | 'os-lang' | 'os-save' | 'os-clear';
@@ -53,7 +53,7 @@ const ZONES: FocusZone[] = [
     'qualitycap', 'autonext', 'resume', 'buffer',
     'contrast', 'textscale', 'motion', 'burnin',
     'account',
-    'parentalpin', 'gatesettings', 'gatekids', 'gateadult',
+    'parentalpin', 'gatesettings', 'gatekids', 'gateadult', 'gatehentai',
     'guide', 'diag', 'qrbackup', 'snapshot', 'reset',
     'wrapped', 'input', 'save', 'clear',
     'os-apikey', 'os-username', 'os-password', 'os-lang', 'os-save', 'os-clear',
@@ -174,7 +174,7 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
         | null
         | { kind: 'removepin' }
         | { kind: 'resetconta' }
-        | { kind: 'gate'; gate: 'settings' | 'leaveKids' | 'adultCategories'; value: boolean }
+        | { kind: 'gate'; gate: keyof ParentalGates; value: boolean }
     >(null);
     // Mexer nas travas exige ter provado o PIN nesta visita. Sem PIN definido,
     // não há o que destravar.
@@ -396,9 +396,10 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                 const next = direction === 'right';
                 burnIn.setEnabled(next);
                 setDimmer(next);
-            } else if (focusZone === 'gatesettings' || focusZone === 'gatekids' || focusZone === 'gateadult') {
+            } else if (focusZone === 'gatesettings' || focusZone === 'gatekids' || focusZone === 'gateadult' || focusZone === 'gatehentai') {
                 const gate = focusZone === 'gatesettings' ? 'settings' as const
                     : focusZone === 'gatekids' ? 'leaveKids' as const
+                    : focusZone === 'gatehentai' ? 'hideHentai' as const
                     : 'adultCategories' as const;
                 const value = direction === 'right';
                 if (!parentalUnlocked) {
@@ -589,6 +590,7 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
             gatesettings: 'sec-parental',
             gatekids: 'sec-parental',
             gateadult: 'sec-parental',
+            gatehentai: 'sec-parental',
             guide: 'sec-sistema',
             diag: 'sec-sistema',
             qrbackup: 'sec-sistema',
@@ -1045,6 +1047,14 @@ export function Settings({ onAddPlaylist }: SettingsProps) {
                         <span className="settings-label">Bloquear categorias adultas automaticamente</span>
                         <span className={`settings-value ${focusZone === 'gateadult' ? 'focused' : ''} ${pinSet ? '' : 'settings-value-off'}`}>
                             {gates.adultCategories ? 'Ligado' : 'Desligado'}
+                        </span>
+                    </div>
+
+                    {/* Sem settings-value-off: vale com ou sem PIN criado */}
+                    <div className="settings-row">
+                        <span className="settings-label">Esconder hentai (mesmo com conteúdo adulto liberado)</span>
+                        <span className={`settings-value ${focusZone === 'gatehentai' ? 'focused' : ''}`}>
+                            {gates.hideHentai ? 'Ligado' : 'Desligado'}
                         </span>
                     </div>
                     <p className="settings-muted">

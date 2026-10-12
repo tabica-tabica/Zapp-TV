@@ -38,3 +38,18 @@ const ADULT_PATTERNS = [
 export function isAdultCategoryName(name: string): boolean {
     return ADULT_PATTERNS.some(pattern => pattern.test(name));
 }
+
+const HENTAI = /\bhentai\b/i;
+
+export function isHentaiName(name: string): boolean {
+    return HENTAI.test(name);
+}
+
+/** Tira os títulos de categoria hentai OU com "hentai" no nome. */
+export function semHentai<T extends { category_id: string; name?: string }>(
+    itens: T[],
+    categorias: Array<{ category_id: string; category_name: string }>,
+): T[] {
+    const ocultas = new Set(categorias.filter(c => isHentaiName(c.category_name || '')).map(c => c.category_id));
+    return itens.filter(item => !ocultas.has(item.category_id) && !isHentaiName(item.name || ''));
+}
