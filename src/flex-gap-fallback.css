@@ -514,3 +514,9 @@ html.no-flex-gap .home-channel-cover > * + * {
 html.no-flex-gap .welcome-legal-notice > * + * {
     margin-left: 12px;
 }
+
+/* ---- components/SecretList.css ---- */
+
+html.no-flex-gap .secret-colar > * + * {
+    margin-left: 10px;
+}

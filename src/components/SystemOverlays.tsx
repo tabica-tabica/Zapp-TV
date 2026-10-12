@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { FaSatelliteDish, FaTachometerAlt, FaBroom, FaTimes, FaStethoscope, FaQrcode } from 'react-icons/fa';
 import qrcode from 'qrcode-generator';
+import { qrPath } from '../utils/qrPath';
 import { useTVNavigation } from '../hooks/useTVNavigation';
 import {
     deviceReport,
@@ -179,17 +180,6 @@ export function DiagnosticsOverlay({ onClose, speedTestStreamId }: DiagnosticsOv
 }
 
 // ===================== Backup por QR (item 63) =====================
-
-/** Desenha o QR como UM path só: um rect por módulo derrubaria a TV. */
-function qrPath(qr: ReturnType<typeof qrcode>, count: number): string {
-    const parts: string[] = [];
-    for (let row = 0; row < count; row++) {
-        for (let col = 0; col < count; col++) {
-            if (qr.isDark(row, col)) parts.push(`M${col} ${row}h1v1h-1z`);
-        }
-    }
-    return parts.join('');
-}
 
 interface QrResult {
     count: number;

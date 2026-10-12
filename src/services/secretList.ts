@@ -30,7 +30,7 @@ function tirarDasListasVisiveis(id: string, title: string): void {
 
 const KEY = () => scopedKey('neostream_secret_list');
 
-export const MAX_ITENS_SECRETOS = 200;
+export const MAX_ITENS_SECRETOS = 300;
 export const MAX_MOMENTOS = 50;
 /** Dois momentos a menos disso são o mesmo momento (e o "anterior" pula ele). */
 export const TOLERANCIA_MOMENTO_S = 3;
@@ -39,7 +39,7 @@ export const TOLERANCIA_MOMENTO_S = 3;
  * aparelho é ~5 MB pra tudo. Passou disso, as dos filmes mais antigos da
  * lista caem primeiro — o momento continua, só sem a imagem.
  */
-export const MAX_MINIATURAS = 300;
+export const MAX_MINIATURAS = 400;
 
 export interface ItemSecreto {
     /** stream_id do filme */
@@ -95,16 +95,16 @@ export function formatMoment(segundos: number): string {
 
 // ---- Armazenamento ----
 
-function ler(): ItemSecreto[] {
-    const bruto = readJson<unknown>(KEY(), []);
+/** Valida o que veio do storage ou de um arquivo importado. */
+function normalizar(bruto: unknown): ItemSecreto[] {
     if (!Array.isArray(bruto)) return [];
     return (bruto as Array<Partial<ItemSecreto>>)
         .filter(item => item && item.id != null)
         .map(item => ({
             id: String(item.id),
-            title: item.title || 'Sem título',
-            poster: item.poster,
-            container: item.container,
+            title: typeof item.title === 'string' && item.title ? item.title : 'Sem título',
+            poster: typeof item.poster === 'string' ? item.poster : undefined,
+            container: typeof item.container === 'string' ? item.container : undefined,
             addedAt: Number(item.addedAt) || 0,
             moments: Array.isArray(item.moments)
                 ? item.moments.map(Number).filter(n => Number.isFinite(n) && n >= 0).sort((a, b) => a - b)
@@ -114,6 +114,10 @@ function ler(): ItemSecreto[] {
                     .filter(([, v]) => typeof v === 'string' && v.startsWith('data:image/')))
                 : undefined,
         }));
+}
+
+function ler(): ItemSecreto[] {
+    return normalizar(readJson<unknown>(KEY(), []));
 }
 
 /** Corta miniaturas além do teto global, começando pelo fim da lista (mais antigos). */
@@ -133,6 +137,99 @@ export function limitarMiniaturas(itens: ItemSecreto[], max = MAX_MINIATURAS): I
 
 function gravar(itens: ItemSecreto[]): void {
     writeJson(KEY(), limitarMiniaturas(itens));
+}
+
+// ---- Exportar / importar ----
+
+export const FORMATO_SECRETO = 'neostream-secret-1';
+/** QR: sem capa nem miniatura, item = [id, título, container, momentos] */
+export const FORMATO_SECRETO_QR = 'neostream-secret-q1';
+/** Mesmo teto do backup por QR (backupService): legível da distância da sala. */
+export const MAX_BYTES_QR = 2200;
+
+type ItemQr = [string, string, string, number[]];
+
+const bytes = (s: string) => new TextEncoder().encode(s).length;
+
+/** Arquivo completo (com miniaturas), pra guardar no computador. */
+export function exportarSecreta(): string {
+    return JSON.stringify({ f: FORMATO_SECRETO, t: Date.now(), itens: ler() });
+}
+
+/**
+ * Páginas de QR: cada uma é um JSON que se importa sozinho. Um item que nem
+ * sozinho cabe (título enorme, 50 momentos) vai mesmo assim, numa página só dele.
+ */
+export function exportarSecretaQr(max = MAX_BYTES_QR): string[] {
+    const pagina = (i: ItemQr[]) => JSON.stringify({ f: FORMATO_SECRETO_QR, i });
+    const paginas: string[] = [];
+    let atual: ItemQr[] = [];
+    for (const item of ler()) {
+        const q: ItemQr = [item.id, item.title, item.container ?? '', item.moments];
+        if (atual.length > 0 && bytes(pagina([...atual, q])) > max) {
+            paginas.push(pagina(atual));
+            atual = [];
+        }
+        atual.push(q);
+    }
+    if (atual.length > 0) paginas.push(pagina(atual));
+    return paginas;
+}
+
+export interface ResultadoImportacao {
+    ok: boolean;
+    novos: number;
+    momentos: number;
+    error?: string;
+}
+
+/** Junta com o que já existe: filme novo entra, filme repetido soma os momentos. */
+export function importarSecreta(json: string): ResultadoImportacao {
+    let dados: { f?: unknown; itens?: unknown; i?: unknown };
+    try {
+        dados = JSON.parse(json);
+    } catch {
+        return { ok: false, novos: 0, momentos: 0, error: 'Não é um arquivo válido.' };
+    }
+    let vindos: ItemSecreto[];
+    if (dados?.f === FORMATO_SECRETO) {
+        vindos = normalizar(dados.itens);
+    } else if (dados?.f === FORMATO_SECRETO_QR && Array.isArray(dados.i)) {
+        vindos = normalizar((dados.i as unknown[]).filter(Array.isArray).map(q => {
+            const [id, title, container, moments] = q as unknown[];
+            return { id, title, container: container || undefined, moments } as Partial<ItemSecreto>;
+        }));
+    } else {
+        return { ok: false, novos: 0, momentos: 0, error: 'Formato desconhecido.' };
+    }
+
+    const itens = ler();
+    let novos = 0;
+    let momentos = 0;
+    for (const vindo of vindos) {
+        const atual = itens.find(x => x.id === vindo.id);
+        if (!atual) {
+            if (itens.length >= MAX_ITENS_SECRETOS) continue;
+            const moments = vindo.moments.reduce(insertMoment, [] as number[]);
+            itens.push({ ...vindo, addedAt: vindo.addedAt || Date.now(), moments });
+            tirarDasListasVisiveis(vindo.id, vindo.title);
+            novos++;
+            momentos += moments.length;
+            continue;
+        }
+        for (const t of vindo.moments) {
+            const antes = atual.moments.length;
+            atual.moments = insertMoment(atual.moments, t);
+            if (atual.moments.length === antes) continue;
+            momentos++;
+            const thumb = vindo.thumbs?.[String(t)];
+            if (thumb) atual.thumbs = { ...atual.thumbs, [String(Math.round(t))]: thumb };
+        }
+        atual.poster ??= vindo.poster;
+        atual.container ??= vindo.container;
+    }
+    gravar(itens);
+    return { ok: true, novos, momentos };
 }
 
 export type ItemSecretoInput = Pick<ItemSecreto, 'id' | 'title' | 'poster' | 'container'>;

@@ -3,6 +3,7 @@ import { installFakeStorage } from '../testing/fakeStorage';
 import {
     insertMoment, nextMoment, prevMoment, firstMoment, formatMoment, secretList, MAX_MOMENTOS,
     limitarMiniaturas, type ItemSecreto,
+    exportarSecreta, exportarSecretaQr, importarSecreta,
 } from './secretList';
 import { KEYS_LISTAS, KEYS_PREFERENCIAS } from './storageKeys';
 import { storage } from './storage';
@@ -141,5 +142,45 @@ describe('mover pra lista secreta', () => {
         secretList.mover({ id: '42', title: 'Filme A' });
         expect(secretList.list()).toHaveLength(1);
         expect(secretList.list()[0].moments).toEqual([60]);
+    });
+});
+
+describe('exportar / importar', () => {
+    const img = 'data:image/jpeg;base64,AAAA';
+
+    it('arquivo completo volta igual, com miniaturas', () => {
+        secretList.mover({ id: '1', title: 'A', container: 'mkv' });
+        secretList.addMoment('1', 60, img);
+        const json = exportarSecreta();
+        installFakeStorage();
+        expect(importarSecreta(json)).toEqual({ ok: true, novos: 1, momentos: 1 });
+        expect(secretList.list()[0]).toMatchObject({ id: '1', container: 'mkv', moments: [60], thumbs: { '60': img } });
+    });
+
+    it('QR pagina no teto e cada página importa sozinha', () => {
+        for (let i = 0; i < 30; i++) {
+            secretList.mover({ id: String(i), title: `Filme com título comprido ${i}`, container: 'mp4' });
+            secretList.addMoment(String(i), 100 + i);
+        }
+        const paginas = exportarSecretaQr(400);
+        expect(paginas.length).toBeGreaterThan(1);
+        for (const p of paginas) expect(new TextEncoder().encode(p).length).toBeLessThanOrEqual(400);
+        installFakeStorage();
+        for (const p of paginas) expect(importarSecreta(p).ok).toBe(true);
+        expect(secretList.list()).toHaveLength(30);
+        expect(secretList.list().find(x => x.id === '7')?.moments).toEqual([107]);
+    });
+
+    it('filme repetido soma momentos sem duplicar', () => {
+        secretList.mover({ id: '1', title: 'A' });
+        secretList.addMoment('1', 60);
+        const json = JSON.stringify({ f: 'neostream-secret-q1', i: [['1', 'A', '', [61, 300]]] });
+        expect(importarSecreta(json)).toEqual({ ok: true, novos: 0, momentos: 1 });
+        expect(secretList.list()[0].moments).toEqual([60, 300]);
+    });
+
+    it('recusa lixo', () => {
+        expect(importarSecreta('{').ok).toBe(false);
+        expect(importarSecreta('{"f":"outro"}').ok).toBe(false);
     });
 });
