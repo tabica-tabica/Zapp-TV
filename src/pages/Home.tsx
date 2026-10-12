@@ -107,9 +107,10 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
         kidsFilter.isKidsActive() ? [] : progressService.getContinueWatching();
     const [continueRaw, setContinueRaw] = useState<ContinueItem[]>(lerContinue);
     // Títulos de categoria adulta ('m-<id>' / 's-<id>'), conhecidos depois que
-    // o catálogo carrega. Até lá o filtro do Continuar vai só pelo nome.
-    const [adultContinueIds, setAdultContinueIds] = useState<Set<string>>(() => new Set());
-    const continueItems = useMemo(() => continueRaw.filter(item => {
+    // o catálogo carrega. Até lá (null) a fileira fica escondida: o filtro só
+    // pelo nome deixava passar filme adulto de nome comum.
+    const [adultContinueIds, setAdultContinueIds] = useState<Set<string> | null>(null);
+    const continueItems = useMemo(() => !adultContinueIds ? [] : continueRaw.filter(item => {
         const nome = item.kind === 'movie' ? item.progress.name : item.progress.seriesName;
         const chave = item.kind === 'movie' ? `m-${item.progress.id}` : `s-${item.progress.seriesId}`;
         return !isAdultCategoryName(nome || '') && !adultContinueIds.has(chave);
@@ -214,7 +215,10 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 const adultSeries = adultas(seriesCats);
                 const ehAdulto = (item: { category_id: string; name?: string }, cats: Set<string>) =>
                     cats.has(item.category_id) || isAdultCategoryName(item.name || '');
-                setAdultContinueIds(new Set([
+                // Catálogo de VOD falhou: sem como saber quem é adulto, a
+                // fileira continua escondida
+                if (rMovies.status === 'fulfilled' && rVodCats.status === 'fulfilled'
+                    && rSeries.status === 'fulfilled' && rSeriesCats.status === 'fulfilled') setAdultContinueIds(new Set([
                     ...movies.filter(m => ehAdulto(m, adultVod)).map(m => `m-${m.stream_id}`),
                     ...series.filter(s => ehAdulto(s, adultSeries)).map(s => `s-${s.series_id}`),
                 ]));
