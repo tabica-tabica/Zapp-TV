@@ -223,6 +223,11 @@ html.tv-lite *,
 html.tv-lite *::before,
 html.tv-lite *::after {
     animation-iteration-count: 1 !important;
+    /* Foco instantâneo (12/10/2026): eram 68 `transition: all` — a cada seta
+       2 cards animavam transform + gradiente + borda + sombra de 40px de
+       borrão, repintando quadro a quadro bem na hora em que o controle
+       precisa responder. Em TV, foco que pula na hora é o normal. */
+    transition: none !important;
 }
 
 html.tv-lite .app-loading-spinner,
