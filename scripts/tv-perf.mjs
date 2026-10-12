@@ -119,6 +119,17 @@ const LATENCIA = 'window.__perf={lat:[],vis:[]};window.addEventListener("keydown
 async function temImagem(controle, tv, nome) {
     const caixa = await tv.js('(function(){var v=document.querySelector("video");if(!v)return null;var r=v.getBoundingClientRect();return [r.left,r.top,r.right,r.bottom].map(Math.round)})()');
     if (!caixa) return null;
+    // O quadro chega no plano de vídeo 1,5–5 s DEPOIS de o <video> já estar
+    // andando (visto em 12/10/2026, no build novo e no antigo). Uma foto só
+    // dava "preta" à toa — tenta por até ~8 s.
+    for (let i = 0; i < 6; i++) {
+        if (i) await dormir(1000);
+        const r = await desvioDaFoto(controle, nome, caixa);
+        if (r !== false) return r;
+    }
+    return false;
+}
+async function desvioDaFoto(controle, nome, caixa) {
     const foto = await controle.foto(path.join(ESTADO, `${nome}.jpg`));
     if (!foto) return null;
     const py = spawnSync('python3', ['-I', '-W', 'ignore', '-c', `import sys,statistics as s

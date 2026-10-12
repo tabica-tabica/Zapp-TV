@@ -54,27 +54,32 @@ usa `python3` + Pillow (preta ≈ 0,2 de desvio, com imagem ≈ 34).
 **Ninguém pode estar usando a TV durante a medição** — a bancada aperta
 teclas, troca de página e reabre o app.
 
-Baseline salvo em 12/10/2026 (3 rodadas, mediana), **antes** de worker,
-buffer da prévia, cache de catálogo, hls light, polyfills e transições:
+Baseline atual: 12/10/2026, 3 rodadas, mediana, **depois** do lote (worker,
+buffer da prévia, cache de catálogo, hls light, polyfills e transições). O
+anterior ficou em `.tv-perf/baseline-antes-lote.json`.
 
-| Métrica | Valor |
-| --- | --- |
-| Prévia da Home / TV ao Vivo até tocar | 7,3 s / 10,8 s |
-| Grade: tecla→quadro, mediana / p90 | 329 / 825 ms |
-| Mesmo `<video>` em todas as trocas | sim (1 sessão de playlist) |
-| Volta a tocar após troca (TV ao Vivo / player / voltar / Home) | 11,4 / 7,3 / 6,5 / 16,3 s |
-| CPU parada na TV ao Vivo com prévia | 30 % |
-| Heap JS | 22 MB |
+| Métrica | Antes do lote | Depois |
+| --- | --- | --- |
+| Prévia da Home / TV ao Vivo até tocar | 7,3 s / 10,8 s | 7,0 s / 7,1 s |
+| Grade: tecla→quadro, mediana / p90 | 329 / 825 ms | 194 / 755 ms |
+| Grade: teclas atendidas / foco visível | 89 % / 76 % | 100 % / 100 % |
+| Mesmo `<video>` em todas as trocas | sim (1 sessão de playlist) | sim |
+| Volta a tocar após troca (TV ao Vivo / player / voltar / Home) | 11,4 / 7,3 / 6,5 / 16,3 s | 10,6 / 7,0 / 6,2 / 8,9 s |
+| CPU parada na TV ao Vivo com prévia | 30 % | 15 % |
+| Heap JS | 22 MB | 20 MB |
+
+O quadro chega no plano de vídeo **1,5–5 s depois** de o `<video>` já estar
+andando (decodificando, `readyState 4`) — no build antigo também, e pior. A
+checagem de imagem da bancada tenta por ~8 s; uma foto só dava "preta" à toa.
 
 Referência anterior (v1.2.0, script avulso): grade 1033 ms de mediana e foco
 fora da tela em 1/3 das setas.
 
 ## 4. Pendências
 
-- [ ] **Validar na TV** o lote ainda não medido (`.ipk` atual): worker do hls.js
-      (sobe a partir de `file://`?), buffer da prévia, cache de catálogo, hls
-      light, polyfills explícitos, `transition: none`. Rodar
-      `npm run perf:tv -- <ip> --runs 3` e comparar com o baseline acima.
+- [x] **Validar na TV** o lote (12/10/2026): tudo igual ou melhor, números
+      na seção 3. Worker do hls.js sobe a partir de `file://` (visto pelo
+      inspetor: `Worker.workerCreated` com `assets/hls.worker.js`).
 - [ ] **Passear por todas as telas** no webOS (Configurações, Filmes, Séries,
       Minha Lista, perfis, busca): polyfill faltando aparece como tela quebrada.
 - [ ] **Abrir o menu de áudio/legenda num canal ao vivo** com o hls light e
@@ -82,16 +87,16 @@ fora da tela em 1/3 das setas.
 - [ ] **Variante HD/FHD** (CNN Brasil Money): na prática, depois de a HD cair
       uma vez, Home e TV ao Vivo devem abrir direto na FHD. Lógica testada
       (unit + TV com HD marcada como caída); falta ver no uso real.
-- [ ] **Troca de página lenta**: voltar a tocar leva 6–16 s (Home é a pior,
-      ~16 s em todas as rodadas). É o `recoverMediaError` refazendo o
+- [ ] **Troca de página lenta**: voltar a tocar leva 6–11 s (era 6–16 s; a
+      Home caiu de ~16 s pra ~9 s com o lote). É o `recoverMediaError` refazendo o
       MediaSource + a Home montando ao mesmo tempo. Investigar com a bancada.
 - [ ] **Foco da grade re-renderiza a página inteira**: o índice focado mora no
       `LiveTV.tsx` (1660 linhas). Extrair grade + navegação pra um componente
       memoizado — o que sobra da latência de ~330 ms por seta.
 - [ ] **Picos de 2–4 s na grade** ao inverter o sentido da rolagem (vistos na
       v1.2.0 e depois). Perfilar com `scripts/tv-perf.mjs` + perfil de CPU.
-- [ ] **"Foco visível" 76 %** em 2 de 3 rodadas da bancada: pode ser só a
-      medição pegando o quadro antes de a grade redesenhar — confirmar.
+- [x] **"Foco visível" 76 %**: 100 % nas 6 rodadas depois do lote (sem as
+      transições, o quadro medido já é o final).
 - [ ] **Home vazia** uma vez ao voltar da TV ao Vivo (sem seções); um reload
       resolveu e não reproduziu. Ficar de olho.
 - [ ] **Carregar telas raras sob demanda** (Configurações, perfis, modal de
