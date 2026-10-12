@@ -4,7 +4,7 @@
 // estático de sempre (logo). Nunca é o player de verdade: o botão "Assistir"
 // continua abrindo VideoPlayer.tsx normalmente.
 
-import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
+import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref } from 'react';
 import type Hls from 'hls.js';
 import { useHls } from '../hooks/useHls';
 
@@ -28,18 +28,39 @@ interface LiveChannelPreviewProps {
     onResolvedUrl?: (url: string) => void;
     /** O navegador barrou o autoplay com som e a prévia passou a tocar muda. */
     onAutoMuted?: () => void;
+    /**
+     * Pipeline devolvido pelo player ao fechar (o inverso do handOff): a prévia
+     * assume o <video> + hls.js TOCANDO em vez de abrir outra conexão. Lido só
+     * na montagem.
+     */
+    adopt?: LivePipeline | null;
     ref?: Ref<LiveChannelPreviewHandle>;
 }
 
-export function LiveChannelPreview({ src, onError, muted = true, onResolvedUrl, onAutoMuted, ref }: LiveChannelPreviewProps) {
+export function LiveChannelPreview({ src, onError, muted = true, onResolvedUrl, onAutoMuted, adopt, ref }: LiveChannelPreviewProps) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const [failed, setFailed] = useState(false);
+    // Mesmo truque do player: o <video> adotado entra no host no MESMO commit
+    // em que o player sai da tela, e segue tocando sem engasgar
+    const [adotado] = useState<LivePipeline | null>(() => adopt ?? null);
+    const hostRef = useRef<HTMLDivElement>(null);
+    useLayoutEffect(() => {
+        const host = hostRef.current;
+        if (!adotado || !host) return;
+        // Pelo ref (mutável); o valor do useState não pode ser mexido
+        videoRef.current = adotado.video;
+        const video = videoRef.current;
+        host.appendChild(video);
+        video.className = 'live-channel-preview-video';
+        video.playsInline = true;
+    }, [adotado]);
 
     const { handOff } = useHls({
         src,
         videoRef,
         autoPlay: true,
         isLive: true,
+        adopt: adotado?.hls,
         onResolvedUrl,
         onStreamError: () => {
             setFailed(true);
@@ -77,6 +98,8 @@ export function LiveChannelPreview({ src, onError, muted = true, onResolvedUrl, 
     };
 
     if (failed) return null;
+
+    if (adotado) return <div ref={hostRef} className="live-channel-preview-host" />;
 
     return (
         <video

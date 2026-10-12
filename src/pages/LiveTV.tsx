@@ -190,6 +190,12 @@ export function LiveTV() {
     const previewRef = useRef<LiveChannelPreviewHandle>(null);
     const previewStreamIdRef = useRef<number | null>(null);
     const handoffRef = useRef<LivePipeline | null>(null);
+    // E a volta: Voltar no player devolve o pipeline TOCANDO, e a prévia do
+    // mesmo canal assume (canal segue no ar, sem reconectar). Lido só na
+    // montagem da prévia; zerado depois do commit pra não reaproveitar um
+    // pipeline velho numa montagem futura.
+    const devolucaoRef = useRef<{ id: number; pipeline: LivePipeline } | null>(null);
+    useEffect(() => { devolucaoRef.current = null; }, [playingChannel]);
     useEffect(() => {
         previewStreamIdRef.current = selectedChannel && !playingChannel && previewSrc && !previewFailed
             ? selectedChannel.stream_id : null;
@@ -1176,6 +1182,7 @@ export function LiveTV() {
                                     ref={previewRef}
                                     key={selectedChannel.stream_id}
                                     src={previewSrc}
+                                    adopt={devolucaoRef.current?.id === selectedChannel.stream_id ? devolucaoRef.current.pipeline : null}
                                     muted={previewMuted}
                                     // Sem gravar: barrado agora não quer dizer que o usuário prefira mudo
                                     onAutoMuted={() => setPreviewMuted(true)}
@@ -1461,8 +1468,22 @@ export function LiveTV() {
                     isRadio={isRadioChannel(playingChannel, categoryNameById.get(playingChannel.category_id))}
                     qualityVariants={playerQualityVariants}
                     onSelectQualityVariant={handleSelectQualityVariant}
-                    onClose={() => {
+                    onClose={(devolvido) => {
                         handoffRef.current = null;
+                        if (devolvido) {
+                            // A prévia só assume se for montar AGORA, neste mesmo
+                            // commit, pro canal que estava tocando: previewSrc
+                            // pronto (o debounce de 400ms de um zap recente pode
+                            // não ter passado). Senão o pipeline morre aqui.
+                            if (previewSrc && !previewFailed && selectedChannel?.stream_id === playingChannel.stream_id) {
+                                devolucaoRef.current = { id: playingChannel.stream_id, pipeline: devolvido };
+                            } else {
+                                devolvido.hls.destroy();
+                                devolvido.video.pause();
+                                devolvido.video.removeAttribute('src');
+                                devolvido.video.load();
+                            }
+                        }
                         setPlayingChannel(null);
                     }}
                 />

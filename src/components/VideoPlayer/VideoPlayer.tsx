@@ -44,7 +44,12 @@ export interface VideoPlayerProps {
     src: string;
     title?: string;
     poster?: string;
-    onClose?: () => void;
+    /**
+     * Fechou. Com `adopt` (pipeline da prévia), o player DEVOLVE o pipeline
+     * ainda tocando quando dá — quem chamou decide se a prévia assume ou se
+     * destrói (ver LiveTV). Sem `adopt`, nunca vem pipeline.
+     */
+    onClose?: (devolvido?: LivePipeline) => void;
     isLive?: boolean;
     autoPlay?: boolean;
     resumeTime?: number | null;
@@ -616,6 +621,7 @@ export function VideoPlayer({
     // HLS hook with quality support
     const {
         hlsRef,
+        handOff,
         cleanup,
         reload,
         qualityLevels,
@@ -1313,6 +1319,8 @@ export function VideoPlayer({
     // adotado da prévia (que não tem como ser recriado sem conexão nova).
     // Remontou → cancela. Desmontou de verdade → limpa.
     const teardownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // <video> devolvido pra prévia ao fechar: a desmontagem não pode zerá-lo
+    const devolvidoRef = useRef(false);
     useEffect(() => {
         if (teardownTimerRef.current) {
             clearTimeout(teardownTimerRef.current);
@@ -1323,7 +1331,7 @@ export function VideoPlayer({
             teardownTimerRef.current = setTimeout(() => {
                 teardownTimerRef.current = null;
                 cleanup();
-                if (video) {
+                if (video && !devolvidoRef.current) {
                     video.pause();
                     video.src = '';
                     video.load();
@@ -1394,6 +1402,19 @@ export function VideoPlayer({
         if (onTimeUpdate && videoRef.current) {
             onTimeUpdate(videoRef.current.currentTime, videoRef.current.duration || 0);
         }
+        // Veio da prévia (adopt) e ainda está no ar: devolve o pipeline TOCANDO
+        // em vez de matar — Voltar não derruba o canal nem abre outra conexão.
+        // Pausado no timeshift não volta: a fonte ali não é mais o ao vivo.
+        const video = videoRef.current;
+        if (adopted && video && isLiveContent && !pausedLiveSrc && video.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) {
+            const hls = handOff();
+            if (hls) {
+                devolvidoRef.current = true;
+                video.querySelectorAll('track').forEach(t => t.remove());
+                onClose?.({ video, hls });
+                return;
+            }
+        }
         cleanup();
         if (videoRef.current) {
             videoRef.current.pause();
@@ -1401,7 +1422,7 @@ export function VideoPlayer({
             videoRef.current.load();
         }
         onClose?.();
-    }, [cleanup, onClose, onTimeUpdate]);
+    }, [cleanup, onClose, onTimeUpdate, adopted, isLiveContent, pausedLiveSrc, handOff]);
 
     useEffect(() => {
         handleCloseRef.current = handleClose;
