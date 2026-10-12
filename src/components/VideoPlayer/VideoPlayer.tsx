@@ -364,11 +364,14 @@ export function VideoPlayer({
     const canZap = isLiveContent && !!channelList?.length && !!onSwitchChannel;
 
     // Video state
-    const [playing, setPlaying] = useState(false);
+    // <video> adotado da prévia já chega TOCANDO: o 'playing'/'canplay' dele
+    // disparou antes do player existir e não volta. Sem ler o estado real, o
+    // spinner ficava pra sempre na tela (e o botão mostrava ▶ com o canal no ar).
+    const [playing, setPlaying] = useState(() => !!adopt && !adopt.video.paused);
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
     const [buffered, setBuffered] = useState(0);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(() => !(adopt && adopt.video.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA));
     const [error, setError] = useState<string | null>(null);
     const [showControls, setShowControls] = useState(true);
     const [hoverTime, setHoverTime] = useState<number | null>(null);
