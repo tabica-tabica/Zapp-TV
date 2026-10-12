@@ -1,0 +1,38 @@
+ZAPP TV PARA TV LG (webOS) — COMO INSTALAR
+==========================================
+
+Nesta pasta:
+  - com.tabica.zapptv_<versão>_all.ipk  o aplicativo
+  - install-tv.bat                       instalador do Windows (duplo clique)
+  - install-tv.command                   instalador do macOS (duplo clique) e Linux
+  - install-tv.ps1 / install-tv-remote.sh  usados pelos instaladores (não abra)
+
+Não precisa de Node nem do SDK da LG. O computador e a TV precisam estar na
+MESMA rede (Wi-Fi de visitante/convidado não serve: ela isola os aparelhos).
+
+1. NA TV (uma vez só)
+   a. Abra a LG Content Store, procure "Developer Mode" e instale.
+   b. Abra o Developer Mode e entre com uma conta de desenvolvedor LG
+      (gratuita, em webostv.developer.lge.com).
+   c. Ligue "Dev Mode Status". A TV reinicia.
+   d. Abra o Developer Mode de novo e ligue "Key Server".
+   e. Anote o IP e a Passphrase (6 caracteres) que aparecem na tela.
+
+2. NO COMPUTADOR
+   Windows : duplo clique em install-tv.bat
+             (se faltar o SSH do Windows, ele baixa sozinho o OpenSSH
+             portátil da Microsoft — sem precisar de administrador)
+   macOS   : clique com o botão direito em install-tv.command → Abrir → Abrir
+             (só na primeira vez; o macOS bloqueia arquivo baixado da internet)
+   Linux   : no terminal, nesta pasta: sh install-tv.command
+
+   Digite o IP e a Passphrase quando pedir. O app instala e abre na TV.
+
+PROBLEMAS
+   - "Não consegui falar com o Key Server": confira o IP e se "Key Server"
+     está ligado; TV e computador na mesma rede.
+   - "A Passphrase não confere": digite exatamente como na tela
+     (maiúsculas contam).
+   - O app sumiu da TV depois de uns dias: a sessão do Developer Mode dura
+     ~50 horas. Abra o Developer Mode e use "Extend" (estender) antes de
+     acabar; se acabou, ligue de novo e reinstale.

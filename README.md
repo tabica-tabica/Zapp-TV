@@ -110,6 +110,8 @@ npm run build        # Alias for build:web
 npm run build:web    # Type-check and build the modern web app
 npm run build:tizen  # Type-check, build the Tizen bundle, and copy assets into tizen/
 npm run build:webos  # Type-check, build the webOS bundle, and copy assets into webos/
+npm run package:webos # Build the LG .ipk + installers + zip into dist/ipk
+npm run install:webos # Install dist/ipk's .ipk on an LG TV over the network
 npm run lint         # Run ESLint
 npm test             # Run the test suite (Vitest)
 npm run test:watch   # Run the tests in watch mode
@@ -239,8 +241,60 @@ If the Tizen CLI has trouble transferring `ZappTV.wgt`, copy the same package to
 ## LG webOS
 
 The webOS build targets webOS 4.x and newer (Chromium 53+, with `src/legacyPolyfills.ts` filling
-`AbortController`/`ResizeObserver`) — not the older webOS 3.x floor. The package identity in `webos/appinfo.json` is
-currently a **placeholder**, not a value reserved with LG:
+`AbortController`/`ResizeObserver`) — not the older webOS 3.x floor.
+
+### Install on an LG TV
+
+No Node.js and no LG SDK needed. Download **`zapp-tv-lg-<version>.zip`** from the
+[latest release](https://github.com/tabica-tabica/Zapp-TV/releases/latest) and unzip it. It contains
+the app (`.ipk`), the installers and a `LEIA-ME.txt` with these same steps in Portuguese.
+
+The computer and the TV must be on the **same network** — a guest Wi-Fi isolates devices and won't
+work.
+
+**1. On the TV (once)**
+
+1. Open the **LG Content Store**, search for **Developer Mode** and install it.
+2. Open Developer Mode and sign in with an LG developer account (free, at
+   [webostv.developer.lge.com](https://webostv.developer.lge.com)).
+3. Turn **Dev Mode Status** on. The TV restarts.
+4. Open Developer Mode again and turn **Key Server** on.
+5. Note the **IP** and the **Passphrase** (6 characters) shown on screen.
+
+**2. On the computer**
+
+| System | Run |
+|---|---|
+| Windows 10/11 | Double-click `install-tv.bat`. If Windows' OpenSSH client is missing, it downloads Microsoft's portable OpenSSH by itself (no admin rights; pinned version, SHA-256 checked). |
+| macOS | Right-click `install-tv.command` → **Open** → **Open** (first time only: macOS blocks files downloaded from the internet). |
+| Linux | In a terminal, inside the folder: `sh install-tv.command` |
+
+Type the TV's IP and the Passphrase when asked. The installer fetches the TV's key from the Key
+Server, uploads the `.ipk` over SSH, installs it and opens the app.
+
+**Troubleshooting**
+
+- *"Não consegui falar com o Key Server"* — check the IP, that **Key Server** is on, and that both are
+  on the same network.
+- *"A Passphrase não confere"* — type it exactly as shown (case-sensitive).
+- **The app disappeared after a few days** — the Developer Mode session lasts ~50 hours. Open
+  Developer Mode and use **Extend** before it runs out; if it already did, turn it on again and
+  reinstall.
+
+### Build the package (developers)
+
+```bash
+npm run package:webos   # build + dist/ipk: .ipk, store images, installers and zapp-tv-lg-<version>.zip
+npm run install:webos   # install dist/ipk's .ipk on a TV (asks for IP and Passphrase)
+```
+
+The zip is made with `bsdtar` (the `tar` of macOS and Windows 10+), which keeps
+`install-tv.command` executable. The webOS CLI (`ares-package`/`ares-install` from the
+[webOS TV SDK](https://webostv.developer.lge.com/develop/tools/cli-installation)) works too but is
+not required. Use `ares-inspect` for remote Chrome DevTools on the actual TV — the emulator does not
+reproduce the device's real RAM constraints.
+
+The package identity in `webos/appinfo.json` is a **placeholder**, not a value reserved with LG:
 
 ```text
 App ID: com.tabica.zapptv   (placeholder — confirm against the id reserved in LG Seller Lounge)
@@ -248,23 +302,9 @@ Vendor: Tabica
 Visible name: Zapp TV
 ```
 
-After `npm run build:webos`, package the app with the webOS CLI (`ares-package`, part of the
-[webOS TV SDK](https://webostv.developer.lge.com/develop/tools/cli-installation)) and install it on
-a connected LG TV:
-
-```bash
-ares-package webos
-# ares-package names the .ipk after the app id and version — install that generated file
-ares-install -d <device-name> <generated>.ipk
-ares-launch -d <device-name> com.tabica.zapptv
-```
-
-Use `ares-inspect` for remote Chrome DevTools on the actual TV — the emulator does not reproduce the
-device's real RAM constraints.
-
-**Not done by this repo** (needs a human with an LG account and physical hardware): creating the LG
-Seller Lounge account, reserving the real app id, generating a signed `.ipk`, testing on a physical
-webOS TV, and store screenshots. See `docs/CHECKLIST_WEBOS.md`, `docs/LG_UX_SCENARIO.md`, and
+**Not done by this repo** (needs a human with an LG account): creating the LG Seller Lounge account,
+reserving the real app id and submitting a signed `.ipk` to the store. Store art lives in
+`brand/webos`. See `docs/CHECKLIST_WEBOS.md`, `docs/LG_UX_SCENARIO.md`, and
 `docs/LG_SELF_CHECKLIST.md` for what's left before a real submission.
 
 ## Security Notes
