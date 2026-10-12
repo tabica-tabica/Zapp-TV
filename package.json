@@ -23,6 +23,7 @@
     "brand:sync": "node scripts/sync-brand.mjs",
     "brand:icons": "node scripts/generate-icons.mjs",
     "lint": "eslint .",
+    "lint:webos": "LINT_ALVO=webos BROWSERSLIST='chrome 53' eslint src",
     "preview": "vite preview",
     "test": "vitest run",
     "check:css": "node scripts/check-tizen-css.mjs",

@@ -1,7 +1,8 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import legacy from '@vitejs/plugin-legacy'
-import { brandDefine } from './vite.define.ts'
+import { brandDefine, hlsLightNaTV } from './vite.define.ts'
+import { POLYFILLS_TIZEN } from './scripts/tizen-polyfills.mjs'
 
 // Samsung Tizen build: legacy browser support and a single app bundle.
 export default defineConfig({
@@ -22,10 +23,12 @@ export default defineConfig({
       // responsabilidade daqui: Object.fromEntries e do Chrome 73 e o codigo
       // usa (progressService). Sintaxe (?. e ?? sao do Chrome 80) quem resolve
       // e o build.target abaixo.
-      modernPolyfills: true,
+      // Lista explícita: `true` adivinhava pelo nome do método (ver scripts/tizen-polyfills.mjs)
+      modernPolyfills: POLYFILLS_TIZEN.corejs,
     }),
   ],
   base: './',
+  resolve: { alias: hlsLightNaTV },
   build: {
     // Chromium 69 = Tizen 5.5, o minimo declarado no config.xml
     target: 'chrome69',

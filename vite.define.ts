@@ -26,3 +26,11 @@ export function brandDefine(target: 'web' | 'tizen' | 'webos' | 'tauri') {
     __BRAND_LOGO_URL__: JSON.stringify(brand.logoUrl || ''),
   }
 }
+
+// TVs: build "light" do hls.js (−188 KB, ~1/3 dele). Fica de fora o que estes
+// builds não usam: faixas ALTERNATIVAS de áudio/legenda dentro de stream HLS
+// (filme e série do Xtream são mp4/mkv direto, com as faixas do próprio
+// <video>; canal ao vivo vem com uma faixa só), DRM, CMCD, content steering,
+// interstitials e #EXT-X-DEFINE. O desktop segue com o build completo.
+// Só o import "hls.js" exato: o do worker (hls.js/dist/hls.worker.js) é o mesmo nos dois.
+export const hlsLightNaTV = [{ find: /^hls\.js$/, replacement: 'hls.js/light' }]

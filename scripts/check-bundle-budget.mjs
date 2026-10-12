@@ -43,11 +43,19 @@ const alvo = join(root, process.argv[2] || join('dist', 'tizen', 'assets'));
 // e o failover ao vivo por buffer (rotação de variantes, benchmark passivo,
 // salvaguarda de limite de conexões). Medido: index.js 1129 KB / JS total
 // 1249 KB (Tizen) e 1133 KB / 1256 KB (webOS) — teto ~1% acima do webOS.
+//
+// 12/10/2026, baixado: hls.worker.js (100 KB) passa a ir junto — o build ESM
+// do hls.js só usa worker com `workerPath`, e sem ele o transmux rodava na
+// thread principal (o worker não é parseado na thread principal). Em troca:
+// build "light" do hls.js nas TVs (−179 KB, ver vite.define.ts) e polyfills em
+// lista explícita (123 → 24 KB, ver scripts/tizen-polyfills.mjs). Medido:
+// index.js 954 KB / JS total 1072 KB (Tizen) e 959 / 1083 KB (webOS) — teto
+// ~2% acima do webOS.
 const ORCAMENTO = {
-    /** Soma de todo JS. */
-    jsTotal: 1270,
+    /** Soma de todo JS (inclui o worker do hls.js). */
+    jsTotal: 1105,
     /** O maior arquivo isolado — é ele que trava a thread principal no parse. */
-    maiorJs: 1140,
+    maiorJs: 980,
     /** Todo o CSS. */
     cssTotal: 175,
 };

@@ -1,7 +1,8 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import legacy from '@vitejs/plugin-legacy'
-import { brandDefine } from './vite.define.ts'
+import { brandDefine, hlsLightNaTV } from './vite.define.ts'
+import { POLYFILLS_WEBOS } from './scripts/tizen-polyfills.mjs'
 
 // LG webOS build: legacy browser support and a single app bundle.
 export default defineConfig({
@@ -22,10 +23,12 @@ export default defineConfig({
       // Mesma faixa de Chromium do Tizen (68-79 vs 69) => mesmo polyfill de
       // biblioteca necessario (Object.fromEntries). Ver scripts/tizen-polyfills.mjs,
       // reaproveitado por scripts/build-webos.mjs.
-      modernPolyfills: true,
+      // Lista explícita: `true` adivinhava pelo nome e mandava 123 KB (ver scripts/tizen-polyfills.mjs)
+      modernPolyfills: POLYFILLS_WEBOS.corejs,
     }),
   ],
   base: './',
+  resolve: { alias: hlsLightNaTV },
   build: {
     target: 'chrome53',
     outDir: 'dist/webos',

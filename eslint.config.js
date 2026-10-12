@@ -4,7 +4,11 @@ import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
 import tseslint from 'typescript-eslint'
 import compat from 'eslint-plugin-compat'
-import { POLYFILLS_DO_BUILD } from './scripts/tizen-polyfills.mjs'
+import { POLYFILLS_TIZEN, POLYFILLS_WEBOS, POLYFILLS_DO_APP_WEBOS } from './scripts/tizen-polyfills.mjs'
+
+// `npm run lint:webos`: mesmo lint contra o Chromium 53 do webOS (BROWSERSLIST
+// no script) com a lista de polyfills DELE. O padrão segue o Tizen (chrome >= 69).
+const alvoWebos = process.env.LINT_ALVO === 'webos'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
@@ -31,7 +35,7 @@ export default defineConfig([
     settings: {
       // O que o build do Tizen entrega polifilado. A lista é CONFERIDA contra o
       // bundle gerado em scripts/build-tizen.mjs — ver scripts/tizen-polyfills.mjs.
-      polyfills: POLYFILLS_DO_BUILD,
+      polyfills: alvoWebos ? [...POLYFILLS_WEBOS.apis, ...POLYFILLS_DO_APP_WEBOS] : POLYFILLS_TIZEN.apis,
     },
   },
   {
