@@ -8,6 +8,7 @@ import {
 import { useHls, type StreamErrorCause } from '../../hooks/useHls';
 import {
     MAX_RECONNECT_ATTEMPTS, isTerminalCause, reconnectDelayMs, liveFeedStalled, liveBufferDying, CONNLIMIT_WINDOW_MS,
+    LIVE_ADOPT_GRACE_MS,
 } from '../../services/playerDecisions';
 import { playbackPrefs } from '../../services/playbackPrefs';
 import { useTVNavigation } from '../../hooks/useTVNavigation';
@@ -918,13 +919,23 @@ export function VideoPlayer({
     useEffect(() => { onStreamDegradingRef.current = onStreamDegrading; }, [onStreamDegrading]);
     const onLiveHealthyRef = useRef(onLiveHealthy);
     useEffect(() => { onLiveHealthyRef.current = onLiveHealthy; }, [onLiveHealthy]);
+    // Só a PRIMEIRA fonte é a adotada; troca de variante depois já é fonte nova
+    const adotadoPendenteRef = useRef(adopted !== null);
     useEffect(() => {
         if (!isLiveContent) return;
         const video = videoRef.current;
         if (!video) return;
         // Fonte nova: o "desistiu" da anterior não vale pra esta
         streamFailedRef.current = false;
-        let startedAt = Date.now();
+        // Pipeline assumido da prévia (webOS): o <video> movido refaz o
+        // MediaSource e leva 6–16 s pra voltar a tocar (visto na LG,
+        // 12/10/2026). Com os 10 s de partida o watchdog desistia no meio,
+        // marcava falha no canal e reconectava com sessão NOVA — o painel de
+        // 1 conexão recusava (403) e o player abria com erro. Agora: mais
+        // prazo, e o 1º remédio é refazer o MediaSource na MESMA sessão.
+        let adotado = adotadoPendenteRef.current;
+        adotadoPendenteRef.current = false;
+        let startedAt = Date.now() + (adotado ? LIVE_ADOPT_GRACE_MS : 0);
         let lastFrameAt = 0;
         let lastBufferGrowthAt = 0;
         let lastFrames = -1;
@@ -982,6 +993,11 @@ export function VideoPlayer({
             startedAt = now;
             lastFrameAt = lastBufferGrowthAt = 0;
             lastFrames = lastBufferEnd = -1;
+            if (adotado && hlsRef.current) {
+                adotado = false;
+                hlsRef.current.recoverMediaError();
+                return;
+            }
             if (limiteAtivo) {
                 scheduleReconnect('connlimit');
             } else if (hasAlternativeRef.current && onStreamFailedRef.current) {

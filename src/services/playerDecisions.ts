@@ -101,6 +101,8 @@ export function chooseCappedLevel(
 export const LIVE_STALL_MS = 8000;
 /** Ao vivo: tempo pro primeiro quadro antes de considerar que a fonte não sobe. */
 export const LIVE_START_TIMEOUT_MS = 10000;
+/** Prazo EXTRA de partida pro pipeline assumido da prévia (o <video> movido leva 6–16 s no webOS). */
+export const LIVE_ADOPT_GRACE_MS = 10000;
 
 export interface LiveFeedSample {
     now: number;
