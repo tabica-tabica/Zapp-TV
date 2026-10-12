@@ -62,8 +62,15 @@ interface UseHlsOptions {
     preview?: boolean;
 }
 
-/** Segundos de buffer da prévia (ao vivo: ~1-2 segmentos à frente) */
-const PREVIEW_BUFFER_S = 8;
+/**
+ * Segundos de buffer da prévia: 2 segmentos à frente (o painel corta em 10 s).
+ * Eram 8 s — menos que 1 segmento, o buffer secava entre um e outro e o
+ * player que assume a prévia nascia abaixo do LIVE_BUFFER_LOW_S. Na LG
+ * (12/10/2026): processo do app 124 → ~158 MB com a prévia tocando (sobram
+ * ~150 MB livres); backBufferLength 0 não muda nada — o hls.js guarda ao
+ * menos 1 segmento pra trás de qualquer jeito.
+ */
+const PREVIEW_BUFFER_S = 20;
 
 /** Última vez que QUALQUER pipeline deste app recebeu fragmento (ver connlimit). */
 let lastStreamActivityAt = 0;
