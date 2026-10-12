@@ -252,3 +252,20 @@ export function proximaVariante<T extends { stream_id: number }>(
     // sort é estável: empate mantém a ordem da volta
     return [...candidatas].sort((a, b) => nota(b) - nota(a))[0];
 }
+
+/**
+ * Variante pra COMEÇAR (prévia/Assistir) quando o benchmark já conhece o
+ * canal: a de melhor nota, nunca a que costuma estar fora (a não ser que
+ * todas estejam). Sem histórico em nenhuma, ou empate: a padrão do catálogo.
+ */
+export function melhorVariante<T extends { stream_id: number }>(
+    variantes: T[],
+    padrao: T,
+    saude: { pontuacao: (id: number) => number; costumaCair: (id: number) => boolean; temHistorico: (id: number) => boolean },
+): T {
+    if (!variantes.some(v => saude.temHistorico(v.stream_id))) return padrao;
+    const nota = (v: T) => (saude.costumaCair(v.stream_id) ? -1 : 0) + saude.pontuacao(v.stream_id);
+    // A padrão vai na frente: o sort estável a mantém no empate
+    const ordem = [padrao, ...variantes.filter(v => v.stream_id !== padrao.stream_id)];
+    return ordem.sort((a, b) => nota(b) - nota(a))[0];
+}

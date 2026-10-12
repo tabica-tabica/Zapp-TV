@@ -5,7 +5,7 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-    variantBaseName, channelDisplayName, groupChannelVariants, isSubtitledVariant, qualityLabel, mirrorTag, variantGroup, proximaVariante } from './channelVariants';
+    variantBaseName, channelDisplayName, groupChannelVariants, isSubtitledVariant, qualityLabel, mirrorTag, variantGroup, proximaVariante, melhorVariante } from './channelVariants';
 
 describe('variantBaseName', () => {
     it('parêntese só com a tag vira a raiz', () => {
@@ -346,5 +346,31 @@ describe('proximaVariante', () => {
     it('todas as outras falharam: null (volta a reconectar a atual)', () => {
         expect(proximaVariante(lista, 2, new Set([1, 3, 4]))).toBeNull();
         expect(proximaVariante([v(7)], 7, new Set())).toBeNull();
+    });
+});
+
+describe('melhorVariante', () => {
+    const v = (id: number) => ({ stream_id: id });
+    const lista = [v(1), v(2), v(3)];
+    const saude = (notas: Record<number, number>, caem: number[] = []) => ({
+        pontuacao: (id: number) => notas[id] ?? 0.5,
+        costumaCair: (id: number) => caem.includes(id),
+        temHistorico: (id: number) => id in notas,
+    });
+
+    it('sem histórico em nenhuma: a padrão do catálogo', () => {
+        expect(melhorVariante(lista, v(1), saude({})).stream_id).toBe(1);
+    });
+
+    it('com histórico: começa na de melhor nota', () => {
+        expect(melhorVariante(lista, v(1), saude({ 1: 0.3, 3: 0.9 })).stream_id).toBe(3);
+    });
+
+    it('a que costuma cair nunca é a primeira escolha', () => {
+        expect(melhorVariante(lista, v(1), saude({ 1: 0.2, 3: 0.95 }, [3])).stream_id).toBe(2);
+    });
+
+    it('empate fica com a padrão', () => {
+        expect(melhorVariante(lista, v(2), saude({ 1: 0.5, 3: 0.5 })).stream_id).toBe(2);
     });
 });

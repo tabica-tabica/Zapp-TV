@@ -67,4 +67,8 @@ export const liveHealth = {
     costumaCair(streamId: number, agora = Date.now()): boolean {
         return costumaCairDe(ler()[streamId], agora);
     },
+    /** Já tocou (ou caiu) alguma vez aqui — sem isso a nota é só o neutro 0,5 */
+    temHistorico(streamId: number): boolean {
+        return streamId in ler();
+    },
 };
