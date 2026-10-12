@@ -481,11 +481,14 @@ export function LiveTV() {
     // Variante pra a prévia COMEÇAR: com o benchmark conhecendo o canal, a
     // mais confiável (liveHealth); sem histórico, a padrão do catálogo.
     // Calculado uma vez por seleção (o benchmark lê o storage).
-    const padraoDaPrevia = useMemo(() => {
-        if (!selectedChannel) return null;
-        const repId = representativeOf.get(selectedChannel.stream_id) ?? selectedChannel.stream_id;
-        return melhorVariante(variantsOf.get(String(repId)) ?? [selectedChannel], selectedChannel, liveHealth);
-    }, [selectedChannel, representativeOf, variantsOf]);
+    const melhorDoGrupo = useCallback((canal: LiveStream) => {
+        const repId = representativeOf.get(canal.stream_id) ?? canal.stream_id;
+        return melhorVariante(variantsOf.get(String(repId)) ?? [canal], canal, liveHealth);
+    }, [representativeOf, variantsOf]);
+    const padraoDaPrevia = useMemo(
+        () => (selectedChannel ? melhorDoGrupo(selectedChannel) : null),
+        [selectedChannel, melhorDoGrupo],
+    );
     // O que a prévia está tocando DE FATO: a variante fixada pra esta seleção
     // (failover da prévia, ou a que o player tocou), senão a melhor/padrão
     const canalDaPrevia = selectedChannel && previaVariante?.de === selectedChannel.stream_id
@@ -709,6 +712,12 @@ export function LiveTV() {
         storage.setLastChannel(stream.stream_id);
         zapHistory.push(stream.stream_id);
     }, []);
+    // "Abrir este canal" sem escolher variante (CH±, guia, painéis, aleatório):
+    // vai na de melhor histórico, como a prévia. Sem isto a padrão do catálogo
+    // que está fora do ar era tentada TODA vez e o failover achava a boa de
+    // novo — a que funciona nunca virava a padrão. playChannel direto fica pra
+    // variante escolhida (botão de qualidade, failover, o que a prévia toca).
+    const tocarCanal = useCallback((canal: LiveStream) => playChannel(melhorDoGrupo(canal)), [playChannel, melhorDoGrupo]);
 
     // Failover: stream morreu de vez → tenta a próxima variante do grupo
     const handleStreamFailed = useCallback((porLimite?: boolean) => {
@@ -841,8 +850,8 @@ export function LiveTV() {
     // Zapping vindo do player (CH±, dígitos, overlay)
     const handleSwitchChannel = useCallback((streamId: number) => {
         const found = streams.find(s => s.stream_id === streamId);
-        if (found) playChannel(found);
-    }, [streams, playChannel]);
+        if (found) tocarCanal(found);
+    }, [streams, tocarCanal]);
 
     // Ações dos atalhos coloridos
     const toggleChannelFavorite = useCallback((stream: LiveStream) => {
@@ -903,7 +912,7 @@ export function LiveTV() {
         if (!next || next.start > nowMs || next.end > nowMs) {
             const channel = archivePlayback.channel;
             setArchivePlayback(null);
-            playChannel(channel);
+            tocarCanal(channel);
             return;
         }
         setArchivePlayback({ ...archivePlayback, index: nextIndex });
@@ -965,8 +974,8 @@ export function LiveTV() {
         const pool = filteredStreams.filter(s => s.stream_id !== playingChannel?.stream_id);
         if (pool.length === 0) return;
         const pick = pool[Math.floor(Math.random() * pool.length)];
-        playChannel(pick);
-    }, [filteredStreams, playingChannel, playChannel]);
+        tocarCanal(pick);
+    }, [filteredStreams, playingChannel, tocarCanal]);
 
     const toggleOnlyEpg = useCallback(() => {
         setOnlyWithEpg(prev => {
@@ -1516,7 +1525,7 @@ export function LiveTV() {
                     onClose={() => setShowGuide(false)}
                     onPlay={(canal) => {
                         setShowGuide(false);
-                        playChannel(canal);
+                        tocarCanal(canal);
                     }}
                     onPlayArchive={(canal, programas, index) => {
                         setShowGuide(false);
@@ -1534,7 +1543,7 @@ export function LiveTV() {
                     onClose={() => setShowFavoritesPanel(false)}
                     onPlay={(channel) => {
                         setShowFavoritesPanel(false);
-                        playChannel(channel);
+                        tocarCanal(channel);
                     }}
                     onMove={moveFavorite}
                 />
@@ -1547,7 +1556,7 @@ export function LiveTV() {
                     onClose={() => setShowSportsPanel(false)}
                     onPlay={(channel) => {
                         setShowSportsPanel(false);
-                        playChannel(channel);
+                        tocarCanal(channel);
                     }}
                     onRemind={(event: SportsEvent) => toggleReminder(event.channel, event.program)}
                     isReminded={(event: SportsEvent) =>

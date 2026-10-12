@@ -72,7 +72,7 @@ export interface VideoPlayerProps {
      * conexões da conta — a culpa não é do canal (o benchmark não conta).
      */
     onStreamFailed?: (porLimite?: boolean) => void;
-    /** Ao vivo: a fonte tocou 60s seguidos sem travar (benchmark, ver liveHealth). Uma vez por fonte. */
+    /** Ao vivo: a fonte tocou 10s seguidos sem travar (benchmark, ver liveHealth). Uma vez por fonte. */
     onLiveHealthy?: () => void;
     /** Tentativas antes de desistir (e chamar onStreamFailed). Menor quando há variante pra failover. */
     maxReconnectAttempts?: number;
@@ -930,7 +930,11 @@ export function VideoPlayer({
         let lastFrames = -1;
         let lastBufferEnd = -1;
         let avisouDegradando = false; // um aviso por fonte
-        // Benchmark: 60s seguidos com quadro andando = fonte boa (uma vez por fonte)
+        // Benchmark: 10s seguidos com quadro andando = fonte boa (uma vez por fonte).
+        // Eram 60s (12/10/2026): a variante que o failover achava (CNN
+        // Internacional, HD fora) quase nunca chegava lá antes de a pessoa
+        // trocar de canal — sem acerto, a HD fora seguia ganhando pelo
+        // histórico antigo e voltava como padrão. A prévia já conta no 1º quadro.
         let saudavelDesde = 0;
         let avisouSaudavel = false;
         const interval = setInterval(() => {
@@ -950,7 +954,7 @@ export function VideoPlayer({
             lastFrames = frames;
             if (lastFrameAt && now - lastFrameAt < 3000) {
                 if (!saudavelDesde) saudavelDesde = now;
-                if (!avisouSaudavel && now - saudavelDesde >= 60000) {
+                if (!avisouSaudavel && now - saudavelDesde >= 10000) {
                     avisouSaudavel = true;
                     onLiveHealthyRef.current?.();
                 }

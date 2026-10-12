@@ -2,7 +2,7 @@
 // assiste — nunca testa canal por conta própria, porque cada teste abriria
 // uma conexão e a conta de 1 conexão bloqueia com 2-3 (visto no painel).
 //
-// - ok: a fonte tocou 60s seguidos (VideoPlayer onLiveHealthy) ou a prévia
+// - ok: a fonte tocou 10s seguidos (VideoPlayer onLiveHealthy) ou a prévia
 //   subiu (LiveChannelPreview) — sem isso a variante que o failover achou
 //   nunca ganhava histórico e a quebrada seguia sendo a padrão
 // - falha: a fonte morreu ou não subiu — MENOS quando o painel estava

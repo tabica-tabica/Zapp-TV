@@ -62,6 +62,21 @@ describe('ultimoCanalNoAr', () => {
         expect(storage.getLastChannel()).toBe(2);
     });
 
+    // Visto na LG (12/10/2026): HD com ~15 acertos antigos cai; a simples (com
+    // uma falha velha) é a que o failover acha. Sem o acerto da simples, a HD
+    // segue ganhando pelo histórico — por isso o player conta acerto aos 10 s.
+    it('CNN Internacional: a simples que o failover achou só vira padrão depois de contar acerto', () => {
+        const cnn = [c(81017, 'CNN Internacional'), c(91565, 'CNN Internacional HD')];
+        liveHealth.registrar(81017, 'falha');
+        for (let i = 0; i < 15; i++) liveHealth.registrar(91565, 'ok');
+        storage.setLastChannel(91565);
+        liveHealth.registrar(91565, 'falha');
+        expect(ultimoCanalNoAr(cnn)?.stream_id).toBe(91565);
+        liveHealth.registrar(81017, 'ok');
+        expect(ultimoCanalNoAr(cnn)?.stream_id).toBe(81017);
+        expect(storage.getLastChannel()).toBe(81017);
+    });
+
     it('sem histórico fica o último assistido', () => {
         storage.setLastChannel(3);
         expect(ultimoCanalNoAr(canais)?.stream_id).toBe(3);

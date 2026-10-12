@@ -87,6 +87,11 @@ fora da tela em 1/3 das setas.
 - [ ] **Variante HD/FHD** (CNN Brasil Money): na prática, depois de a HD cair
       uma vez, Home e TV ao Vivo devem abrir direto na FHD. Lógica testada
       (unit + TV com HD marcada como caída); falta ver no uso real.
+      12/10/2026, CNN Internacional (HD padrão fora): CH±, guia, painéis e
+      aleatório abriam a variante crua (agora `tocarCanal` → melhor
+      histórico), e o player só contava acerto aos 60 s (agora 10 s) — a
+      variante achada pelo failover nunca virava a padrão. Falta ver na TV
+      com a HD fora de novo.
 - [ ] **Troca de página lenta**: voltar a tocar leva 6–11 s (era 6–16 s; a
       Home caiu de ~16 s pra ~9 s com o lote). É o `recoverMediaError` refazendo o
       MediaSource + a Home montando ao mesmo tempo. Investigar com a bancada.
