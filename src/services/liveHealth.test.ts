@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { installFakeStorage } from '../testing/fakeStorage';
-import { liveHealth, pontuacaoDe, costumaCairDe } from './liveHealth';
+import { liveHealth, pontuacaoDe, costumaCairDe, ultimoCanalNoAr } from './liveHealth';
+import { storage } from './storage';
 
 const DIA = 24 * 60 * 60 * 1000;
 
@@ -22,6 +23,15 @@ describe('liveHealth (benchmark passivo das fontes ao vivo)', () => {
         expect(liveHealth.pontuacao(7, t)).toBeLessThan(0.34);
     });
 
+    it('lembra o resultado mais recente', () => {
+        liveHealth.registrar(3, 'ok');
+        liveHealth.registrar(3, 'falha');
+        expect(liveHealth.ultimoFalhou(3)).toBe(true);
+        liveHealth.registrar(3, 'ok');
+        expect(liveHealth.ultimoFalhou(3)).toBe(false);
+        expect(liveHealth.ultimoFalhou(99)).toBe(false);
+    });
+
     it('acertos seguram a nota mesmo com algumas quedas', () => {
         const t = 1_000_000;
         for (let i = 0; i < 6; i++) liveHealth.registrar(9, 'ok', t);
@@ -37,5 +47,24 @@ describe('liveHealth (benchmark passivo das fontes ao vivo)', () => {
         // 3 meias-vidas depois, 4 falhas viram 0,5
         expect(costumaCairDe(r, 21 * DIA)).toBe(false);
         expect(pontuacaoDe(r, 21 * DIA)).toBeGreaterThan(pontuacaoDe(r, 0));
+    });
+});
+
+describe('ultimoCanalNoAr', () => {
+    const c = (stream_id: number, name: string) => ({ stream_id, name });
+    const canais = [c(1, 'CNN Money'), c(2, 'CNN Money FHD'), c(3, 'CNN Money HD'), c(4, 'Outro')];
+
+    it('a HD que caiu na última tentativa cede pra FHD, que vira o último canal', () => {
+        storage.setLastChannel(3);
+        liveHealth.registrar(3, 'ok');
+        liveHealth.registrar(3, 'falha');
+        expect(ultimoCanalNoAr(canais)?.stream_id).toBe(2);
+        expect(storage.getLastChannel()).toBe(2);
+    });
+
+    it('sem histórico fica o último assistido', () => {
+        storage.setLastChannel(3);
+        expect(ultimoCanalNoAr(canais)?.stream_id).toBe(3);
+        expect(storage.getLastChannel()).toBe(3);
     });
 });

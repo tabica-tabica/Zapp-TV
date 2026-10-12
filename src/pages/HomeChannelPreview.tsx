@@ -18,6 +18,7 @@ import { useEffect, useState, type Ref } from 'react';
 import { FaBroadcastTower, FaPlay } from 'react-icons/fa';
 import { LiveChannelPreview, type LiveChannelPreviewHandle } from '../components/LiveChannelPreview';
 import { api } from '../services/api';
+import { liveHealth } from '../services/liveHealth';
 import { epgService } from '../services/epgService';
 import { channelDisplayName } from '../services/channelVariants';
 import { useTranslation } from '../hooks/useTranslation';
@@ -74,7 +75,11 @@ export function HomeChannelPreview({ channel, focused, onWatch, previewRef }: Ho
                         src={src}
                         // Vindo da TV ao Vivo neste canal: assume o stream que ela estacionou
                         canalId={channel.stream_id}
-                        onError={() => setFailed(true)}
+                        onError={(causa) => {
+                            // Benchmark: limite de conexões não é culpa do canal
+                            if (causa !== 'connlimit') liveHealth.registrar(channel.stream_id, 'falha');
+                            setFailed(true);
+                        }}
                     />
                 ) : (
                     <div className="home-channel-preview-fallback">

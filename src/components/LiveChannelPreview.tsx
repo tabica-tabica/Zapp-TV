@@ -10,6 +10,7 @@ import { useHls } from '../hooks/useHls';
 import { LIVE_START_TIMEOUT_MS, type StreamErrorCause } from '../services/playerDecisions';
 import { pipelineEstacionado } from '../services/pipelineEstacionado';
 import { naDesktop } from '../services/platformApp';
+import { liveHealth } from '../services/liveHealth';
 
 /** Pipeline vivo da prévia, pronto pro player assumir (ver useHls `adopt`). */
 export interface LivePipeline {
@@ -86,6 +87,21 @@ export function LiveChannelPreview({ src, onError, muted = true, onResolvedUrl, 
             onError?.(causa);
         },
     });
+
+    // Benchmark: a prévia SUBIU = essa variante está no ar. Sem isto só o
+    // player (60s tocando) contava acerto, e a variante que o failover achou
+    // nunca passava a ser a padrão. O adotado já foi contado por quem abriu.
+    useEffect(() => {
+        const video = videoRef.current;
+        if (adotado || canalId == null || !video) return;
+        const tocou = () => {
+            if (video.readyState < 3 || video.currentTime <= 0) return;
+            video.removeEventListener('timeupdate', tocou);
+            liveHealth.registrar(canalId, 'ok');
+        };
+        video.addEventListener('timeupdate', tocou);
+        return () => video.removeEventListener('timeupdate', tocou);
+    }, [src, canalId, adotado]);
 
     // Stream pendurado não dá erro: sem isto a prévia ficava no preto pra
     // sempre e ninguém tentava outra variante

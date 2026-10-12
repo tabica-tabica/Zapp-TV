@@ -20,6 +20,7 @@ import { usageStats } from '../services/usageStats';
 import { kidsFilter, isAdultCategoryName } from '../services/kidsFilter';
 import { contentFlags } from '../services/contentFlags';
 import { computeDefaultVisibleChannels, withMinimum } from '../services/liveVisibility';
+import { ultimoCanalNoAr } from '../services/liveHealth';
 import { ContentDetailModal } from '../components/ContentDetailModal';
 import { MoviePlayer } from '../components/MoviePlayer';
 import { SeriesQueuePlayer } from '../components/SeriesQueuePlayer';
@@ -255,10 +256,8 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 // canais de TV" está desligado, então a seção some sozinha.
                 if (streams.length > 0) {
                     const visible = computeDefaultVisibleChannels(streams, liveCats);
-                    const lastChannelId = storage.getLastChannel();
-                    const lastChannel = lastChannelId
-                        ? streams.find(s => s.stream_id === lastChannelId)
-                        : undefined;
+                    // A variante que está no ar, não a que caiu da última vez
+                    const lastChannel = ultimoCanalNoAr(streams);
                     // Favoritos primeiro; `streams` já passou pelo filtro Kids/adulto
                     const byId = new Map(streams.map(s => [s.stream_id, s]));
                     const favChannels = storage.getFavorites()

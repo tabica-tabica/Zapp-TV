@@ -373,4 +373,10 @@ describe('melhorVariante', () => {
     it('empate fica com a padrão', () => {
         expect(melhorVariante(lista, v(2), saude({ 1: 0.5, 3: 0.5 })).stream_id).toBe(2);
     });
+    // Visto numa LG: "CNN Brasil Money HD" fora do ar com histórico misto
+    // (média 0,5) seguia padrão e a prévia caía pro FHD toda vez
+    it('a que falhou na última tentativa perde da não testada, mesmo com média empatada', () => {
+        const s = { ...saude({ 1: 0.5 }), ultimoFalhou: (id: number) => id === 1 };
+        expect(melhorVariante(lista, v(1), s).stream_id).toBe(2);
+    });
 });

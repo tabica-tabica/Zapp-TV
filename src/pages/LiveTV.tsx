@@ -23,7 +23,7 @@ import { useWatchSession } from '../hooks/useWatchSession';
 import { FAILOVER_RECONNECT_ATTEMPTS } from '../hooks/useVariantFailover';
 import { groupChannelVariants, qualityLabel, channelDisplayName, proximaVariante, melhorVariante } from '../services/channelVariants';
 import { resolverUrlFinal } from '../services/urlFinal';
-import { liveHealth } from '../services/liveHealth';
+import { liveHealth, ultimoCanalNoAr } from '../services/liveHealth';
 import { pipelineEstacionado } from '../services/pipelineEstacionado';
 import { CONNLIMIT_WINDOW_MS, type StreamErrorCause } from '../services/playerDecisions';
 import {
@@ -266,16 +266,14 @@ export function LiveTV() {
             // navegando quando o player abria por cima dele.
             const wantsAutoplay = sessionStorage.getItem('neostream_autoplay_last') === '1';
             sessionStorage.removeItem('neostream_autoplay_last');
-            const lastId = storage.getLastChannel();
 
             /** Pré-seleciona (e só no boot, dá play) o último canal assistido. */
             const restoreLastChannel = (items: LiveStream[], cats: Category[]) => {
                 // Vindo da Home com a prévia dela TOCANDO: esse canal manda (o
                 // stream estacionado é assumido, sem conexão nova)
                 const estacionado = pipelineEstacionado.canal();
-                const alvoId = estacionado ?? lastId;
-                if (!alvoId) return;
-                const found = items.find(item => item.stream_id === alvoId);
+                // Senão o último assistido, na variante que está no ar (a mesma da Home)
+                const found = estacionado != null ? items.find(item => item.stream_id === estacionado) : ultimoCanalNoAr(items);
                 if (!found) return;
                 // Último canal adulto não volta sozinho (a prévia toca na hora)
                 const adultas = new Set(cats.filter(c => isAdultCategoryName(c.category_name || '')).map(c => c.category_id));
@@ -849,6 +847,10 @@ export function LiveTV() {
         }
         setToast(<><FaExclamationTriangle /> Prévia: trocando para {qualityLabel(next.name)}</>);
         setPreviaVariante({ de: selecionado.stream_id, canal: next, falharam });
+        // Era o último assistido: a variante que funciona passa a ser ele — a
+        // Home (e o stream estacionado entre as páginas) já abre nela, em vez
+        // de tentar a quebrada de novo toda vez
+        if (storage.getLastChannel() === atual.stream_id) storage.setLastChannel(next.stream_id);
     };
 
     // Variantes do canal TOCANDO (não o pré-visualizado) → menu unificado do player
