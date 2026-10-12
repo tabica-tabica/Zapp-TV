@@ -94,9 +94,29 @@ export function ultimoCanalNoAr<T extends { stream_id: number; name: string }>(c
     const id = storage.getLastChannel();
     const ultimo = id != null ? canais.find(c => c.stream_id === id) : undefined;
     if (!ultimo) return undefined;
-    const base = variantBaseName(ultimo.name);
-    const grupo = groupChannelVariants(canais.filter(c => variantBaseName(c.name) === base)).variantsOf.values().next().value ?? [ultimo];
-    const escolhido = melhorVariante(grupo, ultimo, liveHealth);
+    const [escolhido] = variantesNoAr([ultimo], canais);
     if (escolhido.stream_id !== ultimo.stream_id) storage.setLastChannel(escolhido.stream_id);
     return escolhido;
+}
+
+/**
+ * Cada canal trocado pela variante do grupo que está no ar (melhor histórico;
+ * a própria no empate). Sem repetidos: dois favoritos do mesmo grupo viram um.
+ * O índice por nome-base é montado 1× — `todos` pode ter milhares de canais.
+ */
+export function variantesNoAr<T extends { stream_id: number; name: string }>(canais: T[], todos: T[]): T[] {
+    const porBase = new Map<string, T[]>();
+    for (const c of todos) {
+        const base = variantBaseName(c.name);
+        const lista = porBase.get(base);
+        if (lista) lista.push(c); else porBase.set(base, [c]);
+    }
+    const vistos = new Set<number>();
+    return canais.flatMap(c => {
+        const grupo = groupChannelVariants(porBase.get(variantBaseName(c.name)) ?? [c]).variantsOf.values().next().value ?? [c];
+        const escolhido = melhorVariante(grupo, c, liveHealth);
+        if (vistos.has(escolhido.stream_id)) return [];
+        vistos.add(escolhido.stream_id);
+        return [escolhido];
+    });
 }

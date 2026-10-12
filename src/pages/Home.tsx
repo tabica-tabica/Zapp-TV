@@ -20,7 +20,7 @@ import { usageStats } from '../services/usageStats';
 import { kidsFilter, isAdultCategoryName } from '../services/kidsFilter';
 import { contentFlags } from '../services/contentFlags';
 import { computeDefaultVisibleChannels, withMinimum } from '../services/liveVisibility';
-import { ultimoCanalNoAr } from '../services/liveHealth';
+import { ultimoCanalNoAr, variantesNoAr } from '../services/liveHealth';
 import { ContentDetailModal } from '../components/ContentDetailModal';
 import { MoviePlayer } from '../components/MoviePlayer';
 import { SeriesQueuePlayer } from '../components/SeriesQueuePlayer';
@@ -269,8 +269,11 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                     if (hero) {
                         const semHero = (l: LiveStream[]) => l.filter(c => c.stream_id !== hero.stream_id);
                         const others = withMinimum(semHero(favChannels), semHero(visible), MIN_PREVIEW_CHANNELS).slice(0, 24);
-                        setChannelPreviewPool({ lastWatchedId: lastChannel ? lastChannel.stream_id : null, channels: [hero, ...others] });
-                        setSelectedPreviewChannelId(hero.stream_id);
+                        // Fileira também na variante que está no ar (CNN Internacional com
+                        // a HD fora abria a HD aqui, mesmo com a outra tocando bem)
+                        const channels = variantesNoAr([hero, ...others], streams);
+                        setChannelPreviewPool({ lastWatchedId: lastChannel ? lastChannel.stream_id : null, channels });
+                        setSelectedPreviewChannelId(channels[0].stream_id);
                     } else {
                         setChannelPreviewPool(null);
                         setSelectedPreviewChannelId(null);

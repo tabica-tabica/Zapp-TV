@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { installFakeStorage } from '../testing/fakeStorage';
-import { liveHealth, pontuacaoDe, costumaCairDe, ultimoCanalNoAr } from './liveHealth';
+import { liveHealth, pontuacaoDe, costumaCairDe, ultimoCanalNoAr, variantesNoAr } from './liveHealth';
 import { storage } from './storage';
 
 const DIA = 24 * 60 * 60 * 1000;
@@ -75,6 +75,13 @@ describe('ultimoCanalNoAr', () => {
         liveHealth.registrar(81017, 'ok');
         expect(ultimoCanalNoAr(cnn)?.stream_id).toBe(81017);
         expect(storage.getLastChannel()).toBe(81017);
+    });
+
+    it('variantesNoAr (fileira da Home): troca a HD que caiu e não repete o grupo', () => {
+        liveHealth.registrar(3, 'ok');
+        liveHealth.registrar(3, 'falha');
+        // favoritos: a HD (caiu) e a FHD — mesmo grupo, vira uma só
+        expect(variantesNoAr([canais[2], canais[1], canais[3]], canais).map(c => c.stream_id)).toEqual([2, 4]);
     });
 
     it('sem histórico fica o último assistido', () => {
