@@ -1414,9 +1414,13 @@ export function VideoPlayer({
             setBuffered(Math.floor(video.buffered.end(video.buffered.length - 1)));
         };
         const handleWaiting = () => setLoading(true);
-        const handlePlaying = () => setLoading(false);
+        // Tocando de novo: qualquer erro na tela já passou
+        const handlePlaying = () => { setLoading(false); setError(null); };
         const handleCanPlay = () => setLoading(false);
-        const handleError = () => setError('Erro ao reproduzir vídeo');
+        // webOS: o <video> assumido da prévia, ao refazer o MediaSource
+        // (recoverMediaError), dispara 'error' SEM erro (video.error null) e
+        // volta a tocar em seguida — mostrava "Erro ao reproduzir" à toa.
+        const handleError = () => { if (video.error) setError('Erro ao reproduzir vídeo'); };
 
         video.addEventListener('play', handlePlay);
         video.addEventListener('pause', handlePause);
