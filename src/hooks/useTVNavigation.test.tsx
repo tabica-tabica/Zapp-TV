@@ -93,6 +93,14 @@ describe('OK e Voltar', () => {
     // apagar caractere — interceptar isso como "Voltar" tornava impossível
     // corrigir um typo digitando. Fora de build de TV, Backspace/tecla 8
     // soltos não fazem mais nada aqui.
+    // Controle LG (webOS) de verdade: key "RCUBack" + keyCode 461 juntos
+    it('RCUBack/461 do webOS é Voltar', () => {
+        const onBack = vi.fn();
+        render(<Sonda onBack={onBack} />);
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'RCUBack', keyCode: 461, bubbles: true }));
+        expect(onBack).toHaveBeenCalled();
+    });
+
     it.each(['Backspace', 8])('%s solto NÃO é Voltar fora de build de TV', (valor) => {
         const onBack = vi.fn();
         render(<Sonda onBack={onBack} />);

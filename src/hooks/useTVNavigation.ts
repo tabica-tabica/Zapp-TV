@@ -4,7 +4,7 @@ import { useEffect, useCallback } from 'react';
 import { naTV } from '../services/platformApp';
 
 // Key codes for TV remotes
-const TV_KEYS = {
+export const TV_KEYS = {
     // Arrow keys
     UP: ['ArrowUp', '38'],
     DOWN: ['ArrowDown', '40'],
@@ -57,10 +57,10 @@ interface UseTVNavigationOptions {
     enabled?: boolean;
 }
 
-// Check if key matches any of the codes
-const matchKey = (key: string | number, codes: string[]): boolean => {
-    return codes.includes(String(key)) || codes.includes(String(key));
-};
+// Confere `key` E `keyCode`: o webOS manda Voltar como key "RCUBack" com
+// keyCode 461 — olhando só o key, o Voltar do controle LG não fazia nada
+export const matchKey = (event: { key?: string; keyCode?: number }, codes: string[]): boolean =>
+    (!!event.key && codes.includes(event.key)) || (!!event.keyCode && codes.includes(String(event.keyCode)));
 
 export function useTVNavigation(options: UseTVNavigationOptions = {}) {
     const { onNavigate, onAction, onBack, onEnter, enabled = true } = options;
@@ -68,15 +68,13 @@ export function useTVNavigation(options: UseTVNavigationOptions = {}) {
     const handleKeyDown = useCallback((event: KeyboardEvent) => {
         if (!enabled) return;
 
-        const key = event.key || String(event.keyCode);
-
         // Ignore events if user is currently focused on an input/textarea
         // This allows the native TV keyboard (IME) to handle Backspace, Left, Right, etc.
         const target = event.target as HTMLElement;
         if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
             // Dentro de input, espaço (32) é TEXTO — só Enter/OK de verdade
             // fecha o teclado (buscar "ESPN 2" precisa do espaço)
-            if (matchKey(key, ['Enter', '13', '29443', 'Select'])) {
+            if (matchKey(event, ['Enter', '13', '29443', 'Select'])) {
                 event.preventDefault();
                 event.stopPropagation();
                 target.blur();
@@ -89,7 +87,7 @@ export function useTVNavigation(options: UseTVNavigationOptions = {}) {
             // we should blur the input to hide the virtual keyboard and restore TV navigation.
             // 10009 (Tizen Back), 461 (WebOS Back), XF86Back (Generic), Escape.
             // Backspace/tecla 8 propositalmente NÃO entram aqui — ver LEGACY_REMOTE_BACK.
-            if (matchKey(key, TV_KEYS.BACK)) {
+            if (matchKey(event, TV_KEYS.BACK)) {
                 event.preventDefault();
                 event.stopPropagation();
                 target.blur();
@@ -100,23 +98,23 @@ export function useTVNavigation(options: UseTVNavigationOptions = {}) {
         }
 
         // Navigation
-        if (matchKey(key, TV_KEYS.UP)) {
+        if (matchKey(event, TV_KEYS.UP)) {
             if (onNavigate) { event.preventDefault(); onNavigate('up'); }
-        } else if (matchKey(key, TV_KEYS.DOWN)) {
+        } else if (matchKey(event, TV_KEYS.DOWN)) {
             if (onNavigate) { event.preventDefault(); onNavigate('down'); }
-        } else if (matchKey(key, TV_KEYS.LEFT)) {
+        } else if (matchKey(event, TV_KEYS.LEFT)) {
             if (onNavigate) { event.preventDefault(); onNavigate('left'); }
-        } else if (matchKey(key, TV_KEYS.RIGHT)) {
+        } else if (matchKey(event, TV_KEYS.RIGHT)) {
             if (onNavigate) { event.preventDefault(); onNavigate('right'); }
         }
         // Actions
-        else if (matchKey(key, TV_KEYS.ENTER)) {
+        else if (matchKey(event, TV_KEYS.ENTER)) {
             if (onEnter || onAction) {
                 event.preventDefault();
                 onEnter?.();
                 onAction?.('enter');
             }
-        } else if (matchKey(key, TV_KEYS.BACK) || (naTV() && matchKey(key, LEGACY_REMOTE_BACK))) {
+        } else if (matchKey(event, TV_KEYS.BACK) || (naTV() && matchKey(event, LEGACY_REMOTE_BACK))) {
             if (onBack || onAction) {
                 event.preventDefault();
                 onBack?.();
@@ -124,21 +122,21 @@ export function useTVNavigation(options: UseTVNavigationOptions = {}) {
             }
         }
         // Media
-        else if (matchKey(key, TV_KEYS.PLAY)) {
+        else if (matchKey(event, TV_KEYS.PLAY)) {
             if (onAction) { event.preventDefault(); onAction('play'); }
-        } else if (matchKey(key, TV_KEYS.PAUSE)) {
+        } else if (matchKey(event, TV_KEYS.PAUSE)) {
             if (onAction) { event.preventDefault(); onAction('pause'); }
-        } else if (matchKey(key, TV_KEYS.STOP)) {
+        } else if (matchKey(event, TV_KEYS.STOP)) {
             if (onAction) { event.preventDefault(); onAction('stop'); }
         }
         // Color keys (atalhos por página)
-        else if (matchKey(key, TV_KEYS.RED)) {
+        else if (matchKey(event, TV_KEYS.RED)) {
             if (onAction) { event.preventDefault(); onAction('red'); }
-        } else if (matchKey(key, TV_KEYS.GREEN)) {
+        } else if (matchKey(event, TV_KEYS.GREEN)) {
             if (onAction) { event.preventDefault(); onAction('green'); }
-        } else if (matchKey(key, TV_KEYS.YELLOW)) {
+        } else if (matchKey(event, TV_KEYS.YELLOW)) {
             if (onAction) { event.preventDefault(); onAction('yellow'); }
-        } else if (matchKey(key, TV_KEYS.BLUE)) {
+        } else if (matchKey(event, TV_KEYS.BLUE)) {
             if (onAction) { event.preventDefault(); onAction('blue'); }
         }
     }, [enabled, onNavigate, onAction, onBack, onEnter]);

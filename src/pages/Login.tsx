@@ -7,7 +7,7 @@ import { BrandLogo } from '../components/BrandLogo';
 import { api } from '../services/api';
 import { storage } from '../services/storage';
 import { playlistService } from '../services/playlistService';
-import { useTVNavigation } from '../hooks/useTVNavigation';
+import { useTVNavigation, matchKey, TV_KEYS } from '../hooks/useTVNavigation';
 import { useTranslation } from '../hooks/useTranslation';
 import './Login.css';
 import { accountService } from '../services/accountService';
@@ -149,19 +149,7 @@ export function Login({ onLoginSuccess, onLanguageSelect, startBlank = false }: 
     }, [blurAllInputs]);
 
     const handleInputKeyDown = useCallback((event: KeyboardEvent<HTMLInputElement>) => {
-        const key = event.key || String(event.keyCode);
-        if (
-            key === 'Enter' ||
-            key === '13' ||
-            key === '29443' ||
-            key === 'Select' ||
-            key === 'Done' ||
-            key === 'Go' ||
-            key === '10009' ||
-            key === '461' ||
-            key === 'XF86Back' ||
-            key === 'Escape'
-        ) {
+        if (matchKey(event.nativeEvent, ['Enter', '13', '29443', 'Select', 'Done', 'Go', ...TV_KEYS.BACK])) {
             event.preventDefault();
             event.stopPropagation();
             stopEditingInput();
