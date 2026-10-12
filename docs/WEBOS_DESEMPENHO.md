@@ -90,9 +90,10 @@ fora da tela em 1/3 das setas.
 - [ ] **Troca de página lenta**: voltar a tocar leva 6–11 s (era 6–16 s; a
       Home caiu de ~16 s pra ~9 s com o lote). É o `recoverMediaError` refazendo o
       MediaSource + a Home montando ao mesmo tempo. Investigar com a bancada.
-- [ ] **Foco da grade re-renderiza a página inteira**: o índice focado mora no
-      `LiveTV.tsx` (1660 linhas). Extrair grade + navegação pra um componente
-      memoizado — o que sobra da latência de ~330 ms por seta.
+- [x] **Foco da grade re-renderiza a página inteira** (12/10/2026): o foco
+      foi pro `src/pages/ChannelGrid.tsx` (memo; o LiveTV fala por `ref`).
+      Grade: mediana 194 → 114–124 ms, p90 755 → 396–713 ms (6 rodadas). O
+      máximo (1,7–2,2 s) segue sendo os picos do item abaixo.
 - [ ] **Picos de 2–4 s na grade** ao inverter o sentido da rolagem (vistos na
       v1.2.0 e depois). Perfilar com `scripts/tv-perf.mjs` + perfil de CPU.
 - [x] **"Foco visível" 76 %**: 100 % nas 6 rodadas depois do lote (sem as

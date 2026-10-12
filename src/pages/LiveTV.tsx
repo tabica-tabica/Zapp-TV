@@ -11,7 +11,6 @@ import {
     FaClipboardList, FaTimes, FaVolumeUp, FaVolumeMute,
     FaLock, FaLockOpen,
 } from 'react-icons/fa';
-import { Grid, type CellComponentProps } from 'react-window';
 import { RemoteColorHint } from '../components/RemoteColorHint';
 import { api } from '../services/api';
 import { storage } from '../services/storage';
@@ -34,7 +33,6 @@ import { detectRegionalFamilies, detectCategoryFamilies } from '../services/regi
 import { regionalPrefs } from '../services/regionalPrefs';
 import type { LiveStream, Category } from '../types';
 import { useTVNavigation } from '../hooks/useTVNavigation';
-import { useVirtualGridNavigation } from '../hooks/useVirtualGridNavigation';
 import { useMeasuredColumns } from '../hooks/useMeasuredColumns';
 import { useBrokenImages } from '../hooks/useBrokenImages';
 import { parentalService } from '../services/parentalService';
@@ -50,7 +48,7 @@ import { AnimatedSearchBar, type AnimatedSearchBarHandle } from '../components/A
 import { VideoPlayer, type PlayerChannel } from '../components/VideoPlayer';
 import { readRaw, writeRaw } from '../services/safeStorage';
 import { LiveChannelPreview, type LiveChannelPreviewHandle, type LivePipeline } from '../components/LiveChannelPreview';
-import { ChannelCard } from './ChannelCard';
+import { ChannelGrid, CARD_WIDTH, CARD_GAP, type ChannelGridHandle } from './ChannelGrid';
 import './LiveTV.css';
 import { readCatalog, writeCatalog, dropCatalog, trimLive, trimCategory, type CachedLiveStream } from '../services/catalogCache';
 import { ErrorScreen } from '../components/ErrorScreen';
@@ -66,44 +64,6 @@ function formatClock(ms: number): string {
 const EMPTY_QUALITY_ONLY_MAP = new Map<string, DetectedGroup>();
 /** Intervalo mínimo entre trocas AUTOMÁTICAS de fonte (a conexão velha segue contando no painel) */
 const INTERVALO_TROCA_AUTO_MS = CONNLIMIT_WINDOW_MS;
-
-const CARD_WIDTH = 220;
-const CARD_GAP = 12;
-// Card horizontal (logo + texto), não um pôster — altura fixa, não deriva de columnWidth.
-const CARD_HEIGHT = 72;
-
-interface ChannelCellProps {
-    items: LiveStream[];
-    columns: number;
-    focusedIndex: number;
-    gap: number;
-    isBroken: (id: number) => boolean;
-    onImageError: (id: number) => void;
-    onSelect: (stream: LiveStream) => void;
-    selectedId: number | undefined;
-    favoriteIds: Set<number>;
-}
-
-function ChannelGridCell({
-    rowIndex, columnIndex, style, items, columns, focusedIndex, gap, isBroken, onImageError, onSelect, selectedId, favoriteIds,
-}: CellComponentProps<ChannelCellProps>) {
-    const index = rowIndex * columns + columnIndex;
-    const stream = items[index];
-    if (!stream) return null;
-    return (
-        <ChannelCard
-            stream={stream}
-            focused={index === focusedIndex}
-            selected={selectedId === stream.stream_id}
-            isFavorite={favoriteIds.has(stream.stream_id)}
-            broken={isBroken(stream.stream_id)}
-            onImageError={onImageError}
-            onSelect={onSelect}
-            style={style}
-            gap={gap}
-        />
-    );
-}
 
 const PREVIEW_MUTED_KEY = 'neostream_preview_muted';
 
@@ -224,6 +184,8 @@ export function LiveTV() {
     const [showAgenda, setShowAgenda] = useState(false);
     // Guia multi-canal (item 1): canais nas linhas, tempo nas colunas
     const [showGuide, setShowGuide] = useState(false);
+    // Canal em que o guia abre: lido do foco da grade na hora de abrir
+    const [guiaCanalId, setGuiaCanalId] = useState<number | undefined>();
 
     // Categorias inteiras ocultas (item 16)
     const [hiddenCatIds, setHiddenCatIds] = useState<Set<string>>(() => hiddenCategories.get());
@@ -243,10 +205,6 @@ export function LiveTV() {
     const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
     const searchRef = useRef<AnimatedSearchBarHandle>(null);
     const categoryMenuRef = useRef<CategoryMenuHandle>(null);
-
-    // Seleção/foco resetam ao trocar filtro — o canal focado pode não
-    // pertencer mais ao resultado filtrado (movido pra perto do hook de
-    // navegação da grade, mais abaixo, porque precisa de setFocusedIndex).
 
     // Fetch data
     useEffect(() => {
@@ -559,24 +517,21 @@ export function LiveTV() {
         ? (representativeOf.get(playingChannel.stream_id) ?? playingChannel.stream_id)
         : undefined;
 
-    const {
-        focusedIndex: focusedChannelIndex, setFocusedIndex: setFocusedChannelIndex, gridRef,
-        handleNavigate: handleChannelGridNavigate, handleSelect: handleChannelGridSelect,
-    } = useVirtualGridNavigation({
-        itemCount: filteredStreams.length,
-        columns,
-        enabled: focusArea === 'channels',
-        onExitUp: () => setFocusArea('categories'),
-        onExitLeft: () => setFocusZone('sidebar'),
-        onSelect: (index) => {
-            const channel = filteredStreams[index];
-            if (!channel) return;
-            // 1º OK abre a ficha com foco no "Assistir"; 2º OK dá play
-            setSelectedChannel(channel);
-            setFocusArea('preview');
-            setPreviewFocusIndex(0);
-        },
-    });
+    // Foco da grade mora no ChannelGrid (ver o cabeçalho de lá): aqui só o ref.
+    const gradeRef = useRef<ChannelGridHandle>(null);
+    const sairDaGradePraCima = useCallback(() => setFocusArea('categories'), []);
+    const sairDaGradePraEsquerda = useCallback(() => setFocusZone('sidebar'), [setFocusZone]);
+    const abrirFichaDaGrade = useCallback((channel: LiveStream) => {
+        // 1º OK abre a ficha com foco no "Assistir"; 2º OK dá play
+        setSelectedChannel(channel);
+        setFocusArea('preview');
+        setPreviewFocusIndex(0);
+    }, []);
+    const canalFocadoNaGrade = () => filteredStreams[gradeRef.current?.focusedIndex() ?? -1];
+    const abrirGuia = () => {
+        setGuiaCanalId(selectedChannel?.stream_id ?? canalFocadoNaGrade()?.stream_id);
+        setShowGuide(true);
+    };
 
     // Seleção/foco resetam ao trocar filtro — o canal focado pode não
     // pertencer mais ao resultado filtrado. Só na TROCA de verdade, nunca na
@@ -591,9 +546,8 @@ export function LiveTV() {
         filtroAnteriorRef.current = filtro;
         if (anterior === null || anterior === filtro) return;
         setSelectedChannel(null);
-        setFocusedChannelIndex(0);
+        gradeRef.current?.focus(0);
         setFocusArea(prev => (prev === 'preview' ? 'channels' : prev));
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- setFocusedChannelIndex vem do hook (estável via useCallback), não precisa entrar como dep
     }, [searchQuery, selectedCategory, onlyWithEpg, showOnlyHidden, modoAdulto]);
 
     // Variantes de qualidade do canal selecionado (botões da ficha)
@@ -1035,7 +989,7 @@ export function LiveTV() {
                 setFocusedCategoryIndex(prev => Math.min(HEADER_BASE + toolbarItems.length - 1, prev + 1));
             } else if (direction === 'down') {
                 setFocusArea('channels');
-                setFocusedChannelIndex(0);
+                gradeRef.current?.focus(0);
             }
         } else if (focusArea === 'preview') {
             const totalPreviewItems = previewItems.length + selectedVariants.length;
@@ -1047,7 +1001,7 @@ export function LiveTV() {
                 setFocusArea('channels');
             }
         } else if (focusArea === 'channels') {
-            handleChannelGridNavigate(direction);
+            gradeRef.current?.navigate(direction);
         }
     };
 
@@ -1064,7 +1018,7 @@ export function LiveTV() {
                 const item = toolbarItems[focusedCategoryIndex - HEADER_BASE];
                 if (item === 'favfilter') toggleFavFilter();
                 else if (item === 'onlyepg') toggleOnlyEpg();
-                else if (item === 'guide') setShowGuide(true);
+                else if (item === 'guide') abrirGuia();
                 else if (item === 'random') randomZap();
                 else if (item === 'hidden') setShowOnlyHidden(prev => !prev);
                 else if (item === 'favpanel') setShowFavoritesPanel(true);
@@ -1087,7 +1041,7 @@ export function LiveTV() {
                 if (variant) playChannel(variant);
             }
         } else if (focusArea === 'channels') {
-            handleChannelGridSelect();
+            gradeRef.current?.select();
         }
     };
 
@@ -1109,7 +1063,7 @@ export function LiveTV() {
         } else if (action === 'green') {
             randomZap();
         } else if (action === 'yellow' || action === 'blue') {
-            const channel = (focusArea === 'channels' && filteredStreams[focusedChannelIndex]) || selectedChannel;
+            const channel = (focusArea === 'channels' && canalFocadoNaGrade()) || selectedChannel;
             if (channel) {
                 if (action === 'yellow') toggleChannelFavorite(channel);
                 else toggleChannelHidden(channel);
@@ -1130,19 +1084,6 @@ export function LiveTV() {
         if (previewSession?.id === stream.stream_id) return previewSession.url;
         return stream.direct_source || api.getLiveStreamUrl(stream.stream_id);
     };
-
-    const channelRowCount = Math.max(1, Math.ceil(filteredStreams.length / columns));
-    const channelCellProps = useMemo<ChannelCellProps>(() => ({
-        items: filteredStreams,
-        columns,
-        focusedIndex: focusArea === 'channels' ? focusedChannelIndex : -1,
-        gap: CARD_GAP,
-        isBroken,
-        onImageError: markBroken,
-        onSelect: setSelectedChannel,
-        selectedId: selectedChannel?.stream_id,
-        favoriteIds: favoriteChannelIds,
-    }), [filteredStreams, columns, focusArea, focusedChannelIndex, isBroken, markBroken, selectedChannel, favoriteChannelIds]);
 
     // Loading State with Animation
     if (loading) {
@@ -1263,7 +1204,7 @@ export function LiveTV() {
                 </button>
                 <button
                     className={`toolbar-btn ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('guide') ? 'tv-focused' : ''}`}
-                    onClick={() => setShowGuide(true)}
+                    onClick={abrirGuia}
                     title="Guia de programação (grade multi-canal)"
                 >
                     <FaThLarge />
@@ -1489,17 +1430,20 @@ export function LiveTV() {
                         )}
                     </div>
                 ) : (
-                    <Grid
-                        className="channels-grid-viewport"
-                        gridRef={gridRef}
-                        cellComponent={ChannelGridCell}
-                        cellProps={channelCellProps}
-                        columnCount={columns}
+                    <ChannelGrid
+                        ref={gradeRef}
+                        items={filteredStreams}
+                        columns={columns}
                         columnWidth={columnWidth}
-                        rowCount={channelRowCount}
-                        rowHeight={CARD_HEIGHT + CARD_GAP}
-                        overscanCount={1}
-                        style={{ height: '100%', width: '100%' }}
+                        active={focusArea === 'channels'}
+                        isBroken={isBroken}
+                        onImageError={markBroken}
+                        onSelect={setSelectedChannel}
+                        onOpen={abrirFichaDaGrade}
+                        onExitUp={sairDaGradePraCima}
+                        onExitLeft={sairDaGradePraEsquerda}
+                        selectedId={selectedChannel?.stream_id}
+                        favoriteIds={favoriteChannelIds}
                     />
                 )}
             </div>
@@ -1568,7 +1512,7 @@ export function LiveTV() {
             {showGuide && (
                 <EpgGrid
                     channels={filteredStreams}
-                    initialChannelId={selectedChannel?.stream_id ?? filteredStreams[focusedChannelIndex]?.stream_id}
+                    initialChannelId={guiaCanalId}
                     onClose={() => setShowGuide(false)}
                     onPlay={(canal) => {
                         setShowGuide(false);
