@@ -3,6 +3,7 @@ import { useEffect, useRef, useCallback, useState, type MutableRefObject, type R
 import Hls, { type HlsListeners } from 'hls.js';
 import { qualityCap } from '../services/playerPrefs';
 import { playbackPrefs } from '../services/playbackPrefs';
+import { noWebOS } from '../services/platformApp';
 
 export interface QualityLevel {
     index: number;
@@ -239,6 +240,8 @@ export function useHls({
         // Pipeline adotado: o estacionado pelo StrictMode (mesmo src) ou o
         // recebido por prop, só na primeira vez
         let adopted: Hls | null = null;
+        // Veio de OUTRO dono (o <video> mudou de lugar no documento)
+        let movido = false;
         const parked = adoptParkedRef.current;
         if (parked) {
             clearTimeout(parked.timer);
@@ -247,6 +250,7 @@ export function useHls({
             else parked.hls.destroy();
         } else if (adopt && !adoptConsumedRef.current) {
             adopted = adopt;
+            movido = true;
         }
         if (adopt) adoptConsumedRef.current = true;
         reloadingRef.current = false;
@@ -479,6 +483,11 @@ export function useHls({
                         label: track.name || track.lang || `Legenda ${index + 1}`,
                         lang: track.lang,
                     })));
+                    // webOS 4: o <video> que sai do documento perde o pipeline
+                    // de mídia (volta com readyState 0 e não sai mais — visto
+                    // numa LG). O MESMO hls refaz só o MediaSource: sessão e
+                    // conexão no painel continuam as mesmas (conta de 1 conexão)
+                    if (movido && noWebOS()) hls.recoverMediaError();
                     if (autoPlay && video.paused) video.play().catch(() => { });
                 }
             } else if (video.canPlayType('application/vnd.apple.mpegurl')) {

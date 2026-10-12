@@ -19,6 +19,11 @@ export function naTV(): boolean {
     return alvo() === 'tizen' || alvo() === 'webos';
 }
 
+/** Rodando no build da LG (webOS). */
+export function noWebOS(): boolean {
+    return alvo() === 'webos';
+}
+
 /** Rodando no app desktop (Tauri) — nem TV, nem navegador comum. */
 export function naDesktop(): boolean {
     return alvo() === 'tauri';

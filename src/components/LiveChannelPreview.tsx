@@ -9,6 +9,7 @@ import type Hls from 'hls.js';
 import { useHls } from '../hooks/useHls';
 import { LIVE_START_TIMEOUT_MS, type StreamErrorCause } from '../services/playerDecisions';
 import { pipelineEstacionado } from '../services/pipelineEstacionado';
+import { naDesktop } from '../services/platformApp';
 
 /** Pipeline vivo da prévia, pronto pro player assumir (ver useHls `adopt`). */
 export interface LivePipeline {
@@ -103,6 +104,13 @@ export function LiveChannelPreview({ src, onError, muted = true, onResolvedUrl, 
 
     useImperativeHandle(ref, () => ({
         handOff: () => {
+            // Desktop (Tauri = WebKitGTK): MOVER o <video> tocando pra outro
+            // lugar da página para o pipeline de mídia (GStreamer) — o player
+            // abria parado. No Chromium funciona (no webOS o useHls refaz o
+            // MediaSource depois de mover). Aqui não entrega nada e todo
+            // mundo cai no caminho normal: o player abre pela URL da sessão
+            // da prévia (mesma conexão no painel).
+            if (naDesktop()) return null;
             const video = videoRef.current;
             // Só vale entregar o que já está tocando: um pipeline ainda
             // carregando não poupa nada e pode estar preso num erro
