@@ -726,62 +726,6 @@
     border-top: 1px solid rgba(255, 255, 255, 0.15);
 }
 
-/* Prévia muda do canal destacado na lista de zapping — painel à parte,
-   colado na borda direita de .zap-overlay (380px + esse gap). Assume a
-   largura FIXA de 380px, que é o que sempre vale em qualquer resolução de
-   TV de verdade (o max-width em vw daquele elemento só entraria numa
-   janela de navegador artificialmente estreita, cenário só de dev). */
-.zap-peek {
-    position: absolute;
-    top: 24px;
-    left: 404px;
-    width: 280px;
-    z-index: 40;
-    background: rgba(10, 10, 20, 0.92);
-    border-radius: 8px;
-    overflow: hidden;
-}
-
-.zap-peek-placeholder {
-    aspect-ratio: 16 / 9;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: #000;
-    color: rgba(255, 255, 255, 0.35);
-    font-size: 32px;
-}
-
-.zap-peek-placeholder img {
-    max-width: 70%;
-    max-height: 70%;
-    object-fit: contain;
-}
-
-.zap-peek-name {
-    padding: 8px 12px;
-    color: #fff;
-    font-size: 15px;
-    font-weight: 600;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-/* Componente compartilhado (LiveChannelPreview.tsx) — className fixo
-   (`.live-channel-preview-video`), mas ESCOPADO em `.zap-peek` de
-   propósito: VideoPlayer.tsx é filho de LiveTV.tsx, então VideoPlayer.css
-   e LiveTV.css convivem na mesma tela ao mesmo tempo — uma regra SOLTA
-   pra essa classe aqui vazaria pro painel de ficha da própria LiveTV.tsx
-   (que já estiliza a mesma classe do jeito dele, via wrapper com
-   aspect-ratio, não aspect-ratio no <video>). Escopar evita a colisão. */
-.zap-peek .live-channel-preview-video {
-    width: 100%;
-    aspect-ratio: 16 / 9;
-    object-fit: cover;
-    background: #000;
-}
-
 /* Mini-EPG no player ao vivo */
 .player-mini-epg {
     padding: 0 24px 12px;

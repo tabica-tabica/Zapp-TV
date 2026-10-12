@@ -26,8 +26,7 @@ import {
 } from '../../services/playerPrefs';
 import { storage } from '../../services/storage';
 import { searchSubtitles, resolveSubtitleTrack, type SubtitleResult } from '../../services/openSubtitles';
-import { api } from '../../services/api';
-import { LiveChannelPreview, type LivePipeline } from '../LiveChannelPreview';
+import type { LivePipeline } from '../LiveChannelPreview';
 import { nextMoment, prevMoment, TOLERANCIA_MOMENTO_S } from '../../services/secretList';
 import './VideoPlayer.css';
 
@@ -496,15 +495,6 @@ export function VideoPlayer({
     // imagem troca (ver .zap-preview-stage); o HLS de verdade só troca
     // quando isto volta a null (ZAP_SETTLE_MS depois do último aperto)
     const [zapPreview, setZapPreview] = useState<PlayerChannel | null>(null);
-    // Prévia MUDA de vídeo do canal destacado no overlay da LISTA (↑↓) —
-    // diferente de zapPreview acima (aquele é do CH+/CH− e eventualmente
-    // troca o HLS de verdade; este nunca troca nada, é só um painel ao
-    // lado da lista — onSwitchChannel continua sendo o único jeito real de
-    // trocar de canal, disparado pelo OK, nunca por aqui).
-    const [zapPeekChannel, setZapPeekChannel] = useState<PlayerChannel | null>(null);
-    const [zapPeekSrc, setZapPeekSrc] = useState<string | null>(null);
-    const [zapPeekFailed, setZapPeekFailed] = useState(false);
-
     useEffect(() => {
         if (playerFocus !== 'zap-list' || !channelList) return;
         const channel = channelList[zapIndex];
@@ -521,29 +511,6 @@ export function VideoPlayer({
             cancelled = true;
             clearTimeout(timeout);
         };
-    }, [playerFocus, zapIndex, channelList]);
-
-    // Mesmo debounce de 400ms do efeito acima — só abre a conexão de
-    // prévia quando o destaque fica parado numa linha, nunca a cada passo
-    // de ↑↓ (a conta de provedor real usada nesta sessão tem um teto de
-    // conexões simultâneas — abrir uma a cada tecla estouraria isso à toa).
-    // Sair da lista (ou trocar de canal de verdade) limpa tudo aqui mesmo,
-    // desmontando a LiveChannelPreview e encerrando a conexão na hora.
-    useEffect(() => {
-        if (playerFocus !== 'zap-list' || !channelList) {
-            setZapPeekChannel(null);
-            setZapPeekSrc(null);
-            setZapPeekFailed(false);
-            return;
-        }
-        const channel = channelList[zapIndex];
-        if (!channel) return;
-        setZapPeekFailed(false);
-        const timeout = setTimeout(() => {
-            setZapPeekChannel(channel);
-            setZapPeekSrc(channel.direct_source || api.getLiveStreamUrl(channel.stream_id));
-        }, 400);
-        return () => clearTimeout(timeout);
     }, [playerFocus, zapIndex, channelList]);
 
     // O banner some sozinho
@@ -2375,29 +2342,6 @@ export function VideoPlayer({
                     </div>
                 );
             })()}
-
-            {/* Prévia muda do canal destacado na lista acima — painel à
-                parte, NUNCA mexe no vídeo/áudio principal (que continua
-                tocando por baixo). Só troca de verdade quando o OK é
-                apertado (ver onClick/handleEnter do overlay acima). */}
-            {playerFocus === 'zap-list' && zapPeekChannel && (
-                <div className="zap-peek">
-                    {zapPeekSrc && !zapPeekFailed ? (
-                        <LiveChannelPreview
-                            key={zapPeekChannel.stream_id}
-                            src={zapPeekSrc}
-                            onError={() => setZapPeekFailed(true)}
-                        />
-                    ) : (
-                        <div className="zap-peek-placeholder">
-                            {zapPeekChannel.stream_icon
-                                ? <img decoding="async" src={zapPeekChannel.stream_icon} alt={zapPeekChannel.name} />
-                                : <FaBroadcastTower />}
-                        </div>
-                    )}
-                    <div className="zap-peek-name">{zapPeekChannel.name}</div>
-                </div>
-            )}
 
             {/* Ainda está assistindo? (item 51) */}
             {stillWatching && (
