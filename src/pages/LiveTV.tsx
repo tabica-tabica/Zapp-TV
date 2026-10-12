@@ -9,6 +9,7 @@ import {
     FaExclamationTriangle, FaStar, FaRegStar, FaEye, FaEyeSlash, FaBell, FaBellSlash,
     FaBroadcastTower, FaCalendarAlt, FaThLarge, FaRandom, FaFutbol, FaPlay, FaHistory,
     FaClipboardList, FaTimes, FaVolumeUp, FaVolumeMute,
+    FaLock, FaLockOpen,
 } from 'react-icons/fa';
 import { Grid, type CellComponentProps } from 'react-window';
 import { RemoteColorHint } from '../components/RemoteColorHint';
@@ -16,7 +17,7 @@ import { api } from '../services/api';
 import { storage } from '../services/storage';
 import { epgService, epgOffset, type ChannelEpg, type EpgProgram } from '../services/epgService';
 import { zapHistory, hiddenChannels, hiddenCategories, liveToggles } from '../services/liveExtras';
-import { kidsFilter } from '../services/kidsFilter';
+import { kidsFilter, isAdultCategoryName } from '../services/kidsFilter';
 import { contentFlags } from '../services/contentFlags';
 import { useWatchSession } from '../hooks/useWatchSession';
 import { FAILOVER_RECONNECT_ATTEMPTS } from '../hooks/useVariantFailover';
@@ -32,7 +33,6 @@ import { useTVNavigation } from '../hooks/useTVNavigation';
 import { useVirtualGridNavigation } from '../hooks/useVirtualGridNavigation';
 import { useMeasuredColumns } from '../hooks/useMeasuredColumns';
 import { useBrokenImages } from '../hooks/useBrokenImages';
-import { useAdultLock } from '../hooks/useAdultLock';
 import { parentalService } from '../services/parentalService';
 import { PinPrompt } from '../components/PinPrompt';
 import { useFocusZone } from '../contexts/FocusContext';
@@ -101,11 +101,17 @@ function ChannelGridCell({
 
 const PREVIEW_MUTED_KEY = 'neostream_preview_muted';
 
+/** Canal adulto: de categoria adulta OU de nome adulto ("[XX] ADULTO 23" fora da categoria) */
+function canalAdulto(canal: LiveStream, categoriasAdultas: Set<string>): boolean {
+    return categoriasAdultas.has(canal.category_id) || isAdultCategoryName(canal.name || '');
+}
+
 export function LiveTV() {
     const { focusZone, setFocusZone } = useFocusZone();
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
-    const [streams, setStreams] = useState<LiveStream[]>([]);
+    // Catálogo CRU (só o filtro Kids); `streams` mais abaixo é a visão do modo adulto
+    const [todosOsCanais, setStreams] = useState<LiveStream[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
     const [selectedCategory, setSelectedCategory] = useState<string>('all');
     const [searchQuery, setSearchQuery] = useState('');
@@ -115,10 +121,30 @@ export function LiveTV() {
     const { containerRef: scrollContainerRef, columns, columnWidth } = useMeasuredColumns({
         cardWidth: CARD_WIDTH, gap: CARD_GAP, minColumns: 3, maxColumns: 10,
     });
-    const {
-        lockedCategoryIds, guardSelect: guardCategorySelect, pendingCategoryId,
-        setPendingCategoryId, setUnlocked: setAdultUnlocked, justProvisioned,
-    } = useAdultLock(categories);
+    // Canais adultos SÓ no modo adulto (botão "Adulto" da barra, com PIN):
+    // fora dele somem de tudo — grade, Todos, favoritos, busca, jogos, zap
+    // aleatório, troca de canal e o menu de categorias. Dentro dele, só eles.
+    // Apertar o botão de novo sai e TRANCA: voltar pede o PIN outra vez.
+    // Perfil Kids nunca vê o botão (o kidsFilter já tirou os canais adultos).
+    const [modoAdulto, setModoAdulto] = useState(false);
+    const [adultoPinAberto, setAdultoPinAberto] = useState(false);
+    const [adultoPinProvisionado, setAdultoPinProvisionado] = useState(false);
+    const categoriasAdultas = useMemo(
+        () => new Set(categories.filter(c => isAdultCategoryName(c.category_name || '')).map(c => c.category_id)),
+        [categories],
+    );
+    const streams = useMemo(
+        () => todosOsCanais.filter(s => canalAdulto(s, categoriasAdultas) === modoAdulto),
+        [todosOsCanais, categoriasAdultas, modoAdulto],
+    );
+    const temAdulto = useMemo(
+        () => !kidsFilter.isKidsActive() && todosOsCanais.some(s => canalAdulto(s, categoriasAdultas)),
+        [todosOsCanais, categoriasAdultas],
+    );
+    const categoriasDoMenu = useMemo(
+        () => categories.filter(c => categoriasAdultas.has(c.category_id) === modoAdulto),
+        [categories, categoriasAdultas, modoAdulto],
+    );
 
     // Filtros/toggles persistidos
     const [onlyWithEpg, setOnlyWithEpg] = useState(() => liveToggles.getOnlyWithEpg());
@@ -231,10 +257,13 @@ export function LiveTV() {
             const lastId = storage.getLastChannel();
 
             /** Pré-seleciona (e só no boot, dá play) o último canal assistido. */
-            const restoreLastChannel = (items: LiveStream[]) => {
+            const restoreLastChannel = (items: LiveStream[], cats: Category[]) => {
                 if (!lastId) return;
                 const found = items.find(item => item.stream_id === lastId);
                 if (!found) return;
+                // Último canal adulto não volta sozinho (a prévia toca na hora)
+                const adultas = new Set(cats.filter(c => isAdultCategoryName(c.category_name || '')).map(c => c.category_id));
+                if (canalAdulto(found, adultas)) return;
                 setSelectedChannel(found);
                 if (wantsAutoplay) {
                     setPlayingChannel(found);
@@ -267,7 +296,7 @@ export function LiveTV() {
                 servedFromCache = true;
                 // Restaura JUNTO com o cache: assim o player (se for o caso)
                 // abre antes de o usuário começar a navegar, e não no meio
-                restoreLastChannel(gatedCache.items);
+                restoreLastChannel(gatedCache.items, gatedCache.categories);
             }
 
             try {
@@ -289,7 +318,7 @@ export function LiveTV() {
                 setCategories(gated.categories);
                 // Só restaura aqui se o cache não deu conta: repetir abriria o
                 // player por cima de quem já está navegando
-                if (!servedFromCache) restoreLastChannel(gated.items);
+                if (!servedFromCache) restoreLastChannel(gated.items, gated.categories);
             } catch (err: unknown) {
                 // Com o cache na tela, uma falha de rede não pode apagar o que
                 // o usuário já está vendo — ele continua navegando o de ontem
@@ -354,13 +383,6 @@ export function LiveTV() {
         // qualidade, mais abaixo, senão perderia a chance de virar fallback.
         list = list.filter(s => curatedHiddenPrefs.isVisible(s.name, s.category_id, s.stream_id, junkGroupsByCategory, curatedUnhiddenGroups, EMPTY_QUALITY_ONLY_MAP, curatedChannelOverrides));
 
-        // Categoria travada por PIN só aparece quando ela mesma está
-        // selecionada (guardCategorySelect já exigiu o PIN antes disso) — sem
-        // isto, canal de categoria adulta aparecia em "Todos" sem pedir PIN.
-        if (lockedCategoryIds.size > 0 && selectedCategory !== 'FAVORITES' && !lockedCategoryIds.has(selectedCategory)) {
-            list = list.filter(s => !lockedCategoryIds.has(s.category_id));
-        }
-
         if (onlyWithEpg) {
             list = list.filter(s => !!s.epg_channel_id);
         }
@@ -377,7 +399,7 @@ export function LiveTV() {
         }
 
         return list;
-    }, [streams, hiddenIds, hiddenCatIds, junkGroupsByCategory, curatedUnhiddenGroups, curatedChannelOverrides, lockedCategoryIds, showOnlyHidden, onlyWithEpg, selectedCategory, favoriteChannelIds, searchQuery]);
+    }, [streams, hiddenIds, hiddenCatIds, junkGroupsByCategory, curatedUnhiddenGroups, curatedChannelOverrides, showOnlyHidden, onlyWithEpg, selectedCategory, favoriteChannelIds, searchQuery]);
 
     // Agrupamento de variantes FHD/HD/SD (port do desktop)
     const { groups: rawGrouped, variantsOf } = useMemo(() => {
@@ -507,7 +529,7 @@ export function LiveTV() {
         setFocusedChannelIndex(0);
         setFocusArea(prev => (prev === 'preview' ? 'channels' : prev));
         // eslint-disable-next-line react-hooks/exhaustive-deps -- setFocusedChannelIndex vem do hook (estável via useCallback), não precisa entrar como dep
-    }, [searchQuery, selectedCategory, onlyWithEpg, showOnlyHidden]);
+    }, [searchQuery, selectedCategory, onlyWithEpg, showOnlyHidden, modoAdulto]);
 
     // Variantes de qualidade do canal selecionado (botões da ficha)
     const selectedVariants = selectedChannel
@@ -523,7 +545,7 @@ export function LiveTV() {
     // Botões da toolbar na ordem do JSX — vira a extensão da zona do header
     // (sem isso, ⭐ Agora e ⚽ Jogos só abriam por mouse)
     const favFilterOn = selectedCategory === 'FAVORITES';
-    const toolbarItems: Array<'favfilter' | 'onlyepg' | 'guide' | 'random' | 'hidden' | 'favpanel' | 'sports'> = [
+    const toolbarItems: Array<'favfilter' | 'onlyepg' | 'guide' | 'random' | 'hidden' | 'favpanel' | 'sports' | 'adulto'> = [
         // Filtro ★ precisa existir enquanto ligado, mesmo sem favoritos: é ele que desliga
         ...(favoriteChannels.length > 0 || favFilterOn ? (['favfilter'] as const) : []),
         'onlyepg',
@@ -535,11 +557,29 @@ export function LiveTV() {
         ...(hiddenIds.size > 0 || showOnlyHidden ? (['hidden'] as const) : []),
         ...(favoriteChannels.length > 0 ? (['favpanel'] as const) : []),
         ...(sportsChannels.length > 0 ? (['sports'] as const) : []),
+        ...(temAdulto ? (['adulto'] as const) : []),
     ];
+    // Botão "Adulto": entra pedindo o PIN (sem PIN ainda, cria o "0000" e SÓ
+    // DEPOIS abre o prompt — o hash é assíncrono); sai na hora, trancando
+    const botaoAdulto = () => {
+        if (modoAdulto) {
+            setModoAdulto(false);
+            setSelectedCategory('all');
+            return;
+        }
+        if (!parentalService.isSet()) {
+            parentalService.autoProvisionAdultLock().then(() => {
+                setAdultoPinProvisionado(true);
+                setAdultoPinAberto(true);
+            });
+            return;
+        }
+        setAdultoPinAberto(true);
+    };
     // Botão ★ da toolbar: alterna a grade entre favoritos e todos os canais
     const toggleFavFilter = () => {
         if (favFilterOn) setSelectedCategory('all');
-        else guardCategorySelect('FAVORITES', () => setSelectedCategory('FAVORITES'));
+        else setSelectedCategory('FAVORITES');
     };
     const HEADER_BASE = 2; // 0 = busca, 1 = menu de categorias
     const toolbarFocusIndex = (item: string) => HEADER_BASE + toolbarItems.indexOf(item as typeof toolbarItems[number]);
@@ -859,6 +899,7 @@ export function LiveTV() {
                 else if (item === 'hidden') setShowOnlyHidden(prev => !prev);
                 else if (item === 'favpanel') setShowFavoritesPanel(true);
                 else if (item === 'sports') setShowSportsPanel(true);
+                else if (item === 'adulto') botaoAdulto();
             }
         } else if (focusArea === 'preview') {
             if (!selectedChannel) return;
@@ -911,7 +952,7 @@ export function LiveTV() {
         onEnter: handleEnter,
         onBack: handleBack,
         onAction: handleAction,
-        enabled: focusZone === 'content' && !error && !playingChannel && !archivePlayback && !showAgenda && !showGuide && !categoryMenuOpen && !showFavoritesPanel && !showSportsPanel && !pendingCategoryId,
+        enabled: focusZone === 'content' && !error && !playingChannel && !archivePlayback && !showAgenda && !showGuide && !categoryMenuOpen && !showFavoritesPanel && !showSportsPanel && !adultoPinAberto,
     });
 
     const getLivePlaybackUrl = (stream: LiveStream) => {
@@ -1000,35 +1041,34 @@ export function LiveTV() {
             {/* Category Menu (Hamburger Button) */}
             <CategoryMenu
                 ref={categoryMenuRef}
-                categories={categories}
+                categories={categoriasDoMenu}
                 selectedCategory={selectedCategory}
-                onSelectCategory={(id) => guardCategorySelect(id, () => setSelectedCategory(id))}
+                onSelectCategory={setSelectedCategory}
                 type="live"
                 tvFocused={focusArea === 'categories' && focusedCategoryIndex === 1}
                 onOpenChange={setCategoryMenuOpen}
                 extraCategories={[{ category_id: 'FAVORITES', category_name: 'Favoritos', parent_id: 0 }]}
                 hiddenCategoryIds={hiddenCatIds}
                 onToggleHideCategory={(id) => setHiddenCatIds(new Set(hiddenCategories.toggle(id)))}
-                lockedCategoryIds={lockedCategoryIds}
             />
 
-            {pendingCategoryId && (
+            {adultoPinAberto && (
                 <PinPrompt
-                    title="Categoria bloqueada"
-                    hint={justProvisioned
-                        ? 'Conteúdo adulto — PIN padrão: 0000 (altere em Configurações)'
-                        : 'Conteúdo adulto — digite o PIN'}
+                    title="Conteúdo adulto"
+                    hint={adultoPinProvisionado
+                        ? 'PIN padrão: 0000 (altere em Configurações)'
+                        : 'Digite o PIN'}
                     parental
                     onSubmit={async (pin) => {
                         const ok = await parentalService.verify(pin);
                         if (ok) {
-                            setAdultUnlocked(true);
-                            setSelectedCategory(pendingCategoryId);
-                            setPendingCategoryId(null);
+                            setAdultoPinAberto(false);
+                            setSelectedCategory('all');
+                            setModoAdulto(true);
                         }
                         return ok;
                     }}
-                    onCancel={() => setPendingCategoryId(null)}
+                    onCancel={() => setAdultoPinAberto(false)}
                 />
             )}
 
@@ -1089,6 +1129,15 @@ export function LiveTV() {
                         title="Jogos de hoje"
                     >
                         <FaFutbol /> Jogos
+                    </button>
+                )}
+                {temAdulto && (
+                    <button
+                        className={`toolbar-btn ${modoAdulto ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('adulto') ? 'tv-focused' : ''}`}
+                        onClick={botaoAdulto}
+                        title={modoAdulto ? 'Sair do conteúdo adulto (pede o PIN pra voltar)' : 'Conteúdo adulto (pede o PIN)'}
+                    >
+                        {modoAdulto ? <FaLockOpen /> : <FaLock />} Adulto
                     </button>
                 )}
             </div>
