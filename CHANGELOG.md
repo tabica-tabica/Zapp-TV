@@ -4,6 +4,64 @@ All notable project changes should be documented in this file.
 
 Maintained by **Tabica**. Originally created by Rakjsu.
 
+## 1.2.0 - 2026-10-11
+
+### Added
+
+- Secret list: export/import as QR pages (no snapshots), as a file on the computer, or by pasting
+  each QR's text on the TV (🟢, through the remote app's keyboard).
+- Secret player: a 🖼 button shows a row of moment thumbnails (off by default) with the moments
+  of EVERY movie in the list, in order. ↑ from the seek bar enters it, ←→ pick, OK jumps — to
+  another movie at that moment, keeping the focus on the row.
+- Secret player: the next/previous movie's address is resolved in the background (and, with the
+  row on, the neighbours in the row and the focused thumbnail's movie), so switching is instant.
+  While a movie loads, the controls and the row stay on screen instead of a black screen.
+- Movies: adult content only appears in the "Adulto" genre, behind the PIN; the secret list (🔥)
+  only exists there. Pressing the genre button again leaves and locks it.
+- Live TV: adult channels only in a new "Adulto" mode (toolbar, PIN); outside it they are gone
+  from the grid, favorites, search, games, random zap and the category menu.
+- Hentai hidden by default everywhere (Movies, Series, search, Home), even with adult content on;
+  a parental-control switch turns it back on (PIN).
+- Live TV failover that keeps the stream going: when the buffer is running dry (under 8 s, nothing
+  new for 6 s) the next variant's session is opened while the old one still plays, and playback
+  switches at the same delay behind live. Variants rotate (higher or lower quality), skipping the
+  ones that failed.
+- Passive benchmark of live sources: 60 s of playback counts as a success, a drop as a failure;
+  failover and the Live TV preview start on the most reliable variant and leave the ones that are
+  usually off for last.
+- Live TV preview: falls back to other variants when the channel's stream fails or hangs.
+- Back in the Live TV player hands the playing stream back to the preview; Home ⇄ Live TV keep the
+  same stream (no new connection) when switching pages.
+- LG webOS: `npm run package:webos` builds the .ipk into `dist/ipk` with the store images, plus
+  installers that need no Node or LG SDK — `install-tv.bat` (Windows; downloads Microsoft's
+  portable OpenSSH if missing, SHA-256 checked) and `install-tv.command` (macOS/Linux).
+
+### Changed
+
+- All build output lives under `dist/` (web, tizen, webos, tauri, ipk); `tizen/assets` and
+  `webos/assets` are no longer tracked.
+- Connection-limit safeguard: while the provider refuses for the account's connection limit, no
+  background warm-up and no variant switching; at most one automatic switch every 30 s.
+
+### Fixed
+
+- Home "Continue watching" never shows adult movies (it waited for the catalog by name only).
+- Live TV player: stuck loading spinner when taking over the preview's stream.
+- Live TV player: the channel list no longer opens a muted preview stream per highlighted channel,
+  which exhausted single-connection accounts.
+- Live TV: the last channel's preview never appeared after the first visit (a filter reset ran on
+  mount and cleared the restored selection).
+
+### Performance
+
+- TV-lite (webOS/Tizen): every looping animation runs once and stops (spinners, loading skeletons
+  and the burn-in drift keep going); no backdrop-filter, glow filters or large blurs. Idle first
+  screen in headless Chrome (6× CPU slowdown): 461 frames in 8 s → 0. On webOS it is on from the
+  first frame.
+- ResizeObserver polyfill (webOS 4.x) polls every 1 s instead of 250 ms and skips work when nothing
+  changed or the app is in the background.
+- Player re-renders at most once a second, and only while the controls are visible.
+
 ## 1.1.4 - 2026-10-10
 
 ### Added
