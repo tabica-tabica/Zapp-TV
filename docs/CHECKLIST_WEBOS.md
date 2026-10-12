@@ -1,5 +1,8 @@
 # Checklist webOS / TV-first
 
+Armadilhas do Chromium 53, decisões de desempenho, a bancada na TV
+(`npm run perf:tv`) e as pendências: ver docs/WEBOS_DESEMPENHO.md.
+
 Use antes de empacotar para LG webOS ou quando mexer em
 navegação, foco, inputs ou player. Espelha docs/CHECKLIST_TIZEN.md — as
 seções de Foco visível, Inputs, Player e Visual em TV são as mesmas
@@ -12,8 +15,9 @@ restrições, agnósticas de plataforma; só D-pad e Build mudam.
 - [ ] Nenhum item interativo fica inalcançável só com D-pad (sem depender de mouse)
 - [ ] Em modais/players, o D-pad da página é desativado
   (`useTVNavigation({ enabled: false })`) e o controle vai para o modal
-- [ ] webOS Back (keyCode `461`) fecha teclado/volta camada — já tratado
-  genericamente por `useTVNavigation.ts`, sem handler específico de plataforma
+- [ ] webOS Back (`key: "RCUBack"`, keyCode `461`) fecha teclado/volta camada —
+  já tratado genericamente por `useTVNavigation.ts` (o `matchKey` confere key
+  E keyCode), sem handler específico de plataforma
 - [ ] Na tela raiz, Back aciona `webOS.platformBack()` (via `services/platformApp.ts`)
   em vez de tentar matar o processo — webOS suspende o app, não sai dele
 

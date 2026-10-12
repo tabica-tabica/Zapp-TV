@@ -113,6 +113,8 @@ npm run build:webos  # Type-check, build the webOS bundle, and copy assets into 
 npm run package:webos # Build the LG .ipk + installers + zip into dist/ipk
 npm run install:webos # Install dist/ipk's .ipk on an LG TV over the network
 npm run lint         # Run ESLint
+npm run lint:webos   # ESLint against Chromium 53 (LG webOS 4) with webOS's polyfill list
+npm run perf:tv -- <tv-ip>  # Performance harness on a real LG TV (see docs/WEBOS_DESEMPENHO.md)
 npm test             # Run the test suite (Vitest)
 npm run test:watch   # Run the tests in watch mode
 npm run check:css    # Check the CSS against Chromium 69 (the oldest supported TV)
@@ -293,6 +295,10 @@ The zip is made with `bsdtar` (the `tar` of macOS and Windows 10+), which keeps
 [webOS TV SDK](https://webostv.developer.lge.com/develop/tools/cli-installation)) works too but is
 not required. Use `ares-inspect` for remote Chrome DevTools on the actual TV — the emulator does not
 reproduce the device's real RAM constraints.
+
+Before touching the player, previews, the channel grid or TV CSS, read
+[`docs/WEBOS_DESEMPENHO.md`](docs/WEBOS_DESEMPENHO.md): the Chromium 53 traps found on a real
+TV, the performance decisions, the `npm run perf:tv` harness and the open TODOs.
 
 The package identity in `webos/appinfo.json` is a **placeholder**, not a value reserved with LG:
 
