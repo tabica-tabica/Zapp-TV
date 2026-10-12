@@ -3,7 +3,7 @@ import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, Fra
 import {
     FaPlay, FaPause, FaCog, FaStepForward, FaStepBackward, FaListUl, FaMoon, FaExpand,
     FaVolumeUp, FaVolumeDown, FaVolumeMute, FaTimes, FaBroadcastTower, FaSync,
-    FaExclamationTriangle, FaHeadphones, FaThumbtack, FaBackward, FaForward,
+    FaExclamationTriangle, FaHeadphones, FaThumbtack, FaBackward, FaForward, FaImages,
 } from 'react-icons/fa';
 import { useHls, type StreamErrorCause } from '../../hooks/useHls';
 import {
@@ -117,7 +117,35 @@ export interface VideoPlayerProps {
      * Momentos salvos do filme (lista secreta): 🟢 ou 📌 marca o instante,
      * CH+/CH− pulam entre eles, e eles aparecem como marcas na barra.
      */
-    moments?: { list: number[]; onAdd: (t: number, thumb?: string) => void; onRemove: (t: number) => void };
+    moments?: {
+        list: number[];
+        /** Miniatura por segundo do momento (a tira de momentos acima da barra) */
+        thumbs?: Record<string, string>;
+        onAdd: (t: number, thumb?: string) => void;
+        onRemove: (t: number) => void;
+        /**
+         * Tira com a SEQUÊNCIA inteira (momentos de todos os filmes da lista,
+         * em ordem). Sem ela, a tira mostra só os momentos deste vídeo.
+         * Item de outro filme (doAtual=false) chama onEscolher em vez de seek.
+         */
+        sequencia?: MomentoDaFaixa[];
+        onEscolher?: (item: MomentoDaFaixa) => void;
+        /** Foco do controle chegou nesta miniatura (pré-carga de quem usa) */
+        onFocar?: (item: MomentoDaFaixa) => void;
+        /**
+         * Tira de miniaturas visível. Controlado POR FORA (o SecretPlayer):
+         * o player remonta a cada troca de filme e perderia a escolha.
+         * Sem onAlternarTira, a tira fica sempre visível e o botão não aparece.
+         */
+        tiraVisivel?: boolean;
+        onAlternarTira?: () => void;
+        /**
+         * Índice da sequência pra já abrir com o foco NA TIRA (lido só na
+         * montagem): escolher momento de outro filme remonta o player, e o
+         * foco voltava pro play — a pessoa perdia o lugar na lista.
+         */
+        focoInicial?: number | null;
+    };
     /**
      * `crossorigin="anonymous"` no <video>: só com uma URL cujo servidor manda
      * CORS em TODOS os saltos (o SecretPlayer resolve o redirect antes). É o
@@ -132,9 +160,31 @@ export interface VideoPlayerProps {
 }
 
 // Control buttons: close, prev, play, next, options, channels, volume, sleep, aspect
-type ControlButton = 'close' | 'prev' | 'play' | 'golive' | 'next' | 'momprev' | 'pin' | 'momnext' | 'options' | 'channels' | 'volume' | 'sleep' | 'aspect';
+type ControlButton = 'close' | 'prev' | 'play' | 'golive' | 'next' | 'momprev' | 'pin' | 'momnext' | 'strip' | 'options' | 'channels' | 'volume' | 'sleep' | 'aspect';
 // 'seekbar' = barra de progresso focada (seek por D-pad, item 37)
-type PlayerFocus = 'controls' | 'menu' | 'zap-list' | 'seekbar';
+type PlayerFocus = 'controls' | 'menu' | 'zap-list' | 'seekbar' | 'moments';
+
+const SEM_FAIXA: MomentoDaFaixa[] = [];
+
+/**
+ * Onde o foco entra na tira: o último momento JÁ PASSADO deste filme; filme
+ * sem momento, o primeiro item dele na sequência; nada dele, o 0.
+ */
+function indiceAtualNaFaixa(lista: MomentoDaFaixa[], t: number): number {
+    let atual = lista.findIndex(m => m.doAtual);
+    lista.forEach((m, i) => { if (m.doAtual && m.t <= t + TOLERANCIA_MOMENTO_S) atual = i; });
+    return Math.max(0, atual);
+}
+
+export interface MomentoDaFaixa {
+    /** Filme dono do momento */
+    filmeId: string;
+    titulo: string;
+    t: number;
+    thumb?: string;
+    /** É do vídeo tocando agora (OK faz seek em vez de trocar de filme) */
+    doAtual: boolean;
+}
 // Uma tela por vez; 'root' lista as seções (item 39/40/41/48)
 type MenuId = 'root' | 'quality' | 'audio' | 'subs' | 'subsize';
 
@@ -327,8 +377,20 @@ export function VideoPlayer({
     // Focus management
     const [menu, setMenu] = useState<MenuId | null>(null);
     const [menuIndex, setMenuIndex] = useState(0);
-    const [playerFocus, setPlayerFocus] = useState<PlayerFocus>('controls');
+    const [playerFocus, setPlayerFocus] = useState<PlayerFocus>(() => (moments?.focoInicial != null ? 'moments' : 'controls'));
     const [focusedControl, setFocusedControl] = useState<ControlButton>('play');
+    // Miniatura focada na tira de momentos (playerFocus === 'moments')
+    const [momentFocus, setMomentFocus] = useState(() => moments?.focoInicial ?? 0);
+    const momentStripRef = useRef<HTMLDivElement>(null);
+    // Miniatura focada sempre visível (a tira rola com até 50 momentos), e
+    // avisa quem usa (o SecretPlayer pré-carrega o filme dela)
+    useEffect(() => {
+        if (playerFocus !== 'moments') return;
+        const focada = faixaRef.current[momentFocus];
+        if (focada) momentsRef.current?.onFocar?.(focada);
+        const alvo = momentStripRef.current?.children[momentFocus] as HTMLElement | undefined;
+        alvo?.scrollIntoView({ block: 'nearest', inline: 'center' });
+    }, [playerFocus, momentFocus]);
 
     // Preferências persistidas do player (itens 41 e 48)
     const [subSize, setSubSize] = useState<SubtitleSize>(() => subtitleSizePref.get());
@@ -920,6 +982,9 @@ export function VideoPlayer({
         };
     }, []);
 
+    // Botão 🖼 da tira: só quando há o que mostrar (em algum filme da sequência)
+    const temTira = !!moments?.onAlternarTira && (moments.sequencia?.length ?? moments.list.length) > 0;
+
     // Build list of available control buttons
     const getControlButtons = useCallback((): ControlButton[] => {
         const buttons: ControlButton[] = ['close'];
@@ -931,6 +996,7 @@ export function VideoPlayer({
         if (moments && moments.list.length > 0) buttons.push('momprev');
         if (moments) buttons.push('pin');
         if (moments && moments.list.length > 0) buttons.push('momnext');
+        if (temTira) buttons.push('strip');
         // ⚙ sempre aparece: mesmo sem níveis de qualidade ele dá acesso a
         // áudio, legenda e estatísticas
         buttons.push('options');
@@ -939,7 +1005,7 @@ export function VideoPlayer({
         buttons.push('sleep');
         buttons.push('aspect');
         return buttons;
-    }, [canGoPrevious, canGoNext, onPreviousEpisode, onNextEpisode, canZap, isLiveContent, isBehindLive, moments]);
+    }, [canGoPrevious, canGoNext, onPreviousEpisode, onNextEpisode, canZap, isLiveContent, isBehindLive, moments, temTira]);
 
     // ----- Zapping helpers (live) -----
     const currentChannelIndex = useMemo(() => {
@@ -1035,8 +1101,9 @@ export function VideoPlayer({
     useEffect(() => {
         if (!showControls) return;
         const timeout = setTimeout(() => {
-            // Esconder a barra com ela FOCADA deixaria o seek às cegas
-            if (playing && !menu && playerFocusRef.current !== 'seekbar') {
+            // Esconder a barra (ou a tira de momentos) com ela FOCADA deixaria
+            // o seek às cegas
+            if (playing && !menu && playerFocusRef.current !== 'seekbar' && playerFocusRef.current !== 'moments') {
                 setShowControls(false);
             }
         }, 3000);
@@ -1425,6 +1492,26 @@ export function VideoPlayer({
     }, []);
     const momentsRef = useRef(moments);
     useEffect(() => { momentsRef.current = moments; }, [moments]);
+    // O que a tira mostra: a sequência da lista inteira, ou só este vídeo
+    const faixaCompleta = useMemo<MomentoDaFaixa[]>(() => {
+        if (!moments) return [];
+        if (moments.sequencia) return moments.sequencia;
+        return moments.list.map(t => ({ filmeId: '', titulo: title ?? '', t, thumb: moments.thumbs?.[String(t)], doAtual: true }));
+    }, [moments, title]);
+    const faixa = moments?.onAlternarTira && !moments.tiraVisivel ? SEM_FAIXA : faixaCompleta;
+    const faixaRef = useRef(faixa);
+    useEffect(() => { faixaRef.current = faixa; }, [faixa]);
+    // 🖼 ligando: o foco já entra na tira, no momento atual (sem ↓↑↑ até ela)
+    const alternarTira = useCallback(() => {
+        const m = momentsRef.current;
+        if (!m?.onAlternarTira) return;
+        const ligando = !m.tiraVisivel;
+        m.onAlternarTira();
+        if (ligando && faixaCompleta.length > 0) {
+            setMomentFocus(indiceAtualNaFaixa(faixaCompleta, videoRef.current?.currentTime ?? 0));
+            setPlayerFocus('moments');
+        }
+    }, [faixaCompleta]);
 
     // 📌/🟢 é liga-desliga: em cima de um momento salvo (±3s) remove ele;
     // fora disso marca um novo
@@ -1868,8 +1955,11 @@ export function VideoPlayer({
             case 'momnext':
                 jumpMoment(1);
                 break;
+            case 'strip':
+                alternarTira();
+                break;
         }
-    }, [focusedControl, handleClose, onPreviousEpisode, togglePlay, onNextEpisode, openMenu, openZapList, toggleMute, cycleSleep, cycleAspect, seekToLive, pinMoment, jumpMoment]);
+    }, [focusedControl, handleClose, onPreviousEpisode, togglePlay, onNextEpisode, openMenu, openZapList, toggleMute, cycleSleep, cycleAspect, seekToLive, pinMoment, jumpMoment, alternarTira]);
 
     // TV Navigation handler
     const handleNavigate = useCallback((direction: 'up' | 'down' | 'left' | 'right') => {
@@ -1895,13 +1985,26 @@ export function VideoPlayer({
                 // ← volta pra raiz (ou fecha, se já está nela)
                 if (menu && menu !== 'root') openMenu('root'); else closeMenu();
             }
+        } else if (playerFocus === 'moments') {
+            // Tira de momentos: ←→ escolhem a miniatura, ↓ volta pra barra
+            const total = faixaRef.current.length;
+            // Removeu o último momento com a tira focada: ela sumiu, volta aos botões
+            if (total === 0) setPlayerFocus('controls');
+            else if (direction === 'left') setMomentFocus(i => Math.max(0, i - 1));
+            else if (direction === 'right') setMomentFocus(i => Math.min(total - 1, i + 1));
+            else if (direction === 'down') setPlayerFocus('seekbar');
         } else if (playerFocus === 'seekbar') {
-            // Barra focada: ←→ pulam com aceleração, ↓ volta pros botões
+            // Barra focada: ←→ pulam com aceleração, ↓ volta pros botões,
+            // ↑ sobe pra tira de momentos (se houver), já no momento atual
             if (direction === 'left') nudgeSeek(-1);
             else if (direction === 'right') nudgeSeek(1);
             else if (direction === 'down') {
                 commitSeek();
                 setPlayerFocus('controls');
+            } else if (direction === 'up' && faixaRef.current.length > 0) {
+                commitSeek();
+                setMomentFocus(indiceAtualNaFaixa(faixaRef.current, videoRef.current?.currentTime ?? 0));
+                setPlayerFocus('moments');
             }
         } else {
             // Botão de volume focado: ↑↓ ajustam o nível em vez do gesto geral
@@ -1975,10 +2078,15 @@ export function VideoPlayer({
             // OK confirma o pulo pendente; sem pulo, é play/pause
             if (seekTargetRef.current != null) commitSeek();
             else togglePlay();
+        } else if (playerFocus === 'moments') {
+            // OK pula pro momento da miniatura (e fica na tira pra escolher outro)
+            const alvo = faixaRef.current[momentFocus];
+            if (alvo?.doAtual) seek(alvo.t);
+            else if (alvo) momentsRef.current?.onEscolher?.(alvo);
         } else {
             executeControlAction();
         }
-    }, [playerFocus, menuIndex, menuEntries, executeControlAction, resetHideControlsTimer,
+    }, [playerFocus, menuIndex, menuEntries, executeControlAction, resetHideControlsTimer, momentFocus, seek,
         channelList, zapIndex, onSwitchChannel, closeZapList, commitSeek, togglePlay,
         stillWatching, confirmStillWatching, showControls]);
 
@@ -1994,7 +2102,7 @@ export function VideoPlayer({
             // jogar o usuário direto pra fora do player
             if (menu && menu !== 'root') openMenu('root');
             else closeMenu();
-        } else if (playerFocus === 'seekbar') {
+        } else if (playerFocus === 'seekbar' || playerFocus === 'moments') {
             commitSeek();
             setPlayerFocus('controls');
             // Sem isto a barra ficava na tela pra sempre: o effect do auto-hide
@@ -2352,6 +2460,30 @@ export function VideoPlayer({
                     </div>
                 )}
 
+                {/* Tira de momentos (lista secreta): miniatura de cada momento;
+                    ↑ da barra entra, ←→ escolhem, OK pula */}
+                {faixa.length > 0 && (
+                    <div ref={momentStripRef} className={`moment-strip ${playerFocus === 'moments' ? 'strip-focused' : ''}`}>
+                        {faixa.map((m, i) => {
+                            const tocando = m.doAtual && Math.abs(m.t - currentTime) <= TOLERANCIA_MOMENTO_S;
+                            // Primeiro momento de cada filme leva o título: marca onde um termina e o outro começa
+                            const inicioDoFilme = i === 0 || faixa[i - 1].filmeId !== m.filmeId;
+                            return (
+                                <button
+                                    key={`${m.filmeId}-${m.t}`}
+                                    className={`moment-thumb ${m.doAtual ? 'current-movie' : ''} ${tocando ? 'playing' : ''} ${playerFocus === 'moments' && i === momentFocus ? 'focused' : ''}`}
+                                    onClick={() => (m.doAtual ? seek(m.t) : moments?.onEscolher?.(m))}
+                                    title={`${m.titulo} — ${formatTime(m.t)}`}
+                                >
+                                    {m.thumb ? <img src={m.thumb} alt="" /> : <span className="moment-thumb-empty">{i + 1}</span>}
+                                    {inicioDoFilme && moments?.sequencia && <span className="moment-thumb-title">{m.titulo}</span>}
+                                    <span className="moment-thumb-time">{formatTime(m.t)}</span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                )}
+
                 {/* Progress Bar (VOD only) */}
                 {!isLive && contentType !== 'live' && (
                     <div
@@ -2458,6 +2590,15 @@ export function VideoPlayer({
                                 title="Próximo momento (CH+)"
                             >
                                 <FaForward />
+                            </button>
+                        )}
+                        {temTira && (
+                            <button
+                                className={`control-btn ${moments?.tiraVisivel ? 'pin-active' : ''} ${focusedControl === 'strip' && playerFocus === 'controls' ? 'focused' : ''}`}
+                                onClick={alternarTira}
+                                title={moments?.tiraVisivel ? 'Esconder miniaturas' : 'Mostrar miniaturas'}
+                            >
+                                <FaImages />
                             </button>
                         )}
 

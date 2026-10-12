@@ -1206,6 +1206,95 @@
     height: 22px;
 }
 
+/* Tira de momentos (lista secreta): uma miniatura por momento, acima da barra */
+.moment-strip {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    padding: 6px 4px 10px;
+    margin-bottom: 8px;
+}
+
+.moment-strip::-webkit-scrollbar {
+    display: none;
+}
+
+.moment-thumb {
+    position: relative;
+    flex: 0 0 auto;
+    width: 128px;
+    height: 72px;
+    padding: 0;
+    border: 2px solid transparent;
+    border-radius: 8px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.08);
+    cursor: pointer;
+    opacity: 0.75;
+}
+
+.moment-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.moment-thumb-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #fbbf24;
+    font-size: 22px;
+    font-weight: 700;
+}
+
+.moment-thumb-time {
+    position: absolute;
+    right: 4px;
+    bottom: 4px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.7);
+    color: #fff;
+    font-size: 13px;
+}
+
+/* Nome do filme no 1º momento de cada um (sequência da lista inteira) */
+.moment-thumb-title {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    padding: 2px 6px;
+    background: linear-gradient(rgba(0, 0, 0, 0.85), rgba(0, 0, 0, 0));
+    color: #fff;
+    font-size: 12px;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Momentos de outros filmes ficam mais apagados que os deste */
+.moment-thumb:not(.current-movie) {
+    opacity: 0.55;
+}
+
+/* Momento que está tocando agora: borda âmbar, como os marcadores da barra */
+.moment-thumb.playing {
+    border-color: #fbbf24;
+    opacity: 1;
+}
+
+.moment-thumb:hover,
+.moment-thumb.focused {
+    border-color: #fff;
+    opacity: 1;
+    transform: scale(1.08);
+}
+
 .moment-toast {
     position: absolute;
     top: 12%;

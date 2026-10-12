@@ -163,6 +163,10 @@ html.no-flex-gap .video-player-loading > * + * {
     margin-top: 16px;
 }
 
+html.no-flex-gap .moment-strip > * + * {
+    margin-left: 10px;
+}
+
 html.no-flex-gap .controls-row > * + * {
     margin-left: 12px;
 }
