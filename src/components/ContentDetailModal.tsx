@@ -1,7 +1,7 @@
 ﻿// ContentDetailModal.tsx - Premium modal matching original NeoStream app
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { FaStar, FaTheaterMasks, FaLayerGroup, FaBookmark, FaRegBookmark, FaLock } from 'react-icons/fa';
+import { FaStar, FaTheaterMasks, FaLayerGroup, FaBookmark, FaRegBookmark, FaFire } from 'react-icons/fa';
 import { api } from '../services/api';
 import { storage } from '../services/storage';
 import { searchMovieByName, searchSeriesByName, fetchMovieDetails, fetchSeriesDetails, getImageUrl, formatGenres, type TMDBMovieDetails, type TMDBSeriesDetails, IMAGE_SIZE_FICHA, IMAGE_SIZE_FUNDO } from '../services/tmdb';
@@ -871,7 +871,7 @@ export function ContentDetailModal({
                                     setRefresh(r => r + 1);
                                 }}
                             >
-                                <FaLock /> {secretList.active ? 'Na lista secreta' : 'Lista secreta'}
+                                <FaFire /> {secretList.active ? 'Na lista secreta' : 'Lista secreta'}
                             </button>
                         )}
 

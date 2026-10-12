@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback, type ReactNode } from 'react';
 import {
     FaFilm, FaBookmark, FaRegBookmark, FaPlay, FaSort, FaEyeSlash,
-    FaTag, FaCalendarAlt, FaTheaterMasks, FaStar, FaLock,
+    FaTag, FaCalendarAlt, FaTheaterMasks, FaStar, FaFire,
 } from 'react-icons/fa';
 import { RemoteColorHint } from '../components/RemoteColorHint';
 import { Grid, type CellComponentProps } from 'react-window';
@@ -13,7 +13,6 @@ import { useTVNavigation } from '../hooks/useTVNavigation';
 import { useVirtualGridNavigation } from '../hooks/useVirtualGridNavigation';
 import { useMeasuredColumns } from '../hooks/useMeasuredColumns';
 import { useBrokenImages } from '../hooks/useBrokenImages';
-import { useAdultLock } from '../hooks/useAdultLock';
 import { parentalService } from '../services/parentalService';
 import { PinPrompt } from '../components/PinPrompt';
 import { useFocusZone } from '../contexts/FocusContext';
@@ -98,10 +97,6 @@ export function Movies() {
     const { containerRef: scrollContainerRef, columns, columnWidth } = useMeasuredColumns({
         cardWidth: CARD_WIDTH, gap: CARD_GAP, minColumns: 3, maxColumns: 10,
     });
-    const {
-        lockedCategoryIds, guardSelect: guardCategorySelect, pendingCategoryId,
-        setPendingCategoryId, setUnlocked: setAdultUnlocked, justProvisioned,
-    } = useAdultLock(categories);
     // Painel de gêneros (todos de uma vez)
     const [generoPickerOpen, setGeneroPickerOpen] = useState(false);
 
@@ -177,39 +172,69 @@ export function Movies() {
     const generoPorCategoria = useMemo(() => mapaDeGeneros(categories), [categories]);
     // Só os gêneros que ESTE provedor realmente tem: oferecer "Guerra" numa
     // lista sem nenhum filme de guerra devolve uma grade vazia e parece bug
-    // "Adulto" só com conteúdo adulto LIGADO em Configurações → Controle
-    // parental ("Bloquear categorias adultas" desligado). Com a trava ligada
-    // (padrão) o gênero nem aparece; a categoria segue acessível com PIN.
-    const adultoLiberado = !parentalService.getGates().adultCategories;
+    // Conteúdo adulto SÓ no gênero "Adulto": fora dele, filmes e categorias
+    // adultas somem de tudo (Todos, categorias, busca da página). Escolher o
+    // gênero pede o PIN (uma vez por visita à página) e só então aparecem os
+    // filmes adultos, as categorias adultas no menu e a lista secreta (ícone FaFire).
+    // Perfil Kids nunca vê o gênero (o kidsFilter já tirou as categorias).
     const generosDoCatalogo = useMemo(
-        () => generosDisponiveis(categories).filter(g => g.id !== GENERO_ADULTO || adultoLiberado),
-        [categories, adultoLiberado],
+        () => generosDisponiveis(categories).filter(g => g.id !== GENERO_ADULTO || !kidsFilter.isKidsActive()),
+        [categories],
     );
-
-    // Lista secreta (adultos + momentos): só com conteúdo adulto ligado e
-    // nunca no perfil Kids. Botão na barra, PIN toda vez que abre.
-    const listaSecretaAtiva = adultoLiberado && !kidsFilter.isKidsActive();
+    const modoAdulto = genero === GENERO_ADULTO;
     const categoriasAdultas = useMemo(
         () => new Set(categories.filter(c => isAdultCategoryName(c.category_name || '')).map(c => c.category_id)),
         [categories],
     );
-    const ehFilmeAdulto = (m: VODStream) => categoriasAdultas.has(m.category_id) || isAdultCategoryName(m.name || '');
-    const [secretPinOpen, setSecretPinOpen] = useState(false);
-    const [secretPinProvisioned, setSecretPinProvisioned] = useState(false);
+    const ehFilmeAdulto = useCallback(
+        (m: VODStream) => categoriasAdultas.has(m.category_id) || isAdultCategoryName(m.name || ''),
+        [categoriasAdultas],
+    );
+    // No modo adulto o menu lista só as categorias adultas; fora dele, só as outras
+    const categoriasDoMenu = useMemo(
+        () => categories.filter(c => categoriasAdultas.has(c.category_id) === modoAdulto),
+        [categories, categoriasAdultas, modoAdulto],
+    );
+    const [adultoDesbloqueado, setAdultoDesbloqueado] = useState(false);
+    const [adultoPinAberto, setAdultoPinAberto] = useState(false);
+    const [adultoPinProvisionado, setAdultoPinProvisionado] = useState(false);
+    // Botão de gênero NO modo adulto não abre o seletor: sai do modo adulto
+    // (volta pra "Todos") e TRANCA de novo — reentrar pede o PIN outra vez
+    const botaoGenero = () => {
+        if (!modoAdulto) {
+            setGeneroPickerOpen(true);
+            return;
+        }
+        setAdultoDesbloqueado(false);
+        setSecretListOpen(false);
+        setSelectedCategory('all');
+        setGenero(null);
+    };
+    const escolherGenero = (id: string | null) => {
+        if (id === GENERO_ADULTO && !adultoDesbloqueado) {
+            // Sem PIN ainda: cria o "0000" primeiro e SÓ DEPOIS abre o prompt
+            // (o hash é assíncrono: digitar antes negaria o PIN certo)
+            if (!parentalService.isSet()) {
+                parentalService.autoProvisionAdultLock().then(() => {
+                    setAdultoPinProvisionado(true);
+                    setAdultoPinAberto(true);
+                });
+                return;
+            }
+            setAdultoPinAberto(true);
+            return;
+        }
+        // Entrar ou sair do modo adulto troca as categorias do menu: a
+        // selecionada não existe mais do outro lado
+        if ((id === GENERO_ADULTO) !== modoAdulto) setSelectedCategory('all');
+        setGenero(id);
+    };
+
+    // Lista secreta (adultos + momentos): só no modo adulto, que já pediu o PIN
+    const listaSecretaAtiva = modoAdulto;
     const [secretListOpen, setSecretListOpen] = useState(false);
     const [secretPlaying, setSecretPlaying] = useState<{ itens: ItemSecreto[]; indice: number; momento: number | null } | null>(null);
     const [, setSecretTick] = useState(0); // re-render do rótulo após toggle
-    const abrirListaSecreta = () => {
-        // Sem PIN ainda: cria o "0000" primeiro (mesmo fluxo da categoria adulta)
-        if (!parentalService.isSet()) {
-            parentalService.autoProvisionAdultLock().then(() => {
-                setSecretPinProvisioned(true);
-                setSecretPinOpen(true);
-            });
-            return;
-        }
-        setSecretPinOpen(true);
-    };
     const toggleSecreto = (m: VODStream) => {
         const entrou = secretList.toggle({
             id: String(m.stream_id),
@@ -218,7 +243,7 @@ export function Movies() {
             container: m.container_extension,
         });
         setSecretTick(t => t + 1);
-        setToast(entrou ? <><FaLock /> Na lista secreta</> : <><FaLock /> Fora da lista secreta</>);
+        setToast(entrou ? <><FaFire /> Na lista secreta</> : <><FaFire /> Fora da lista secreta</>);
     };
 
     // Botões da barra na ORDEM do JSX, ancorados por id e não por posição.
@@ -228,8 +253,8 @@ export function Movies() {
     const toolbarItems = [
         'sort', 'hidewatched', 'tags', 'decade',
         ...(generosDoCatalogo.length > 0 ? ['genero'] : []),
-        'nota',
         ...(listaSecretaAtiva ? ['secret'] : []),
+        'nota',
     ] as const;
     const HEADER_BASE = 2; // 0 = busca, 1 = menu de categorias
     const toolbarFocusIndex = (item: string) =>
@@ -246,23 +271,20 @@ export function Movies() {
             const matchesSearch = !query || fuzzyMatches(stream.name || '', query);
             const matchesCategory = selectedCategory === 'all' || stream.category_id === selectedCategory;
             if (!matchesSearch || !matchesCategory) return false;
-            // Categoria travada por PIN não aparece em "Todos" nem em outra
-            // categoria — só quando ELA MESMA está selecionada, o que só
-            // acontece depois que guardCategorySelect já exigiu o PIN. Sem
-            // isto, um filme "adulto" categorizado sob uma categoria travada
-            // aparecia normalmente em "Todos", sem pedir PIN nenhum.
-            if (lockedCategoryIds.has(stream.category_id) && selectedCategory !== stream.category_id) return false;
+            // Adulto só no modo adulto, e o modo adulto só tem adulto (inclui o
+            // filme de nome adulto fora de categoria adulta)
+            if (ehFilmeAdulto(stream) !== modoAdulto) return false;
             // Chips de tag: item precisa ter TODAS as tags marcadas
             if (activeTags.length > 0 && !activeTags.every(tag => hasTag(stream.name || '', tag))) return false;
             if (hasFilters && !matchesFilters(stream, filters)) return false;
-            if (genero && generoPorCategoria.get(stream.category_id) !== genero) return false;
+            if (genero && !modoAdulto && generoPorCategoria.get(stream.category_id) !== genero) return false;
             return true;
         });
         if (completedMovieIds) {
             list = list.filter(stream => !completedMovieIds.has(String(stream.stream_id)));
         }
         return list;
-    }, [streams, searchQuery, selectedCategory, completedMovieIds, activeTags, filters, genero, generoPorCategoria, lockedCategoryIds]);
+    }, [streams, searchQuery, selectedCategory, completedMovieIds, activeTags, filters, genero, generoPorCategoria, ehFilmeAdulto, modoAdulto]);
 
     // Agrupa versões do mesmo filme (DUB/LEG/4K) sobre a lista JÁ filtrada
     const { groups: groupedStreams, versionsOf } = useMemo(
@@ -485,7 +507,7 @@ export function Movies() {
         // Só filme adulto e só com a lista secreta ativa
         ...(contextSecreto ? [{
             label: secretList.has(String(contextItem.stream_id))
-                ? <><FaLock /> Tirar da lista secreta</> : <><FaLock /> Lista secreta</>,
+                ? <><FaFire /> Tirar da lista secreta</> : <><FaFire /> Lista secreta</>,
             run: () => toggleSecreto(contextItem),
         }] : []),
         {
@@ -514,9 +536,9 @@ export function Movies() {
                 else if (item === 'hidewatched') toggleHideWatched();
                 else if (item === 'tags') cycleTagFilter();
                 else if (item === 'decade') cycleFilters();
-                else if (item === 'genero') setGeneroPickerOpen(true);
+                else if (item === 'genero') botaoGenero();
                 else if (item === 'nota') cycleNota();
-                else if (item === 'secret') abrirListaSecreta();
+                else if (item === 'secret') setSecretListOpen(true);
             }
         } else if (focusArea === 'alphabet') {
             const entries = alphabetIndex ? [...alphabetIndex.entries()] : [];
@@ -528,8 +550,8 @@ export function Movies() {
     };
 
     // Only enable when content is focused and no modal/player/panel is open
-    const navEnabled = !error && (focusZone === 'content' && !showModal && !showPlayer && !categoryMenuOpen && !contextItem && !pendingCategoryId && !generoPickerOpen
-        && !secretPinOpen && !secretListOpen && !secretPlaying);
+    const navEnabled = !error && (focusZone === 'content' && !showModal && !showPlayer && !categoryMenuOpen && !contextItem && !adultoPinAberto && !generoPickerOpen
+        && !secretListOpen && !secretPlaying);
 
     useTVNavigation({
         onNavigate: handleNavigate,
@@ -652,32 +674,32 @@ export function Movies() {
             {/* Category Menu (Hamburger Button) */}
             <CategoryMenu
                 ref={categoryMenuRef}
-                categories={categories}
+                categories={categoriasDoMenu}
                 selectedCategory={selectedCategory}
-                onSelectCategory={(id) => guardCategorySelect(id, () => setSelectedCategory(id))}
+                onSelectCategory={setSelectedCategory}
                 type="vod"
                 tvFocused={focusArea === 'categories' && focusedCategoryIndex === 1}
                 onOpenChange={setCategoryMenuOpen}
-                lockedCategoryIds={lockedCategoryIds}
             />
 
-            {pendingCategoryId && (
+            {adultoPinAberto && (
                 <PinPrompt
-                    title="Categoria bloqueada"
-                    hint={justProvisioned
-                        ? 'Conteúdo adulto — PIN padrão: 0000 (altere em Configurações)'
-                        : 'Conteúdo adulto — digite o PIN'}
+                    title="Conteúdo adulto"
+                    hint={adultoPinProvisionado
+                        ? 'PIN padrão: 0000 (altere em Configurações)'
+                        : 'Digite o PIN'}
                     parental
                     onSubmit={async (pin) => {
                         const ok = await parentalService.verify(pin);
                         if (ok) {
-                            setAdultUnlocked(true);
-                            setSelectedCategory(pendingCategoryId);
-                            setPendingCategoryId(null);
+                            setAdultoPinAberto(false);
+                            setAdultoDesbloqueado(true);
+                            setSelectedCategory('all');
+                            setGenero(GENERO_ADULTO);
                         }
                         return ok;
                     }}
-                    onCancel={() => setPendingCategoryId(null)}
+                    onCancel={() => setAdultoPinAberto(false)}
                 />
             )}
 
@@ -685,7 +707,7 @@ export function Movies() {
                 <GenrePicker
                     generos={generosDoCatalogo}
                     selecionado={genero}
-                    onEscolher={setGenero}
+                    onEscolher={escolherGenero}
                     onFechar={() => setGeneroPickerOpen(false)}
                 />
             )}
@@ -723,10 +745,19 @@ export function Movies() {
                 {generosDoCatalogo.length > 0 && (
                     <button
                         className={`toolbar-btn ${genero ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('genero') ? 'tv-focused' : ''}`}
-                        onClick={() => setGeneroPickerOpen(true)}
-                        title="Filtrar por gênero"
+                        onClick={botaoGenero}
+                        title={modoAdulto ? 'Sair do conteúdo adulto (pede o PIN pra voltar)' : 'Filtrar por gênero'}
                     >
                         {genero ? rotuloDoGenero(genero) : <><FaTheaterMasks /> Gênero</>}
+                    </button>
+                )}
+                {listaSecretaAtiva && (
+                    <button
+                        className={`toolbar-btn ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('secret') ? 'tv-focused' : ''}`}
+                        onClick={() => setSecretListOpen(true)}
+                        title="Lista secreta"
+                    >
+                        <FaFire />
                     </button>
                 )}
                 <button
@@ -736,35 +767,7 @@ export function Movies() {
                 >
                     {filters.minRating > 0 ? <><FaStar /> {filters.minRating}+</> : <><FaStar /> Nota</>}
                 </button>
-                {listaSecretaAtiva && (
-                    <button
-                        className={`toolbar-btn ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('secret') ? 'tv-focused' : ''}`}
-                        onClick={abrirListaSecreta}
-                        title="Lista secreta"
-                    >
-                        <FaLock />
-                    </button>
-                )}
             </div>
-
-            {secretPinOpen && (
-                <PinPrompt
-                    title="Lista secreta"
-                    hint={secretPinProvisioned
-                        ? 'PIN padrão: 0000 (altere em Configurações)'
-                        : 'Digite o PIN'}
-                    parental
-                    onSubmit={async (pin) => {
-                        const ok = await parentalService.verify(pin);
-                        if (ok) {
-                            setSecretPinOpen(false);
-                            setSecretListOpen(true);
-                        }
-                        return ok;
-                    }}
-                    onCancel={() => setSecretPinOpen(false)}
-                />
-            )}
 
             {secretListOpen && !secretPlaying && (
                 <SecretList
@@ -855,7 +858,7 @@ export function Movies() {
 
             {/* Filme adulto com a lista secreta ativa: player secreto (momentos,
                 miniaturas, abre no 1º momento, sem progresso/uso) — tocado da
-                grade ou da ficha, não só da 🔒 */}
+                grade ou da ficha, não só do botão da lista */}
             {showPlayer && playingMovie && listaSecretaAtiva && ehFilmeAdulto(playingMovie) && (() => {
                 // ⏮/⏭ andam pelos filmes ADULTOS da grade atual, na ordem dela;
                 // cada um traz os momentos que já tiver na lista secreta

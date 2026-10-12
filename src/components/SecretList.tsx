@@ -9,7 +9,7 @@
 // 🟢 abre um campo pra colar o texto de cada QR (na TV, pelo teclado do app
 // de controle remoto no celular: LG ThinQ / SmartThings). OK importa a página.
 
-import { useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { FaFire, FaPlay, FaTimes, FaTrashAlt, FaFilm, FaQrcode, FaDownload, FaUpload, FaPaste } from 'react-icons/fa';
 import qrcode from 'qrcode-generator';
 import {
@@ -42,6 +42,12 @@ export function SecretList({ onClose, onPlay }: SecretListProps) {
     // coluna 0 = o filme; 1..n = os chips de momento dele
     const [linha, setLinha] = useState(0);
     const [coluna, setColuna] = useState(0);
+    // O foco do controle precisa ficar À VISTA: a lista rola por dentro e,
+    // sem isto, ↑↓ levavam o foco pra fora da tela e parecia que travou
+    const linhasRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        linhasRef.current?.querySelector('.tv-focused')?.scrollIntoView({ block: 'nearest' });
+    }, [linha, coluna, itens]);
 
     const recarregar = () => {
         const novos = secretList.list();
@@ -217,7 +223,7 @@ export function SecretList({ onClose, onPlay }: SecretListProps) {
                         Nenhum filme ainda. Adicione filmes adultos pelo menu Ações (🟡) ou pela ficha do filme.
                     </p>
                 ) : (
-                    <div className="secret-list-rows">
+                    <div ref={linhasRef} className="secret-list-rows">
                         {itens.map((item, i) => (
                             <div key={item.id} className={`secret-row ${i === linha ? 'current' : ''}`}>
                                 <button
