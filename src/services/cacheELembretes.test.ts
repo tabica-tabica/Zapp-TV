@@ -15,6 +15,7 @@ import { buildBackup, backupSize, restoreBackup, MAX_PAYLOAD_BYTES, BACKUP_FORMA
 
 beforeEach(() => {
     installFakeStorage();
+    clearCatalogCache(); // a memória do catálogo é do módulo, sobrevive entre testes
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 7, 21, 12, 0, 0));
     reminderService.reset();
@@ -79,12 +80,15 @@ describe('catalogCache', () => {
         expect(readCatalog('live')).toBeNull();
     });
 
-    it('entrada corrompida devolve null em vez de explodir', () => {
+    it('entrada corrompida devolve null em vez de explodir', async () => {
         writeCatalog('live', [canal(1)], trimLive);
         const chave = Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i))
             .find(k => k?.includes('catalog_cache')) as string;
         localStorage.setItem(chave, '{"at":');
-        expect(readCatalog('live')).toBeNull();
+        // Próxima abertura do app (sem a cópia em memória desta sessão)
+        vi.resetModules();
+        const { readCatalog: lerNaProximaAbertura } = await import('./catalogCache');
+        expect(lerNaProximaAbertura('live')).toBeNull();
     });
 
     it('dropCatalog e clearCatalogCache limpam de verdade', () => {

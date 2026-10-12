@@ -76,6 +76,7 @@ export function LiveChannelPreview({ src, onError, muted = true, onResolvedUrl, 
         videoRef,
         autoPlay: true,
         isLive: true,
+        preview: true,
         adopt: adotado?.hls,
         onResolvedUrl,
         onStreamError: (causa) => {

@@ -1,6 +1,10 @@
 // useHls hook - Manages HLS.js for streaming playback with quality selection
 import { useEffect, useRef, useCallback, useState, type MutableRefObject, type RefObject } from 'react';
 import Hls, { type HlsListeners } from 'hls.js';
+// O build ESM do hls.js (o que o Vite empacota) só cria o worker com
+// `workerPath` — sem isto o `enableWorker` não fazia nada e o transmux rodava
+// na thread principal, disputando com a navegação (visto no perfil da LG)
+import hlsWorkerUrl from 'hls.js/dist/hls.worker.js?url';
 import { qualityCap } from '../services/playerPrefs';
 import { playbackPrefs } from '../services/playbackPrefs';
 import { noWebOS } from '../services/platformApp';
@@ -50,7 +54,16 @@ interface UseHlsOptions {
      * na criação do pipeline. Sem ele, o padrão do hls.js (3 segmentos).
      */
     liveSyncDuration?: number | null;
+    /**
+     * Prévia (caixa pequena): buffer curto. 30-60s de 1080p na RAM de uma TV
+     * de 1GB por uma caixa de 300px era só memória e coleta de lixo; quem
+     * assume o pipeline (player) devolve o buffer de sempre.
+     */
+    preview?: boolean;
 }
+
+/** Segundos de buffer da prévia (ao vivo: ~1-2 segmentos à frente) */
+const PREVIEW_BUFFER_S = 8;
 
 /** Última vez que QUALQUER pipeline deste app recebeu fragmento (ver connlimit). */
 let lastStreamActivityAt = 0;
@@ -105,6 +118,7 @@ export function useHls({
     onResolvedUrl,
     adopt = null,
     liveSyncDuration = null,
+    preview = false,
 }: UseHlsOptions): UseHlsReturn {
     const liveSyncRef = useRef(liveSyncDuration);
     useEffect(() => { liveSyncRef.current = liveSyncDuration; }, [liveSyncDuration]);
@@ -285,19 +299,27 @@ export function useHls({
                 // O perfil de buffer é escolhido nas Configurações (item 66);
                 // 'equilibrado' reproduz exatamente os valores anteriores
                 const buffers = playbackPrefs.buffers();
-                const seconds = isLive ? buffers.live : buffers.vod;
-                const maxSeconds = isLive ? buffers.maxLive : buffers.maxVod;
+                const seconds = preview ? PREVIEW_BUFFER_S : isLive ? buffers.live : buffers.vod;
+                const maxSeconds = preview ? PREVIEW_BUFFER_S : isLive ? buffers.maxLive : buffers.maxVod;
                 const atraso = isLive ? liveSyncRef.current : null;
-                const hls = adopted ?? new Hls({
-                    ...(atraso ? { liveSyncDuration: atraso } : {}),
-                    enableWorker: true,
-                    lowLatencyMode: false,
+                const buffer = {
                     backBufferLength: isLive ? seconds : seconds + 30,
                     maxBufferLength: seconds,
                     maxMaxBufferLength: maxSeconds,
                     // Teto em BYTES além dos segundos: stream 4K de bitrate
                     // alto estourava a RAM de TVs de 1GB só com o buffer
-                    maxBufferSize: seconds * 1000 * 1000,
+                    // (piso de 12MB: um segmento 1080p tem ~5MB)
+                    maxBufferSize: Math.max(12, seconds) * 1000 * 1000,
+                };
+                // Assumido de outro dono (prévia → player): o buffer passa a ser
+                // o DESTE uso — o hls.js lê o config a cada tique
+                if (adopted?.config) Object.assign(adopted.config, buffer);
+                const hls = adopted ?? new Hls({
+                    ...(atraso ? { liveSyncDuration: atraso } : {}),
+                    enableWorker: true,
+                    workerPath: hlsWorkerUrl,
+                    lowLatencyMode: false,
+                    ...buffer,
                     startLevel: -1, // Auto quality selection
                     // Tauri: FetchLoader (fetch) em vez de XHR, pra passar
                     // pelo tauri-plugin-http — ver rotearFetchPeloTauri

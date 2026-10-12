@@ -36,6 +36,25 @@ interface CacheEntry<T> {
     items: T[];
 }
 
+// Já parseado, por chave: a TV ao Vivo remonta a cada visita e relia ~0,5 MB
+// de JSON do localStorage DUAS vezes (leitura + checagem de idade antes de
+// regravar) — dezenas a centenas de ms travando a thread numa TV. Quem lê
+// recebe o mesmo array: só leitura.
+const memoria = new Map<string, CacheEntry<unknown>>();
+
+function entrada<T>(chave: string): CacheEntry<T> | null {
+    const lembrada = memoria.get(chave) as CacheEntry<T> | undefined;
+    if (lembrada) return lembrada;
+    const lida = readJson<CacheEntry<T> | null>(chave, null);
+    if (lida && Array.isArray(lida.items)) memoria.set(chave, lida);
+    return lida;
+}
+
+function apagar(chave: string): void {
+    memoria.delete(chave);
+    removeKey(chave);
+}
+
 /**
  * A chave leva a PLAYLIST ativa: dois provedores têm catálogos diferentes e
  * misturá-los mostraria canais que não existem naquela conta.
@@ -47,10 +66,10 @@ function key(kind: CatalogKind): string {
 
 /** Lê o catálogo guardado, ou null se não há ou já venceu. */
 export function readCatalog<T>(kind: CatalogKind): T[] | null {
-    const entry = readJson<CacheEntry<T> | null>(key(kind), null);
+    const entry = entrada<T>(key(kind));
     if (!entry || !Array.isArray(entry.items)) return null;
     if (Date.now() - entry.at > MAX_AGE_MS) {
-        removeKey(key(kind));
+        apagar(key(kind));
         return null;
     }
     return entry.items;
@@ -66,7 +85,7 @@ export function writeCatalog<T, S>(kind: CatalogKind, items: T[], trim: (item: T
     // Só regrava se o que está guardado já envelheceu. A LiveTV remonta a cada
     // visita, e reserializar centenas de KB toda vez custa caro numa TV — e
     // pior: uma gravação sob quota derruba TODO o cache do TMDB pra caber.
-    const atual = readJson<CacheEntry<S> | null>(key(kind), null);
+    const atual = entrada<S>(key(kind));
     if (atual && Date.now() - atual.at < REWRITE_AFTER_MS) return true;
 
     const slim = items.map(trim);
@@ -74,20 +93,24 @@ export function writeCatalog<T, S>(kind: CatalogKind, items: T[], trim: (item: T
     // INTEIRA ou nada: meia lista de canais é pior que lista nenhuma — o
     // usuário procura um canal que existe, não acha, e conclui que sumiu.
     if (json.length * 2 > MAX_BYTES) {
-        removeKey(key(kind));
+        apagar(key(kind));
         return false;
     }
 
-    return writeJson(key(kind), { at: Date.now(), items: slim } satisfies CacheEntry<S>).ok;
+    const nova = { at: Date.now(), items: slim } satisfies CacheEntry<S>;
+    const ok = writeJson(key(kind), nova).ok;
+    if (ok) memoria.set(key(kind), nova); else memoria.delete(key(kind));
+    return ok;
 }
 
 /** Descarta uma entrada do catálogo guardado. */
 export function dropCatalog(kind: CatalogKind): void {
-    removeKey(key(kind));
+    apagar(key(kind));
 }
 
 /** Apaga o catálogo guardado de todas as playlists (usado no reset). */
 export function clearCatalogCache(): void {
+    memoria.clear();
     try {
         const doomed: string[] = [];
         for (let i = 0; i < localStorage.length; i++) {
