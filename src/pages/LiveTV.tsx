@@ -159,6 +159,14 @@ export function LiveTV() {
     // prévia montada agora; handoffRef carrega o pipeline até o player montar.
     const previewRef = useRef<LiveChannelPreviewHandle>(null);
     const previewStreamIdRef = useRef<number | null>(null);
+    const previewSrcRef = useRef<string | null>(null);
+    // Prévia cujo <video> o player está usando NO LUGAR (LivePipeline.noLugar):
+    // fica montada, escondida e CONGELADA (canal/src do Assistir) enquanto o
+    // player toca — se ela desmontasse ou trocasse de src, levava o <video>
+    // do player junto. `geracaoPrevia` remonta do zero quando o player
+    // fechou sem devolver (ele zera o <video>).
+    const [previaNoPlayer, setPreviaNoPlayer] = useState<{ canal: LiveStream; src: string } | null>(null);
+    const [geracaoPrevia, setGeracaoPrevia] = useState(0);
     const handoffRef = useRef<LivePipeline | null>(null);
     // E a volta: Voltar no player devolve o pipeline TOCANDO, e a prévia do
     // mesmo canal assume (canal segue no ar, sem reconectar). Lido só na
@@ -495,12 +503,15 @@ export function LiveTV() {
         ? previaVariante.canal
         : padraoDaPrevia;
     const srcDaPrevia = canalDaPrevia ? canalDaPrevia.direct_source || api.getLiveStreamUrl(canalDaPrevia.stream_id) : null;
+    // Congelada só enquanto o player estiver aberto (ver previaNoPlayer)
+    const previaFixa = playingChannel ? previaNoPlayer : null;
     // Canal da prévia que pode ir pra Home ao sair da página: nunca no modo
     // adulto (a Home nunca mostra adulto)
     const previewCanalRef = useRef<LiveStream | null>(null);
     useEffect(() => {
         previewStreamIdRef.current = canalDaPrevia && !playingChannel && previewSrc && !previewFailed
             ? canalDaPrevia.stream_id : null;
+        previewSrcRef.current = previewSrc;
         previewCanalRef.current = previewStreamIdRef.current != null && !modoAdulto ? canalDaPrevia : null;
     }, [canalDaPrevia, playingChannel, previewSrc, previewFailed, modoAdulto]);
     // Saindo da página com a prévia TOCANDO: estaciona o stream pra a Home
@@ -692,10 +703,14 @@ export function LiveTV() {
     useEffect(() => { playingChannelRef.current = playingChannel; }, [playingChannel]);
 
     const playChannel = useCallback((stream: LiveStream, failover?: { atraso: number | null; url?: string | null }) => {
-        // Mesmo canal da prévia tocando → o player assume o pipeline dela
-        handoffRef.current = previewStreamIdRef.current === stream.stream_id
+        // Mesmo canal da prévia tocando → o player assume o pipeline dela, NO
+        // LUGAR: a prévia fica montada (congelada) segurando o <video>
+        const entregue = previewStreamIdRef.current === stream.stream_id
             ? previewRef.current?.handOff() ?? null
             : null;
+        const srcDaPreviaAgora = previewSrcRef.current;
+        handoffRef.current = entregue ? { ...entregue, noLugar: !!srcDaPreviaAgora } : null;
+        if (entregue && srcDaPreviaAgora) setPreviaNoPlayer({ canal: stream, src: srcDaPreviaAgora });
         if (failover) {
             setAtrasoAoVivo(failover.atraso);
             setSessaoAquecida(failover.url ? { id: stream.stream_id, url: failover.url } : null);
@@ -885,6 +900,11 @@ export function LiveTV() {
     const playArchive = (channel: LiveStream, programs: EpgProgram[], index: number) => {
         archiveAutoAdvanceRef.current = 0;
         setShowAgenda(false);
+        // O player ao vivo desmonta sem devolver (zera o <video> da prévia)
+        if (previaNoPlayer) {
+            setPreviaNoPlayer(null);
+            setGeracaoPrevia(g => g + 1);
+        }
         setPlayingChannel(null);
         setArchivePlayback({ channel, programs, index });
     };
@@ -1273,8 +1293,8 @@ export function LiveTV() {
                 não limpa `selectedChannel` de propósito — o usuário volta
                 pra ficha, não pra grade — então a prévia reaparece sozinha
                 quando `playingChannel` volta a null. */}
-            {selectedChannel && !playingChannel && (
-                <div className="channel-preview">
+            {selectedChannel && (!playingChannel || previaFixa) && (
+                <div className={`channel-preview ${previaFixa ? 'channel-preview-sob-player' : ''}`}>
                     <div className="preview-header">
                         <h2 className="preview-title">{channelDisplayName(selectedChannel.name)}</h2>
                         <button
@@ -1292,12 +1312,12 @@ export function LiveTV() {
                                 sempre. `key` força remontar o preview (e portanto o
                                 useHls por trás) quando o canal muda mesmo que o src
                                 resolvido dê na mesma URL por acidente. */}
-                            {previewSrc && !previewFailed ? (
+                            {previaFixa || (previewSrc && !previewFailed) ? (
                                 <LiveChannelPreview
                                     ref={previewRef}
-                                    key={canalDaPrevia?.stream_id ?? selectedChannel.stream_id}
-                                    src={previewSrc}
-                                    canalId={canalDaPrevia?.stream_id}
+                                    key={`${(previaFixa?.canal ?? canalDaPrevia)?.stream_id ?? selectedChannel.stream_id}-${geracaoPrevia}`}
+                                    src={previaFixa?.src ?? previewSrc ?? ''}
+                                    canalId={(previaFixa?.canal ?? canalDaPrevia)?.stream_id}
                                     adopt={devolucaoRef.current && devolucaoRef.current.id === canalDaPrevia?.stream_id ? devolucaoRef.current.pipeline : null}
                                     muted={previewMuted}
                                     // Sem gravar: barrado agora não quer dizer que o usuário prefira mudo
@@ -1592,7 +1612,12 @@ export function LiveTV() {
                     onSelectQualityVariant={handleSelectQualityVariant}
                     onClose={(devolvido) => {
                         handoffRef.current = null;
-                        if (devolvido) {
+                        const fixa = previaNoPlayer;
+                        setPreviaNoPlayer(null);
+                        if (devolvido && fixa && fixa.canal.stream_id === playingChannel.stream_id
+                            && previewRef.current?.retomar(devolvido)) {
+                            // A prévia reassumiu o pipeline com o <video> no lugar
+                        } else if (devolvido) {
                             // A prévia só assume se for montar AGORA, neste mesmo
                             // commit, pro canal que estava tocando: previewSrc
                             // pronto (o debounce de 400ms de um zap recente pode
@@ -1605,6 +1630,8 @@ export function LiveTV() {
                                 devolvido.video.removeAttribute('src');
                                 devolvido.video.load();
                             }
+                        } else if (fixa) {
+                            setGeracaoPrevia(g => g + 1);
                         }
                         setPlayingChannel(null);
                     }}

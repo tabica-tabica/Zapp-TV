@@ -16,11 +16,20 @@ import { liveHealth } from '../services/liveHealth';
 export interface LivePipeline {
     video: HTMLVideoElement;
     hls: Hls;
+    /**
+     * O <video> continua NO LUGAR (dentro da prévia, que segue montada e
+     * escondida): o player só o põe em tela cheia por CSS. Sem mover, o webOS
+     * não derruba o pipeline — nada de refazer MediaSource (era 5–16 s de
+     * "carregando" no Assistir).
+     */
+    noLugar?: boolean;
 }
 
 export interface LiveChannelPreviewHandle {
     /** Entrega o <video> + hls.js tocando; null se a prévia ainda não está tocando. */
     handOff: () => LivePipeline | null;
+    /** Reassume o pipeline que o player devolveu, se o <video> é o desta prévia (no lugar). */
+    retomar: (pipeline: LivePipeline) => boolean;
 }
 
 interface LiveChannelPreviewProps {
@@ -72,7 +81,7 @@ export function LiveChannelPreview({ src, onError, muted = true, onResolvedUrl, 
     // A prévia avisa UMA vez que não vai tocar (erro OU relógio de partida):
     // dois avisos fariam a TV ao Vivo pular duas variantes de uma vez
     const avisouRef = useRef(false);
-    const { handOff } = useHls({
+    const { handOff, retomar } = useHls({
         src,
         videoRef,
         autoPlay: true,
@@ -135,7 +144,17 @@ export function LiveChannelPreview({ src, onError, muted = true, onResolvedUrl, 
             const hls = handOff();
             return hls ? { video, hls } : null;
         },
-    }), [handOff, failed]);
+        retomar: (pipeline) => {
+            const video = videoRef.current;
+            if (!video || pipeline.video !== video) return false;
+            // O player trocou a classe (tela cheia); o React não volta a mexer
+            // nela porque a prop não mudou
+            video.className = 'live-channel-preview-video';
+            video.muted = muted;
+            retomar(pipeline.hls);
+            return true;
+        },
+    }), [handOff, retomar, failed, muted]);
 
     // `muted` do React só vale na montagem; o botão de mudo muda depois
     useEffect(() => {

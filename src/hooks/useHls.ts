@@ -49,6 +49,12 @@ interface UseHlsOptions {
      */
     adopt?: Hls | null;
     /**
+     * O <video> do `adopt` mudou de lugar no documento? No webOS isso derruba
+     * o pipeline de mídia e o hook refaz o MediaSource (recoverMediaError).
+     * false: o player usou o <video> da prévia NO LUGAR (sem mover) — nada a refazer.
+     */
+    adoptMovido?: boolean;
+    /**
      * Ao vivo: segundos atrás da borda pra começar (troca de fonte por falha:
      * a nova entra no MESMO atraso da que caiu, pra cena não pular). Lido só
      * na criação do pipeline. Sem ele, o padrão do hls.js (3 segmentos).
@@ -100,6 +106,11 @@ interface UseHlsReturn {
     reload: () => void;
     /** Entrega o pipeline vivo pra outro dono sem destruí-lo (prévia → player) */
     handOff: () => Hls | null;
+    /**
+     * O inverso do handOff, sem remontar: reassume um hls.js que segue preso
+     * ao MESMO <video> deste hook (player → prévia, com o <video> no lugar).
+     */
+    retomar: (hls: Hls) => void;
     qualityLevels: QualityLevel[];
     currentQualityIndex: number;
     setQuality: (index: number) => void;
@@ -124,6 +135,7 @@ export function useHls({
     isLive = false,
     onResolvedUrl,
     adopt = null,
+    adoptMovido = true,
     liveSyncDuration = null,
     preview = false,
 }: UseHlsOptions): UseHlsReturn {
@@ -150,6 +162,8 @@ export function useHls({
     const adoptedRef = useRef<Hls | null>(null);
     const adoptParkedRef = useRef<{ hls: Hls; src: string; timer: ReturnType<typeof setTimeout> } | null>(null);
     const reloadingRef = useRef(false);
+    // Pipeline devolvido pra reassumir no próximo passe do efeito (ver retomar)
+    const retomadoRef = useRef<Hls | null>(null);
 
     // Re-init sob demanda (retry/watchdog): bump re-roda o effect principal
     const [reloadTick, setReloadTick] = useState(0);
@@ -269,9 +283,12 @@ export function useHls({
             adoptParkedRef.current = null;
             if (parked.src === src && !reloadingRef.current) adopted = parked.hls;
             else parked.hls.destroy();
+        } else if (retomadoRef.current) {
+            adopted = retomadoRef.current;
+            retomadoRef.current = null;
         } else if (adopt && !adoptConsumedRef.current) {
             adopted = adopt;
-            movido = true;
+            movido = adoptMovido;
         }
         if (adopt) adoptConsumedRef.current = true;
         reloadingRef.current = false;
@@ -578,11 +595,18 @@ export function useHls({
         return hls;
     }, []);
 
+    const retomar = useCallback((hls: Hls) => {
+        retomadoRef.current = hls;
+        srcRef.current = ''; // fura o guard de mesmo-src
+        setReloadTick(t => t + 1);
+    }, []);
+
     return {
         hlsRef,
         cleanup,
         reload,
         handOff,
+        retomar,
         qualityLevels,
         currentQualityIndex,
         setQuality,

@@ -18,9 +18,14 @@ grade ou CSS de TV, leia a seção 1.
 | Medição pelo inspetor mentia | Sem `awaitPromise` no Chromium 53; e polling pelo DevTools atrasa quando a TV está ocupada | `scripts/tv-perf.mjs` mede **dentro** da página |
 | Lint não pegava API que falta no webOS | O `browserslist` do projeto é `chrome >= 69` (Tizen) | `npm run lint:webos` (Chrome 53 + polyfills do webOS) |
 
+| Assistir/Voltar na TV ao Vivo com 5–16 s de "carregando" | Mover o `<video>` da prévia pro player derrubava o pipeline e o `recoverMediaError` rebaixava os últimos segmentos | `<video>` **no lugar** (`LivePipeline.noLugar`): a ficha fica montada, escondida e congelada sob o player; o player só põe o vídeo em tela cheia por CSS e devolve com `retomar` (useHls). Ficha sem `z-index` nesse modo — o contexto de empilhamento dela prendia o vídeo sob a sidebar |
+
 Regras que saem disso:
 
 - **Não mover `<video>` tocando entre lugares do DOM sem o `recoverMediaError`** no webOS.
+  Melhor ainda: não mover — redimensionar no lugar (fixed + z-index) mantém
+  o pipeline sem engasgo (TV ao Vivo → player já faz assim; Home ⇄ TV ao
+  Vivo ainda move, ver pendências).
 - **Nada de recorte arredondado em volta de `<video>`** nos builds de TV.
 - **Sort estável não é garantido** antes do Chrome 70 — por isso `es.array.sort` está na lista de polyfills.
 - **Conta de 1 conexão**: o painel segue contando a conexão fechada por ~20 s. Fechar e reabrir o app em sequência (ou testar com `curl` enquanto a TV toca) derruba a prévia por "limite" — não é bug do app.
@@ -93,6 +98,9 @@ fora da tela em 1/3 das setas.
       histórico), e o player só contava acerto aos 60 s (agora 10 s) — a
       variante achada pelo failover nunca virava a padrão. Falta ver na TV
       com a HD fora de novo.
+- [ ] **Home ⇄ TV ao Vivo sem mover o `<video>`**: a prévia → player da TV ao
+      Vivo já é instantânea (vídeo no lugar). Entre páginas ainda move (a
+      página desmonta); precisa de uma camada de vídeo única na raiz do app.
 - [ ] **Troca de página lenta**: voltar a tocar leva 6–11 s (era 6–16 s; a
       Home caiu de ~16 s pra ~9 s com o lote). É o `recoverMediaError` refazendo o
       MediaSource + a Home montando ao mesmo tempo. Investigar com a bancada.

@@ -364,15 +364,18 @@ export function VideoPlayer({
     // elemento de mídia removido, então segue tocando sem engasgar.
     const [adopted] = useState<LivePipeline | null>(() => adopt ?? null);
     const hostRef = useRef<HTMLDivElement>(null);
+    // No lugar: o <video> fica na prévia (montada e escondida) e só vira tela
+    // cheia por CSS — mover derrubaria o pipeline no webOS (ver LivePipeline)
+    const noLugar = !!adopted?.noLugar;
     useLayoutEffect(() => {
         const host = hostRef.current;
-        if (!adopted || !host) return;
-        host.appendChild(adopted.video);
+        if (!adopted || (!host && !noLugar)) return;
+        if (!noLugar && host) host.appendChild(adopted.video);
         adopted.video.playsInline = true;
         videoRef.current = adopted.video;
         // Estacionado entre páginas (Home → TV ao Vivo) pode chegar pausado
         if (adopted.video.paused) adopted.video.play().catch(() => { });
-    }, [adopted]);
+    }, [adopted, noLugar]);
     const containerRef = useRef<HTMLDivElement>(null);
     const progressRef = useRef<HTMLDivElement>(null);
     const resumeAppliedRef = useRef(false);
@@ -636,6 +639,7 @@ export function VideoPlayer({
         onError: (cause) => setError(CAUSE_MESSAGES[cause || 'fatal']),
         onStreamError: (cause) => scheduleReconnect(cause || 'fatal'),
         adopt: adopted?.hls,
+        adoptMovido: !noLugar,
         liveSyncDuration,
     });
 
@@ -920,7 +924,7 @@ export function VideoPlayer({
     const onLiveHealthyRef = useRef(onLiveHealthy);
     useEffect(() => { onLiveHealthyRef.current = onLiveHealthy; }, [onLiveHealthy]);
     // Só a PRIMEIRA fonte é a adotada; troca de variante depois já é fonte nova
-    const adotadoPendenteRef = useRef(adopted !== null);
+    const adotadoPendenteRef = useRef(adopted !== null && !noLugar);
     useEffect(() => {
         if (!isLiveContent) return;
         const video = videoRef.current;
@@ -1525,10 +1529,10 @@ export function VideoPlayer({
     useLayoutEffect(() => {
         if (!adopted) return;
         const video = adopted.video;
-        video.className = videoClassName;
+        video.className = noLugar ? `${videoClassName} video-no-lugar` : videoClassName;
         if (isRadio || !poster) video.removeAttribute('poster');
         else video.poster = poster;
-    }, [adopted, videoClassName, isRadio, poster]);
+    }, [adopted, noLugar, videoClassName, isRadio, poster]);
     useEffect(() => {
         if (!adopted) return;
         const onClick = () => togglePlayRef.current();
@@ -2249,7 +2253,7 @@ export function VideoPlayer({
     return (
         <div
             ref={containerRef}
-            className="video-player-container"
+            className={`video-player-container ${noLugar ? 'video-player-no-lugar' : ''}`}
             onMouseMove={resetHideControlsTimer}
         >
             {/* Close Button */}
@@ -2272,7 +2276,8 @@ export function VideoPlayer({
                 {/* Proporção via classes (o CSS base usa !important; style
                     inline sem !important perderia — achado da revisão) */}
                 {adopted ? (
-                    // O <video> adotado entra aqui (ver useLayoutEffect do adopted)
+                    // O <video> adotado entra aqui (ver useLayoutEffect do adopted);
+                    // no lugar, fica na prévia e o host fica vazio
                     <div ref={hostRef} className="video-element-host" />
                 ) : (
                 <video

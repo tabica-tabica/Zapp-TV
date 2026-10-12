@@ -44,6 +44,20 @@
 }
 
 /* Modos de proporção (ciclados pelo botão 📐 do player) */
+/* <video> da prévia usado NO LUGAR (ver LivePipeline.noLugar): continua
+   dentro da ficha escondida da TV ao Vivo e só cobre a tela por baixo dos
+   controles. O fundo preto do wrapper sai, senão tamparia o vídeo. */
+.video-element.video-no-lugar {
+    position: fixed !important;
+    z-index: 9998;
+    visibility: visible;
+    background: #000;
+}
+
+.video-player-no-lugar .video-wrapper {
+    background: transparent;
+}
+
 .video-element.aspect-stretch {
     object-fit: fill !important;
 }

@@ -830,3 +830,13 @@
     box-shadow: 0 0 0 3px rgba(var(--ns-accent-rgb), 0.85);
     transform: scale(1.06);
 }
+
+/* Ficha montada por baixo do player só pra segurar o <video> da prévia no
+   lugar (ver previaNoPlayer no LiveTV): invisível, menos o próprio vídeo
+   (.video-no-lugar volta a ser visible). Sem o z-index: 10 da ficha, que
+   criava um contexto de empilhamento e prendia o vídeo (z 9998) por baixo da
+   sidebar e da barra da página. */
+.channel-preview-sob-player {
+    visibility: hidden;
+    z-index: auto;
+}
