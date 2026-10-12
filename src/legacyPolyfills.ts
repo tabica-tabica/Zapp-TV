@@ -117,4 +117,19 @@ if (typeof window !== 'undefined' && typeof window.ResizeObserver === 'undefined
     Object.assign(window, { ResizeObserver: LegacyResizeObserver });
 }
 
+// Element.scrollTo é do Chrome 61. O react-window rola a grade por ele (e pula
+// em silêncio se não existir): no webOS 4 o foco descia pra cards que nunca
+// entravam na tela. Sem `behavior: smooth` — pula direto, igual TV precisa.
+if (typeof Element !== 'undefined' && typeof Element.prototype.scrollTo !== 'function') {
+    Element.prototype.scrollTo = function (this: Element, a?: ScrollToOptions | number, b?: number) {
+        if (typeof a === 'object' && a !== null) {
+            if (a.left != null) this.scrollLeft = a.left;
+            if (a.top != null) this.scrollTop = a.top;
+        } else {
+            if (a != null) this.scrollLeft = a;
+            if (b != null) this.scrollTop = b;
+        }
+    } as Element['scrollTo'];
+}
+
 export {};

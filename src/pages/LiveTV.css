@@ -361,6 +361,12 @@
        Só se aplica quando NÃO há ficha acima (ela já limpou os mesmos 140px
        pra si — ver a regra .channel-preview + .livetv-content abaixo). */
     padding: 140px 16px 80px;
+    /* Coluna flex pra grade ter altura DEFINIDA: o `height: 100%` dela não
+       resolve contra altura vinda de flex no Chromium 53 (webOS 4) — a grade
+       crescia até o conteúdo, o react-window montava TODAS as linhas e cada
+       seta redesenhava centenas de cards. */
+    display: flex;
+    flex-direction: column;
 }
 
 /* Ficha aberta logo acima: ela já reservou os 140px de topo pra si
@@ -372,6 +378,8 @@
 }
 
 .channels-grid-viewport {
+    flex: 1 1 0px;
+    min-height: 0;
     scrollbar-width: thin;
     scrollbar-color: rgba(var(--ns-accent-rgb), 0.4) transparent;
 }

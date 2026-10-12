@@ -61,4 +61,16 @@ function ChannelCardImpl({
     );
 }
 
-export const ChannelCard = memo(ChannelCardImpl);
+// react-window 2 cria um `style` NOVO por célula a cada render da grade — com
+// o memo padrão, cada seta no controle redesenhava TODOS os cards (e os SVGs
+// de ícone). Compara o style por valor; o resto segue raso.
+function mesmoCard(a: ChannelCardProps, b: ChannelCardProps): boolean {
+    for (const k of Object.keys(b) as (keyof ChannelCardProps)[]) {
+        if (k !== 'style' && a[k] !== b[k]) return false;
+    }
+    const sa = a.style || {}, sb = b.style || {};
+    const ks = Object.keys(sb) as (keyof CSSProperties)[];
+    return ks.length === Object.keys(sa).length && ks.every(k => sa[k] === sb[k]);
+}
+
+export const ChannelCard = memo(ChannelCardImpl, mesmoCard);
