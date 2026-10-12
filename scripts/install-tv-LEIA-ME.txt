@@ -31,8 +31,8 @@ MESMA rede (Wi-Fi de visitante/convidado não serve: ela isola os aparelhos).
 PROBLEMAS
    - "Não consegui falar com o Key Server": confira o IP e se "Key Server"
      está ligado; TV e computador na mesma rede.
-   - "A Passphrase não confere": digite exatamente como na tela
-     (maiúsculas contam).
+   - "A Passphrase não confere": confira a da tela (a sessão pode
+     ter mudado o código).
    - O app sumiu da TV depois de uns dias: a sessão do Developer Mode dura
      ~50 horas. Abra o Developer Mode e use "Extend" (estender) antes de
      acabar; se acabou, ligue de novo e reinstale.

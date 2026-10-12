@@ -25,7 +25,7 @@ falhou() {
 Confira:
   - TV e computador na MESMA rede;
   - Developer Mode com "Dev Mode Status" e "Key Server" ligados;
-  - a Passphrase igual à da tela (maiúsculas contam);
+  - a Passphrase igual à da tela;
   - a sessão de desenvolvedor não expirou (renove no app Developer Mode).
 EOF
     fim 1
@@ -56,6 +56,8 @@ Na TV, abra o app "Developer Mode" e confira:
 EOF
 printf 'Passphrase que aparece na tela (6 caracteres): '
 read -r PASS || fim 1
+# A TV mostra sempre em maiúsculas; aceita digitada de qualquer jeito
+PASS=$(printf "%s" "$PASS" | tr "[:lower:]" "[:upper:]")
 
 TMP=$(mktemp -d) || fim 1
 trap 'rm -rf "$TMP"' EXIT

@@ -25,7 +25,7 @@ function Falhou([string]$Mensagem) {
     Write-Host "Confira:"
     Write-Host "  - TV e computador na MESMA rede;"
     Write-Host "  - Developer Mode com 'Dev Mode Status' e 'Key Server' ligados;"
-    Write-Host "  - a Passphrase igual à da tela (maiúsculas contam);"
+    Write-Host "  - a Passphrase igual à da tela;"
     Write-Host "  - a sessão de desenvolvedor não expirou (renove no app Developer Mode)."
     exit 1
 }
@@ -117,7 +117,7 @@ Write-Host ""
 Write-Host "Na TV, abra o app 'Developer Mode' e confira:"
 Write-Host "  - Dev Mode Status: ON"
 Write-Host "  - Key Server: ON"
-$Pass = (Read-Host 'Passphrase que aparece na tela (6 caracteres)').Trim()
+$Pass = (Read-Host 'Passphrase que aparece na tela (6 caracteres)').Trim().ToUpper()
 
 $Tmp = Join-Path $env:TEMP ('zapp-tv-' + [guid]::NewGuid())
 New-Item -ItemType Directory -Path $Tmp | Out-Null
