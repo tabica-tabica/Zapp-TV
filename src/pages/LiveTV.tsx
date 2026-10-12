@@ -4,7 +4,7 @@
 // 🎲 aleatório e retomada do último canal.
 // Color keys: 🔴 só-EPG · 🟢 aleatório · 🟡 favorito · 🔵 ocultar
 
-import { useState, useEffect, useRef, useMemo, useCallback, type ReactNode } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback, type ReactNode } from 'react';
 import {
     FaExclamationTriangle, FaStar, FaRegStar, FaEye, FaEyeSlash, FaBell, FaBellSlash,
     FaBroadcastTower, FaCalendarAlt, FaThLarge, FaRandom, FaFutbol, FaPlay, FaHistory,
@@ -21,10 +21,11 @@ import { kidsFilter, isAdultCategoryName } from '../services/kidsFilter';
 import { contentFlags } from '../services/contentFlags';
 import { useWatchSession } from '../hooks/useWatchSession';
 import { FAILOVER_RECONNECT_ATTEMPTS } from '../hooks/useVariantFailover';
-import { groupChannelVariants, qualityLabel, channelDisplayName, proximaVariante } from '../services/channelVariants';
+import { groupChannelVariants, qualityLabel, channelDisplayName, proximaVariante, melhorVariante } from '../services/channelVariants';
 import { resolverUrlFinal } from '../services/urlFinal';
 import { liveHealth } from '../services/liveHealth';
-import { CONNLIMIT_WINDOW_MS } from '../services/playerDecisions';
+import { pipelineEstacionado } from '../services/pipelineEstacionado';
+import { CONNLIMIT_WINDOW_MS, type StreamErrorCause } from '../services/playerDecisions';
 import {
     curatedHiddenPrefs, detectJunkCategories, detectQualityOnlyCategories,
     isQualityTaggedChannel, computeEffectiveVisibility, type DetectedGroup,
@@ -189,6 +190,10 @@ export function LiveTV() {
     // conta de 1 conexão recusa ("Maximum number of connections reached")
     // porque a da prévia ainda conta por uns 20s depois de fechada.
     const [previewSession, setPreviewSession] = useState<{ id: number; url: string } | null>(null);
+    // Failover da PRÉVIA: a fonte do canal selecionado falhou → a prévia anda
+    // pelas variantes (mesma rotação/benchmark/salvaguarda do player). `de` é
+    // o canal selecionado a que isto se refere; trocar a seleção descarta.
+    const [previaVariante, setPreviaVariante] = useState<{ de: number; canal: LiveStream; falharam: ReadonlySet<number> } | null>(null);
     // Handoff do pipeline: a prévia entrega o <video> + hls.js TOCANDO pro
     // player (ver VideoPlayer `adopt`). previewStreamIdRef diz de que canal é a
     // prévia montada agora; handoffRef carrega o pipeline até o player montar.
@@ -201,10 +206,6 @@ export function LiveTV() {
     // pipeline velho numa montagem futura.
     const devolucaoRef = useRef<{ id: number; pipeline: LivePipeline } | null>(null);
     useEffect(() => { devolucaoRef.current = null; }, [playingChannel]);
-    useEffect(() => {
-        previewStreamIdRef.current = selectedChannel && !playingChannel && previewSrc && !previewFailed
-            ? selectedChannel.stream_id : null;
-    }, [selectedChannel, playingChannel, previewSrc, previewFailed]);
 
     // Toast OSD da página (favorito/oculto/failover — R1 item 53)
     const [toast, setToast] = useState<ReactNode | null>(null);
@@ -269,14 +270,25 @@ export function LiveTV() {
 
             /** Pré-seleciona (e só no boot, dá play) o último canal assistido. */
             const restoreLastChannel = (items: LiveStream[], cats: Category[]) => {
-                if (!lastId) return;
-                const found = items.find(item => item.stream_id === lastId);
+                // Vindo da Home com a prévia dela TOCANDO: esse canal manda (o
+                // stream estacionado é assumido, sem conexão nova)
+                const estacionado = pipelineEstacionado.canal();
+                const alvoId = estacionado ?? lastId;
+                if (!alvoId) return;
+                const found = items.find(item => item.stream_id === alvoId);
                 if (!found) return;
                 // Último canal adulto não volta sozinho (a prévia toca na hora)
                 const adultas = new Set(cats.filter(c => isAdultCategoryName(c.category_name || '')).map(c => c.category_id));
                 if (canalAdulto(found, adultas)) return;
+                // Prévia presa NESTA variante (a estacionada, ou a última
+                // assistida — que tocou bem): o "melhor" do benchmark podia ser
+                // outra, e aí o stream estacionado ficaria sem dono e a volta
+                // pra Home (que mostra o último assistido) não casaria
+                setPreviaVariante({ de: found.stream_id, canal: found, falharam: new Set() });
                 setSelectedChannel(found);
                 if (wantsAutoplay) {
+                    // "Assistir" da Home: o player assume o stream estacionado
+                    handoffRef.current = pipelineEstacionado.retirar(found.stream_id);
                     setPlayingChannel(found);
                     storage.setLastChannel(found.stream_id);
                     zapHistory.push(found.stream_id);
@@ -510,6 +522,41 @@ export function LiveTV() {
         return map;
     }, [variantsOf]);
 
+    // Variante pra a prévia COMEÇAR: com o benchmark conhecendo o canal, a
+    // mais confiável (liveHealth); sem histórico, a padrão do catálogo.
+    // Calculado uma vez por seleção (o benchmark lê o storage).
+    const padraoDaPrevia = useMemo(() => {
+        if (!selectedChannel) return null;
+        const repId = representativeOf.get(selectedChannel.stream_id) ?? selectedChannel.stream_id;
+        return melhorVariante(variantsOf.get(String(repId)) ?? [selectedChannel], selectedChannel, liveHealth);
+    }, [selectedChannel, representativeOf, variantsOf]);
+    // O que a prévia está tocando DE FATO: a variante fixada pra esta seleção
+    // (failover da prévia, ou a que o player tocou), senão a melhor/padrão
+    const canalDaPrevia = selectedChannel && previaVariante?.de === selectedChannel.stream_id
+        ? previaVariante.canal
+        : padraoDaPrevia;
+    const srcDaPrevia = canalDaPrevia ? canalDaPrevia.direct_source || api.getLiveStreamUrl(canalDaPrevia.stream_id) : null;
+    // Canal da prévia que pode ir pra Home ao sair da página: nunca no modo
+    // adulto (a Home nunca mostra adulto)
+    const previewCanalRef = useRef<LiveStream | null>(null);
+    useEffect(() => {
+        previewStreamIdRef.current = canalDaPrevia && !playingChannel && previewSrc && !previewFailed
+            ? canalDaPrevia.stream_id : null;
+        previewCanalRef.current = previewStreamIdRef.current != null && !modoAdulto ? canalDaPrevia : null;
+    }, [canalDaPrevia, playingChannel, previewSrc, previewFailed, modoAdulto]);
+    // Saindo da página com a prévia TOCANDO: estaciona o stream pra a Home
+    // assumir (mesmo motivo do lado de lá: não esbarrar no limite de
+    // conexões). Só se for o canal que a Home vai mostrar (o último
+    // assistido): outro ficaria sem dono segurando uma conexão a mais
+    // enquanto a Home abre a dela. Layout: roda antes de o ref da prévia
+    // ser solto.
+    useLayoutEffect(() => () => {
+        const canal = previewCanalRef.current;
+        if (!canal || canal.stream_id !== storage.getLastChannel()) return;
+        const pipeline = previewRef.current?.handOff();
+        if (pipeline) pipelineEstacionado.estacionar(canal.stream_id, pipeline, canal);
+    }, []);
+
     const playerCurrentChannelId = playingChannel
         ? (representativeOf.get(playingChannel.stream_id) ?? playingChannel.stream_id)
         : undefined;
@@ -534,8 +581,17 @@ export function LiveTV() {
     });
 
     // Seleção/foco resetam ao trocar filtro — o canal focado pode não
-    // pertencer mais ao resultado filtrado
+    // pertencer mais ao resultado filtrado. Só na TROCA de verdade, nunca na
+    // montagem: com o catálogo em cache, a restauração do canal (último
+    // assistido / stream estacionado vindo da Home) roda ANTES deste efeito
+    // no mesmo commit, e ele zerava a seleção — a prévia nunca montava e o
+    // stream estacionado morria sem dono.
+    const filtroAnteriorRef = useRef<string | null>(null);
     useEffect(() => {
+        const filtro = JSON.stringify([searchQuery, selectedCategory, onlyWithEpg, showOnlyHidden, modoAdulto]);
+        const anterior = filtroAnteriorRef.current;
+        filtroAnteriorRef.current = filtro;
+        if (anterior === null || anterior === filtro) return;
         setSelectedChannel(null);
         setFocusedChannelIndex(0);
         setFocusArea(prev => (prev === 'preview' ? 'channels' : prev));
@@ -629,15 +685,19 @@ export function LiveTV() {
     // Preview de vídeo mudo da ficha: só liga o HLS depois de 400ms parado
     // no mesmo canal — sem isto, passear pela grade com o D-pad ligaria e
     // desligaria stream a cada canal que a seleção só passou de raspão.
+    // Segue a fonte que a prévia deve tocar (a do canal ou a variante do failover)
     useEffect(() => {
         setPreviewFailed(false);
         setPreviewSrc(null);
-        if (!selectedChannel) return;
-        const timer = setTimeout(() => {
-            setPreviewSrc(selectedChannel.direct_source || api.getLiveStreamUrl(selectedChannel.stream_id));
-        }, 400);
+        if (!srcDaPrevia) return;
+        // Stream estacionado (vindo da Home) pra este canal: monta JÁ — o
+        // debounce é pra quem passeia pela grade, e cada instante fora da
+        // página é o vídeo assumido parado
+        const estacionado = canalDaPrevia && pipelineEstacionado.canal() === canalDaPrevia.stream_id;
+        const timer = setTimeout(() => setPreviewSrc(srcDaPrevia), estacionado ? 0 : 400);
         return () => clearTimeout(timer);
-    }, [selectedChannel]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- canalDaPrevia segue srcDaPrevia
+    }, [srcDaPrevia]);
 
     // EPG do canal tocando (mini-EPG do player, atualiza a cada 60s)
     useEffect(() => {
@@ -689,6 +749,9 @@ export function LiveTV() {
             setAtrasoAoVivo(null);
             setSessaoAquecida(null);
         }
+        // A prévia fica presa NESTA variante (é a que o player devolve no
+        // Voltar) — sem isto o "melhor" do benchmark podia ser outra
+        setPreviaVariante({ de: stream.stream_id, canal: stream, falharam: new Set() });
         setSelectedChannel(stream);
         setPlayingChannel(stream);
         storage.setLastChannel(stream.stream_id);
@@ -762,6 +825,31 @@ export function LiveTV() {
             playChannel(next, { atraso, url });
         });
     }, [playingChannel, representativeOf, variantsOf, falhasDoCanal, playChannel]);
+
+    // A prévia não subiu (erro ou pendurada): tenta a próxima variante do canal
+    // selecionado. Painel recusando por limite → para no logo (salvaguarda:
+    // outra variante seria mais uma conexão numa conta já estourada).
+    const handlePreviewFailed = (causa?: StreamErrorCause | 'stall') => {
+        const selecionado = selectedChannel;
+        const atual = canalDaPrevia;
+        if (!selecionado || !atual) return;
+        if (causa === 'connlimit') {
+            setPreviewFailed(true);
+            return;
+        }
+        liveHealth.registrar(atual.stream_id, 'falha');
+        const repId = representativeOf.get(selecionado.stream_id) ?? selecionado.stream_id;
+        const variants = variantsOf.get(String(repId)) ?? [];
+        const anteriores = previaVariante?.de === selecionado.stream_id ? previaVariante.falharam : new Set<number>();
+        const falharam = new Set(anteriores).add(atual.stream_id);
+        const next = proximaVariante(variants, atual.stream_id, falharam, liveHealth);
+        if (!next) {
+            setPreviewFailed(true);
+            return;
+        }
+        setToast(<><FaExclamationTriangle /> Prévia: trocando para {qualityLabel(next.name)}</>);
+        setPreviaVariante({ de: selecionado.stream_id, canal: next, falharam });
+    };
 
     // Variantes do canal TOCANDO (não o pré-visualizado) → menu unificado do player
     const playingVariants = useMemo(
@@ -985,7 +1073,7 @@ export function LiveTV() {
             if (!selectedChannel) return;
             if (previewFocusIndex < previewItems.length) {
                 const action = previewItems[previewFocusIndex];
-                if (action === 'play') playChannel(selectedChannel);
+                if (action === 'play') playChannel(canalDaPrevia ?? selectedChannel);
                 else if (action === 'mute') togglePreviewMuted();
                 else if (action === 'restart') restartProgram();
                 else if (action === 'fav') toggleChannelFavorite(selectedChannel);
@@ -1255,14 +1343,15 @@ export function LiveTV() {
                             {previewSrc && !previewFailed ? (
                                 <LiveChannelPreview
                                     ref={previewRef}
-                                    key={selectedChannel.stream_id}
+                                    key={canalDaPrevia?.stream_id ?? selectedChannel.stream_id}
                                     src={previewSrc}
-                                    adopt={devolucaoRef.current?.id === selectedChannel.stream_id ? devolucaoRef.current.pipeline : null}
+                                    canalId={canalDaPrevia?.stream_id}
+                                    adopt={devolucaoRef.current && devolucaoRef.current.id === canalDaPrevia?.stream_id ? devolucaoRef.current.pipeline : null}
                                     muted={previewMuted}
                                     // Sem gravar: barrado agora não quer dizer que o usuário prefira mudo
                                     onAutoMuted={() => setPreviewMuted(true)}
-                                    onResolvedUrl={url => setPreviewSession({ id: selectedChannel.stream_id, url })}
-                                    onError={() => setPreviewFailed(true)}
+                                    onResolvedUrl={url => canalDaPrevia && setPreviewSession({ id: canalDaPrevia.stream_id, url })}
+                                    onError={handlePreviewFailed}
                                 />
                             ) : (
                                 <div className="preview-placeholder">
@@ -1332,7 +1421,7 @@ export function LiveTV() {
                             <div className="preview-actions">
                                 <button
                                     className={`play-button ${focusArea === 'preview' && previewFocusIndex === previewActionIndex('play') ? 'tv-focused' : ''}`}
-                                    onClick={() => playChannel(selectedChannel)}
+                                    onClick={() => playChannel(canalDaPrevia ?? selectedChannel)}
                                 >
                                     <FaPlay /> Assistir
                                 </button>
@@ -1553,7 +1642,7 @@ export function LiveTV() {
                             // commit, pro canal que estava tocando: previewSrc
                             // pronto (o debounce de 400ms de um zap recente pode
                             // não ter passado). Senão o pipeline morre aqui.
-                            if (previewSrc && !previewFailed && selectedChannel?.stream_id === playingChannel.stream_id) {
+                            if (previewSrc && !previewFailed && canalDaPrevia?.stream_id === playingChannel.stream_id) {
                                 devolucaoRef.current = { id: playingChannel.stream_id, pipeline: devolvido };
                             } else {
                                 devolvido.hls.destroy();

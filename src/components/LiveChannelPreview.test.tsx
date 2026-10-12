@@ -9,8 +9,12 @@ import { createRef } from 'react';
 import { render, cleanup } from '@testing-library/react';
 import type Hls from 'hls.js';
 import { LiveChannelPreview, type LiveChannelPreviewHandle } from './LiveChannelPreview';
+import { LIVE_START_TIMEOUT_MS } from '../services/playerDecisions';
 
-afterEach(cleanup);
+afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+});
 
 function pipelineTocando() {
     const video = document.createElement('video');
@@ -46,5 +50,32 @@ describe('LiveChannelPreview: assumir o pipeline devolvido pelo player', () => {
         expect(deNovo?.video).toBe(devolvido.video);
         expect(deNovo?.hls).toBe(devolvido.hls);
         expect(devolvido.hls.destroy).not.toHaveBeenCalled();
+    });
+});
+
+describe('LiveChannelPreview: stream pendurado', () => {
+    it("não subiu em LIVE_START_TIMEOUT_MS sem erro nenhum: avisa 'stall' (a TV ao Vivo tenta outra variante)", () => {
+        vi.useFakeTimers();
+        const onError = vi.fn();
+        // jsdom não toca: o <video> fica em readyState 0, como um stream que não sobe
+        render(<LiveChannelPreview src="http://painel/live/2.m3u8" onError={onError} />);
+        // Sem MSE nem HLS nativo no jsdom o useHls não carrega nada e não dá
+        // erro — exatamente o stream pendurado
+        vi.advanceTimersByTime(LIVE_START_TIMEOUT_MS - 1);
+        expect(onError).not.toHaveBeenCalled();
+        vi.advanceTimersByTime(1);
+        expect(onError).toHaveBeenCalledTimes(1);
+        expect(onError).toHaveBeenCalledWith('stall');
+        // Um aviso só: o tempo seguir passando não repete
+        vi.advanceTimersByTime(LIVE_START_TIMEOUT_MS);
+        expect(onError).toHaveBeenCalledTimes(1);
+    });
+
+    it('pipeline devolvido (já tocando) não entra no relógio de partida', () => {
+        vi.useFakeTimers();
+        const onError = vi.fn();
+        render(<LiveChannelPreview src="http://painel/live/1.m3u8" adopt={pipelineTocando()} onError={onError} />);
+        vi.advanceTimersByTime(LIVE_START_TIMEOUT_MS * 2);
+        expect(onError).not.toHaveBeenCalled();
     });
 });

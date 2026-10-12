@@ -7,6 +7,8 @@
 import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref } from 'react';
 import type Hls from 'hls.js';
 import { useHls } from '../hooks/useHls';
+import { LIVE_START_TIMEOUT_MS, type StreamErrorCause } from '../services/playerDecisions';
+import { pipelineEstacionado } from '../services/pipelineEstacionado';
 
 /** Pipeline vivo da prévia, pronto pro player assumir (ver useHls `adopt`). */
 export interface LivePipeline {
@@ -21,7 +23,12 @@ export interface LiveChannelPreviewHandle {
 
 interface LiveChannelPreviewProps {
     src: string;
-    onError?: () => void;
+    /**
+     * A prévia não vai tocar: erro do stream (com a causa — 'connlimit' é o
+     * painel recusando por limite de conexões) ou 'stall', quando não subiu em
+     * LIVE_START_TIMEOUT_MS sem erro nenhum (stream pendurado).
+     */
+    onError?: (causa?: StreamErrorCause | 'stall') => void;
     /** Mudo por padrão; a TV ao Vivo liga o som (com botão de mudo). */
     muted?: boolean;
     /** URL da sessão aberta pela prévia — ver useHls `onResolvedUrl`. */
@@ -34,15 +41,20 @@ interface LiveChannelPreviewProps {
      * na montagem.
      */
     adopt?: LivePipeline | null;
+    /**
+     * Canal desta prévia: sem `adopt`, assume o pipeline que outra PÁGINA
+     * estacionou pra este canal (Home ⇄ TV ao Vivo, ver pipelineEstacionado).
+     */
+    canalId?: number;
     ref?: Ref<LiveChannelPreviewHandle>;
 }
 
-export function LiveChannelPreview({ src, onError, muted = true, onResolvedUrl, onAutoMuted, adopt, ref }: LiveChannelPreviewProps) {
+export function LiveChannelPreview({ src, onError, muted = true, onResolvedUrl, onAutoMuted, adopt, canalId, ref }: LiveChannelPreviewProps) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const [failed, setFailed] = useState(false);
     // Mesmo truque do player: o <video> adotado entra no host no MESMO commit
     // em que o player sai da tela, e segue tocando sem engasgar
-    const [adotado] = useState<LivePipeline | null>(() => adopt ?? null);
+    const [adotado] = useState<LivePipeline | null>(() => adopt ?? (canalId != null ? pipelineEstacionado.retirar(canalId) : null));
     const hostRef = useRef<HTMLDivElement>(null);
     useLayoutEffect(() => {
         const host = hostRef.current;
@@ -55,6 +67,9 @@ export function LiveChannelPreview({ src, onError, muted = true, onResolvedUrl, 
         video.playsInline = true;
     }, [adotado]);
 
+    // A prévia avisa UMA vez que não vai tocar (erro OU relógio de partida):
+    // dois avisos fariam a TV ao Vivo pular duas variantes de uma vez
+    const avisouRef = useRef(false);
     const { handOff } = useHls({
         src,
         videoRef,
@@ -62,11 +77,29 @@ export function LiveChannelPreview({ src, onError, muted = true, onResolvedUrl, 
         isLive: true,
         adopt: adotado?.hls,
         onResolvedUrl,
-        onStreamError: () => {
+        onStreamError: (causa) => {
+            if (avisouRef.current) return;
+            avisouRef.current = true;
             setFailed(true);
-            onError?.();
+            onError?.(causa);
         },
     });
+
+    // Stream pendurado não dá erro: sem isto a prévia ficava no preto pra
+    // sempre e ninguém tentava outra variante
+    const onErrorRef = useRef(onError);
+    useEffect(() => { onErrorRef.current = onError; }, [onError]);
+    useEffect(() => {
+        if (adotado) return; // já chega tocando
+        const timer = setTimeout(() => {
+            const video = videoRef.current;
+            if (avisouRef.current || (video && video.readyState >= 3)) return;
+            avisouRef.current = true;
+            setFailed(true);
+            onErrorRef.current?.('stall');
+        }, LIVE_START_TIMEOUT_MS);
+        return () => clearTimeout(timer);
+    }, [src, adotado]);
 
     useImperativeHandle(ref, () => ({
         handOff: () => {
@@ -96,6 +129,14 @@ export function LiveChannelPreview({ src, onError, muted = true, onResolvedUrl, 
             video.play().catch(() => { });
         });
     };
+
+    // Adotado chega TOCANDO — ou pausado, se passou uns instantes fora da
+    // página (estacionado entre Home e TV ao Vivo): retoma. Depois do efeito
+    // do `muted`, pra respeitar o mudo desta prévia.
+    useEffect(() => {
+        if (adotado) tocarMesmoBarrado();
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- só na montagem
+    }, [adotado]);
 
     if (failed) return null;
 

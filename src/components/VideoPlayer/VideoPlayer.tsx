@@ -369,6 +369,8 @@ export function VideoPlayer({
         host.appendChild(adopted.video);
         adopted.video.playsInline = true;
         videoRef.current = adopted.video;
+        // Estacionado entre páginas (Home → TV ao Vivo) pode chegar pausado
+        if (adopted.video.paused) adopted.video.play().catch(() => { });
     }, [adopted]);
     const containerRef = useRef<HTMLDivElement>(null);
     const progressRef = useRef<HTMLDivElement>(null);

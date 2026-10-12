@@ -14,9 +14,9 @@
 // está selecionado (o rótulo "Continue assistindo"/"Sugestão" muda com a
 // seleção, não é fixo por canal).
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type Ref } from 'react';
 import { FaBroadcastTower, FaPlay } from 'react-icons/fa';
-import { LiveChannelPreview } from '../components/LiveChannelPreview';
+import { LiveChannelPreview, type LiveChannelPreviewHandle } from '../components/LiveChannelPreview';
 import { api } from '../services/api';
 import { epgService } from '../services/epgService';
 import { channelDisplayName } from '../services/channelVariants';
@@ -28,6 +28,8 @@ interface HomeChannelPreviewProps {
     channel: LiveStream;
     focused: boolean;
     onWatch: () => void;
+    /** Pra a Home estacionar o stream tocando ao sair da página (ver pipelineEstacionado) */
+    previewRef?: Ref<LiveChannelPreviewHandle>;
 }
 
 function formatClock(ms: number): string {
@@ -35,7 +37,7 @@ function formatClock(ms: number): string {
     return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
 }
 
-export function HomeChannelPreview({ channel, focused, onWatch }: HomeChannelPreviewProps) {
+export function HomeChannelPreview({ channel, focused, onWatch, previewRef }: HomeChannelPreviewProps) {
     const [failed, setFailed] = useState(false);
     const [nowTitle, setNowTitle] = useState<string | null>(null);
     const [nowTime, setNowTime] = useState<string | null>(null);
@@ -67,8 +69,11 @@ export function HomeChannelPreview({ channel, focused, onWatch }: HomeChannelPre
             <div className="home-channel-preview-video">
                 {!failed ? (
                     <LiveChannelPreview
+                        ref={previewRef}
                         key={channel.stream_id}
                         src={src}
+                        // Vindo da TV ao Vivo neste canal: assume o stream que ela estacionou
+                        canalId={channel.stream_id}
                         onError={() => setFailed(true)}
                     />
                 ) : (

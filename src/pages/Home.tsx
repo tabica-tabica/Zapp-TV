@@ -1,6 +1,8 @@
 // Home Page - Matching NeoStream Desktop
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useLayoutEffect, useRef, useSyncExternalStore } from 'react';
+import type { LiveChannelPreviewHandle } from '../components/LiveChannelPreview';
+import { pipelineEstacionado } from '../services/pipelineEstacionado';
 import {
     FaExclamationTriangle, FaClock, FaSync, FaFilm, FaTv, FaPlay,
     FaListOl, FaCalendarPlus, FaLightbulb,
@@ -142,6 +144,17 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
     // — escolher outro canal na fileira já deixa de ser "continuar").
     const [channelPreviewPool, setChannelPreviewPool] = useState<{ lastWatchedId: number | null; channels: LiveStream[] } | null>(null);
     const [selectedPreviewChannelId, setSelectedPreviewChannelId] = useState<number | null>(null);
+    // Vindo da TV ao Vivo com a prévia TOCANDO: o canal estacionado vira o
+    // herói JÁ, sem esperar o catálogo (aqui inclui VOD e séries e pode passar
+    // do prazo do estacionamento) — a prévia assume o mesmo stream. A TV ao
+    // Vivo só estaciona na desmontagem, DEPOIS deste render: daí o
+    // useSyncExternalStore (re-renderiza quando ela estaciona). O valor fica
+    // guardado no estado (ajuste durante o render) porque o estacionamento
+    // some logo depois da entrega. Quando o catálogo chega, o herói é o
+    // último assistido = o mesmo canal: a prévia não remonta.
+    const canalEstacionado = useSyncExternalStore(pipelineEstacionado.assinar, pipelineEstacionado.canalEstacionado);
+    const [heroEstacionado, setHeroEstacionado] = useState<LiveStream | null>(null);
+    if (canalEstacionado && !heroEstacionado && !channelPreviewPool) setHeroEstacionado(canalEstacionado);
 
     const refreshContinue = useCallback(() => {
         setContinueRaw(kidsFilter.isKidsActive() ? [] : progressService.getContinueWatching());
@@ -424,12 +437,27 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
     // selecionado sempre removido da fileira de capas (ele já está grande,
     // não faz sentido repetir pequeno do lado). Recalcular a cada render é
     // barato (≤25 itens) e evita guardar essa relação duas vezes.
-    const previewChannels = channelPreviewPool?.channels ?? [];
-    const selectedPreviewChannel = previewChannels.find(c => c.stream_id === selectedPreviewChannelId) ?? null;
+    const previewChannels = channelPreviewPool?.channels ?? (heroEstacionado ? [heroEstacionado] : []);
+    const selectedPreviewChannel = previewChannels.find(c => c.stream_id === (selectedPreviewChannelId ?? heroEstacionado?.stream_id)) ?? null;
+
+    // Saindo da Home com a prévia ao vivo TOCANDO: estaciona o stream em vez de
+    // fechar — a TV ao Vivo (ou o player do "Assistir") assume a mesma sessão.
+    // Fechar e reabrir esbarrava no limite de conexões (o painel segue contando
+    // a fechada por ~20s). Layout: roda na desmontagem ANTES de o ref da
+    // prévia (filha) ser solto. Trocar de canal na fileira NÃO passa aqui.
+    const homePreviewRef = useRef<LiveChannelPreviewHandle>(null);
+    const homePreviewIdRef = useRef<number | null>(null);
+    useEffect(() => { homePreviewIdRef.current = selectedPreviewChannel?.stream_id ?? null; }, [selectedPreviewChannel]);
+    useLayoutEffect(() => () => {
+        const id = homePreviewIdRef.current;
+        const pipeline = homePreviewRef.current?.handOff();
+        if (id != null && pipeline) pipelineEstacionado.estacionar(id, pipeline);
+    }, []);
     const otherPreviewChannels = selectedPreviewChannel
         ? previewChannels.filter(c => c.stream_id !== selectedPreviewChannel.stream_id)
         : previewChannels;
-    const isLastWatchedSelected = !!selectedPreviewChannel && selectedPreviewChannel.stream_id === channelPreviewPool?.lastWatchedId;
+    const isLastWatchedSelected = !!selectedPreviewChannel
+        && selectedPreviewChannel.stream_id === (channelPreviewPool ? channelPreviewPool.lastWatchedId : heroEstacionado?.stream_id);
 
     // TV Navigation - seções dinâmicas ("continue"/"newepisodes" condicionais)
     // A ORDEM aqui tem que ser a MESMA do DOM, senão ↓ move o foco pra cima na
@@ -706,6 +734,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                             <HomeChannelPreview
                                 key={selectedPreviewChannel.stream_id}
                                 channel={selectedPreviewChannel}
+                                previewRef={homePreviewRef}
                                 focused={focusedSection === sectionIndex('channelpreview') && focusedItem === 0}
                                 onWatch={handleWatchChannelPreview}
                             />
