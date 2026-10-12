@@ -37,11 +37,17 @@ const alvo = join(root, process.argv[2] || join('dist', 'tizen', 'assets'));
 // CSS subido em 10/10/2026: prévia de canal ao vivo na Home/zap do player,
 // fallbacks de gap/aspect-ratio delas, e o webOS com alvo Chromium 53 (mais
 // prefixos -webkit-). Medido: style.css 161 KB (Tizen) / 165 KB (webOS).
+//
+// JS subido em 11/10/2026: lista secreta (tira de miniaturas, pré-carga),
+// modo adulto em Filmes/TV ao Vivo, devolução do stream do player pra prévia
+// e o failover ao vivo por buffer (rotação de variantes, benchmark passivo,
+// salvaguarda de limite de conexões). Medido: index.js 1129 KB / JS total
+// 1249 KB (Tizen) e 1133 KB / 1256 KB (webOS) — teto ~1% acima do webOS.
 const ORCAMENTO = {
     /** Soma de todo JS. */
-    jsTotal: 1250,
+    jsTotal: 1270,
     /** O maior arquivo isolado — é ele que trava a thread principal no parse. */
-    maiorJs: 1130,
+    maiorJs: 1140,
     /** Todo o CSS. */
     cssTotal: 175,
 };

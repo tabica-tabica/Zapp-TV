@@ -7,7 +7,7 @@ import {
 } from 'react-icons/fa';
 import { useHls, type StreamErrorCause } from '../../hooks/useHls';
 import {
-    MAX_RECONNECT_ATTEMPTS, isTerminalCause, reconnectDelayMs, liveFeedStalled, CONNLIMIT_WINDOW_MS,
+    MAX_RECONNECT_ATTEMPTS, isTerminalCause, reconnectDelayMs, liveFeedStalled, liveBufferDying, CONNLIMIT_WINDOW_MS,
 } from '../../services/playerDecisions';
 import { playbackPrefs } from '../../services/playbackPrefs';
 import { useTVNavigation } from '../../hooks/useTVNavigation';
@@ -68,7 +68,13 @@ export interface VideoPlayerProps {
     /** Chave pra lembrar a proporção por conteúdo (ex.: "live-123") */
     contentKey?: string;
     /** Todas as tentativas de reconexão falharam (LiveTV usa pra failover de variante) */
-    onStreamFailed?: () => void;
+    /**
+     * Fonte desistida. `porLimite`: o painel estava recusando por limite de
+     * conexões da conta — a culpa não é do canal (o benchmark não conta).
+     */
+    onStreamFailed?: (porLimite?: boolean) => void;
+    /** Ao vivo: a fonte tocou 60s seguidos sem travar (benchmark, ver liveHealth). Uma vez por fonte. */
+    onLiveHealthy?: () => void;
     /** Tentativas antes de desistir (e chamar onStreamFailed). Menor quando há variante pra failover. */
     maxReconnectAttempts?: number;
     /**
@@ -76,6 +82,15 @@ export interface VideoPlayerProps {
      * timeshift daquele instante. A página devolve a URL; null = sem suporte.
      */
     onRequestPauseLive?: (pausedAtMs: number) => string | null;
+    /**
+     * Ao vivo, com fonte alternativa: o buffer está acabando e nada novo chega
+     * (liveBufferDying) — a imagem AINDA anda. Avisa UMA vez por fonte, com o
+     * atraso atual atrás da borda (s), pra quem chamou preparar a troca
+     * enquanto o buffer toca. O liveFeedStalled segue de rede de segurança.
+     */
+    onStreamDegrading?: (atrasoS: number | null, porLimite: boolean) => void;
+    /** Ao vivo: atraso atrás da borda pra começar esta fonte (ver useHls) */
+    liveSyncDuration?: number | null;
     /** Canal de rádio (item 13): UI de áudio, sem vídeo */
     isRadio?: boolean;
     /**
@@ -320,6 +335,9 @@ export function VideoPlayer({
     onStreamFailed,
     maxReconnectAttempts = MAX_RECONNECT_ATTEMPTS,
     onRequestPauseLive,
+    onStreamDegrading,
+    liveSyncDuration,
+    onLiveHealthy,
     isRadio = false,
     autoAdvanceCountRef,
     navEnabled = true,
@@ -645,6 +663,7 @@ export function VideoPlayer({
         onError: (cause) => setError(CAUSE_MESSAGES[cause || 'fatal']),
         onStreamError: (cause) => scheduleReconnect(cause || 'fatal'),
         adopt: adopted?.hls,
+        liveSyncDuration,
     });
 
     // Qualidade manual lembrada por conteúdo (item 46). Guardada por ALTURA:
@@ -787,7 +806,7 @@ export function VideoPlayer({
             // 403 depois de uma espera por limite de conexões é o mesmo
             // incidente — "canal indisponível (404)" mandaria a pessoa pro lado errado
             setError(connlimitSinceRef.current ? CAUSE_MESSAGES.connlimit : CAUSE_MESSAGES.notfound);
-            onStreamFailedRef.current?.();
+            onStreamFailedRef.current?.(connlimitSinceRef.current > 0);
             return;
         }
         const attempt = reconnectAttemptRef.current + 1;
@@ -796,7 +815,7 @@ export function VideoPlayer({
             videoRef.current?.pause();
             setReconnecting(false);
             setError(CAUSE_MESSAGES[cause] || CAUSE_MESSAGES.fatal);
-            onStreamFailedRef.current?.();
+            onStreamFailedRef.current?.(connlimitSinceRef.current > 0);
             return;
         }
         reconnectAttemptRef.current = attempt;
@@ -923,6 +942,10 @@ export function VideoPlayer({
     // fica pausado pra sempre e era justamente o caso que ninguém pegava.
     const hasAlternativeRef = useRef(hasAlternativeSource);
     useEffect(() => { hasAlternativeRef.current = hasAlternativeSource; }, [hasAlternativeSource]);
+    const onStreamDegradingRef = useRef(onStreamDegrading);
+    useEffect(() => { onStreamDegradingRef.current = onStreamDegrading; }, [onStreamDegrading]);
+    const onLiveHealthyRef = useRef(onLiveHealthy);
+    useEffect(() => { onLiveHealthyRef.current = onLiveHealthy; }, [onLiveHealthy]);
     useEffect(() => {
         if (!isLiveContent) return;
         const video = videoRef.current;
@@ -934,6 +957,10 @@ export function VideoPlayer({
         let lastBufferGrowthAt = 0;
         let lastFrames = -1;
         let lastBufferEnd = -1;
+        let avisouDegradando = false; // um aviso por fonte
+        // Benchmark: 60s seguidos com quadro andando = fonte boa (uma vez por fonte)
+        let saudavelDesde = 0;
+        let avisouSaudavel = false;
         const interval = setInterval(() => {
             const v = videoRef.current;
             if (!v) return;
@@ -949,25 +976,48 @@ export function VideoPlayer({
             const frames = quality ? quality.totalVideoFrames : Math.round(v.currentTime * 25);
             if (frames > lastFrames && lastFrames >= 0) lastFrameAt = now;
             lastFrames = frames;
+            if (lastFrameAt && now - lastFrameAt < 3000) {
+                if (!saudavelDesde) saudavelDesde = now;
+                if (!avisouSaudavel && now - saudavelDesde >= 60000) {
+                    avisouSaudavel = true;
+                    onLiveHealthyRef.current?.();
+                }
+            } else {
+                saudavelDesde = 0;
+            }
             const bufferEnd = v.buffered.length > 0 ? v.buffered.end(v.buffered.length - 1) : 0;
             if (bufferEnd > lastBufferEnd && lastBufferEnd >= 0) lastBufferGrowthAt = now;
             lastBufferEnd = bufferEnd;
+            // Painel recusando por limite de conexões: trocar/preparar outra
+            // fonte só soma conexão numa conta já estourada — espera a velha cair
+            const limiteAtivo = connlimitSinceRef.current > 0 && now - connlimitSinceRef.current < CONNLIMIT_WINDOW_MS;
+            // Aviso antecipado: o buffer está secando e ainda toca — dá tempo
+            // de abrir a outra fonte antes da imagem parar
+            if (!avisouDegradando && !limiteAtivo && hasAlternativeRef.current && onStreamDegradingRef.current
+                && liveBufferDying({ now, lastBufferGrowthAt, bufferAheadS: Math.max(0, bufferEnd - v.currentTime) })) {
+                avisouDegradando = true;
+                const atraso = hlsRef.current?.latency;
+                onStreamDegradingRef.current(typeof atraso === 'number' && Number.isFinite(atraso) ? atraso : null, connlimitSinceRef.current > 0);
+                return;
+            }
             if (!liveFeedStalled({ now, startedAt, lastFrameAt, lastBufferGrowthAt })) return;
             // Recomeça a contagem: depois da reconexão, a mesma fonte ganha
             // outra janela inteira antes de ser julgada de novo
             startedAt = now;
             lastFrameAt = lastBufferGrowthAt = 0;
             lastFrames = lastBufferEnd = -1;
-            if (hasAlternativeRef.current && onStreamFailedRef.current) {
+            if (limiteAtivo) {
+                scheduleReconnect('connlimit');
+            } else if (hasAlternativeRef.current && onStreamFailedRef.current) {
                 streamFailedRef.current = true;
-                onStreamFailedRef.current();
+                onStreamFailedRef.current(connlimitSinceRef.current > 0);
             } else {
                 scheduleReconnect('stall');
             }
         }, 1000);
         return () => clearInterval(interval);
         // effectiveSrc: fonte nova (troca/variante) reinicia a contagem
-    }, [isLiveContent, effectiveSrc, scheduleReconnect]);
+    }, [isLiveContent, effectiveSrc, scheduleReconnect, hlsRef]);
 
     // Limpa o timer de reconexão ao desmontar
     useEffect(() => {

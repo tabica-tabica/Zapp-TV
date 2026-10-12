@@ -5,8 +5,7 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-    variantBaseName, channelDisplayName, groupChannelVariants, isSubtitledVariant, qualityLabel, mirrorTag, variantGroup,
-} from './channelVariants';
+    variantBaseName, channelDisplayName, groupChannelVariants, isSubtitledVariant, qualityLabel, mirrorTag, variantGroup, proximaVariante } from './channelVariants';
 
 describe('variantBaseName', () => {
     it('parêntese só com a tag vira a raiz', () => {
@@ -316,5 +315,36 @@ describe('variantGroup', () => {
 
     it('canal sem variante devolve só ele', () => {
         expect(variantGroup([{ stream_id: 2, name: 'Globo HD' }], 'Globo HD').map(c => c.stream_id)).toEqual([2]);
+    });
+});
+
+describe('proximaVariante', () => {
+    const v = (id: number) => ({ stream_id: id });
+    const lista = [v(1), v(2), v(3), v(4)];
+
+    it('anda pra frente e dá a volta (qualidade maior ou menor)', () => {
+        expect(proximaVariante(lista, 2, new Set())?.stream_id).toBe(3);
+        expect(proximaVariante(lista, 4, new Set())?.stream_id).toBe(1);
+    });
+
+    it('pula as que já falharam', () => {
+        expect(proximaVariante(lista, 2, new Set([3, 4]))?.stream_id).toBe(1);
+    });
+
+    it('com benchmark: vai na mais confiável e deixa a que costuma cair por último', () => {
+        const notas: Record<number, number> = { 1: 0.9, 3: 0.5, 4: 0.2 };
+        const saude = { pontuacao: (id: number) => notas[id] ?? 0.5, costumaCair: (id: number) => id === 1 };
+        // 1 tem a melhor nota mas costuma cair: 3 (neutra) ganha da 4 (ruim)
+        expect(proximaVariante(lista, 2, new Set(), saude)?.stream_id).toBe(3);
+        // Só sobrou a que costuma cair: ela entra (melhor que nada)
+        expect(proximaVariante(lista, 2, new Set([3, 4]), saude)?.stream_id).toBe(1);
+        // Empate: ordem da volta
+        const neutra = { pontuacao: () => 0.5, costumaCair: () => false };
+        expect(proximaVariante(lista, 2, new Set(), neutra)?.stream_id).toBe(3);
+    });
+
+    it('todas as outras falharam: null (volta a reconectar a atual)', () => {
+        expect(proximaVariante(lista, 2, new Set([1, 3, 4]))).toBeNull();
+        expect(proximaVariante([v(7)], 7, new Set())).toBeNull();
     });
 });

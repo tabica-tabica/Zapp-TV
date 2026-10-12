@@ -21,7 +21,10 @@ import { kidsFilter, isAdultCategoryName } from '../services/kidsFilter';
 import { contentFlags } from '../services/contentFlags';
 import { useWatchSession } from '../hooks/useWatchSession';
 import { FAILOVER_RECONNECT_ATTEMPTS } from '../hooks/useVariantFailover';
-import { groupChannelVariants, qualityLabel, channelDisplayName } from '../services/channelVariants';
+import { groupChannelVariants, qualityLabel, channelDisplayName, proximaVariante } from '../services/channelVariants';
+import { resolverUrlFinal } from '../services/urlFinal';
+import { liveHealth } from '../services/liveHealth';
+import { CONNLIMIT_WINDOW_MS } from '../services/playerDecisions';
 import {
     curatedHiddenPrefs, detectJunkCategories, detectQualityOnlyCategories,
     isQualityTaggedChannel, computeEffectiveVisibility, type DetectedGroup,
@@ -60,6 +63,8 @@ function formatClock(ms: number): string {
 // filtro "só com tag de qualidade" roda DEPOIS do agrupamento agora, então
 // esse estágio anterior (processedStreams) nunca precisa dessa lista.
 const EMPTY_QUALITY_ONLY_MAP = new Map<string, DetectedGroup>();
+/** Intervalo mínimo entre trocas AUTOMÁTICAS de fonte (a conexão velha segue contando no painel) */
+const INTERVALO_TROCA_AUTO_MS = CONNLIMIT_WINDOW_MS;
 
 const CARD_WIDTH = 220;
 const CARD_GAP = 12;
@@ -655,11 +660,35 @@ export function LiveTV() {
     }, [playingChannel]);
 
     // Reproduzir canal (registra último canal + histórico de zapping)
-    const playChannel = useCallback((stream: LiveStream) => {
+    // Failover ao vivo — o foco é o stream não parar:
+    // - variantes que já falharam NESTA sessão do canal (escolher um canal
+    //   na mão zera); a rotação pula elas e, sem nenhuma sobrando, o player
+    //   volta a reconectar a atual em vez de girar sem fim;
+    // - atraso atrás da borda pra fonte nova entrar no MESMO ponto da que caiu
+    //   (o provedor não manda PROGRAM-DATE-TIME: alinhar exato é impossível);
+    // - sessão já aberta (URL com token) da variante preparada de antemão.
+    const [falhasDoCanal, setFalhasDoCanal] = useState<ReadonlySet<number>>(() => new Set());
+    const [atrasoAoVivo, setAtrasoAoVivo] = useState<number | null>(null);
+    const [sessaoAquecida, setSessaoAquecida] = useState<{ id: number; url: string } | null>(null);
+    const playingChannelRef = useRef<LiveStream | null>(null);
+    // Última troca AUTOMÁTICA de fonte: cada troca deixa a conexão velha
+    // contando no painel por ~20s, então troca em rajada estoura a conta
+    const ultimaTrocaAutoRef = useRef(0);
+    useEffect(() => { playingChannelRef.current = playingChannel; }, [playingChannel]);
+
+    const playChannel = useCallback((stream: LiveStream, failover?: { atraso: number | null; url?: string | null }) => {
         // Mesmo canal da prévia tocando → o player assume o pipeline dela
         handoffRef.current = previewStreamIdRef.current === stream.stream_id
             ? previewRef.current?.handOff() ?? null
             : null;
+        if (failover) {
+            setAtrasoAoVivo(failover.atraso);
+            setSessaoAquecida(failover.url ? { id: stream.stream_id, url: failover.url } : null);
+        } else {
+            setFalhasDoCanal(new Set());
+            setAtrasoAoVivo(null);
+            setSessaoAquecida(null);
+        }
         setSelectedChannel(stream);
         setPlayingChannel(stream);
         storage.setLastChannel(stream.stream_id);
@@ -667,8 +696,17 @@ export function LiveTV() {
     }, []);
 
     // Failover: stream morreu de vez → tenta a próxima variante do grupo
-    const handleStreamFailed = useCallback(() => {
+    const handleStreamFailed = useCallback((porLimite?: boolean) => {
         if (!playingChannel) return;
+        // Salvaguarda: painel recusando por LIMITE de conexões. Trocar de
+        // variante abriria mais uma conexão numa conta já estourada (foi assim
+        // que a conta de 1 conexão chegou a 3 e travou tudo) — não troca.
+        if (porLimite) {
+            setToast(<><FaExclamationTriangle /> Limite de conexões da conta — aguarde alguns segundos e tente de novo</>);
+            return;
+        }
+        // Benchmark: só conta contra o canal se o painel NÃO estava recusando por limite
+        liveHealth.registrar(playingChannel.stream_id, 'falha');
         // Caiu tocando pela sessão da prévia (token vencido?): antes de trocar
         // de variante, tenta o mesmo canal pela URL normal
         if (previewSession?.id === playingChannel.stream_id) {
@@ -678,16 +716,52 @@ export function LiveTV() {
         const repId = representativeOf.get(playingChannel.stream_id) ?? playingChannel.stream_id;
         const variants = variantsOf.get(String(repId));
         if (!variants || variants.length < 2) return;
-        const index = variants.findIndex(v => v.stream_id === playingChannel.stream_id);
-        const next = variants[index + 1];
+        const falharam = new Set(falhasDoCanal).add(playingChannel.stream_id);
+        setFalhasDoCanal(falharam);
+        const next = proximaVariante(variants, playingChannel.stream_id, falharam, liveHealth);
         if (next) {
             setToast(<><FaExclamationTriangle /> Falha no stream — trocando para {qualityLabel(next.name)}</>);
-            playChannel(next);
+            // Troca recente ainda pesa na conta: espera o resto do intervalo
+            // mínimo (a imagem já parou, então troca de qualquer jeito depois)
+            const espera = Math.max(0, ultimaTrocaAutoRef.current + INTERVALO_TROCA_AUTO_MS - Date.now());
+            const atual = playingChannel.stream_id;
+            setTimeout(() => {
+                if (playingChannelRef.current?.stream_id !== atual) return;
+                ultimaTrocaAutoRef.current = Date.now();
+                playChannel(next, { atraso: atrasoAoVivo });
+            }, espera);
         } else {
             setToast(<><FaExclamationTriangle /> Todas as variantes deste canal falharam</>);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [playingChannel, representativeOf, variantsOf, previewSession]);
+    }, [playingChannel, representativeOf, variantsOf, previewSession, falhasDoCanal, atrasoAoVivo]);
+
+    // Aviso antecipado do player (buffer secando, imagem ainda andando):
+    // abre a sessão da próxima variante AGORA, enquanto o buffer toca, e só
+    // então troca — no mesmo atraso atrás da borda. São 2 conexões por alguns
+    // segundos (o painel tolerou 2 no teste; 4 bloquearam a conta).
+    const handleStreamDegrading = useCallback((atraso: number | null, porLimite: boolean) => {
+        const atual = playingChannel;
+        if (!atual) return;
+        // Salvaguarda: com o painel no limite, ou com uma troca automática há
+        // menos de INTERVALO_TROCA_AUTO_MS, NÃO prepara outra fonte (seria mais
+        // uma conexão contando). A rede de segurança do player segue valendo.
+        if (porLimite || Date.now() - ultimaTrocaAutoRef.current < INTERVALO_TROCA_AUTO_MS) return;
+        liveHealth.registrar(atual.stream_id, 'falha');
+        const repId = representativeOf.get(atual.stream_id) ?? atual.stream_id;
+        const variants = variantsOf.get(String(repId));
+        if (!variants || variants.length < 2) return;
+        const next = proximaVariante(variants, atual.stream_id, new Set(falhasDoCanal).add(atual.stream_id), liveHealth);
+        if (!next) return; // nada pra preparar: a rede de segurança reconecta a atual
+        setToast(<><FaExclamationTriangle /> Sinal fraco — preparando {qualityLabel(next.name)}</>);
+        void resolverUrlFinal(next.direct_source || api.getLiveStreamUrl(next.stream_id), 4000).then(url => {
+            // Enquanto preparava, a rede de segurança (ou a pessoa) já trocou
+            if (playingChannelRef.current?.stream_id !== atual.stream_id) return;
+            setFalhasDoCanal(prev => new Set(prev).add(atual.stream_id));
+            ultimaTrocaAutoRef.current = Date.now();
+            playChannel(next, { atraso, url });
+        });
+    }, [playingChannel, representativeOf, variantsOf, falhasDoCanal, playChannel]);
 
     // Variantes do canal TOCANDO (não o pré-visualizado) → menu unificado do player
     const playingVariants = useMemo(
@@ -697,9 +771,9 @@ export function LiveTV() {
         [playingChannel, representativeOf, variantsOf]
     );
 
-    // Ainda há variante depois da atual → failover rápido (ver handleStreamFailed)
-    const playingVariantIndex = playingChannel ? playingVariants.findIndex(v => v.stream_id === playingChannel.stream_id) : -1;
-    const hasNextVariant = playingVariantIndex >= 0 && playingVariantIndex < playingVariants.length - 1;
+    // Ainda há variante que não falhou nesta sessão → failover rápido (ver handleStreamFailed)
+    const hasNextVariant = !!playingChannel
+        && proximaVariante(playingVariants, playingChannel.stream_id, falhasDoCanal) !== null;
     // Fontes que sobram pro watchdog trocar: sessão da prévia → URL normal → variante
     const hasAlternativeSource = hasNextVariant
         || (!!playingChannel && previewSession?.id === playingChannel.stream_id);
@@ -962,6 +1036,7 @@ export function LiveTV() {
     });
 
     const getLivePlaybackUrl = (stream: LiveStream) => {
+        if (sessaoAquecida?.id === stream.stream_id) return sessaoAquecida.url;
         if (previewSession?.id === stream.stream_id) return previewSession.url;
         return stream.direct_source || api.getLiveStreamUrl(stream.stream_id);
     };
@@ -1461,6 +1536,9 @@ export function LiveTV() {
                     onSwitchChannel={handleSwitchChannel}
                     contentKey={`live-${playingChannel.stream_id}`}
                     onStreamFailed={handleStreamFailed}
+                    onStreamDegrading={handleStreamDegrading}
+                    onLiveHealthy={() => liveHealth.registrar(playingChannel.stream_id, 'ok')}
+                    liveSyncDuration={atrasoAoVivo}
                     maxReconnectAttempts={hasAlternativeSource ? FAILOVER_RECONNECT_ATTEMPTS : undefined}
                     hasAlternativeSource={hasAlternativeSource}
                     adopt={handoffRef.current}

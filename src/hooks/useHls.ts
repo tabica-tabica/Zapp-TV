@@ -43,6 +43,12 @@ interface UseHlsOptions {
      * do provedor — nenhuma requisição nova, nenhuma conexão a mais.
      */
     adopt?: Hls | null;
+    /**
+     * Ao vivo: segundos atrás da borda pra começar (troca de fonte por falha:
+     * a nova entra no MESMO atraso da que caiu, pra cena não pular). Lido só
+     * na criação do pipeline. Sem ele, o padrão do hls.js (3 segmentos).
+     */
+    liveSyncDuration?: number | null;
 }
 
 /** Última vez que QUALQUER pipeline deste app recebeu fragmento (ver connlimit). */
@@ -97,7 +103,10 @@ export function useHls({
     isLive = false,
     onResolvedUrl,
     adopt = null,
+    liveSyncDuration = null,
 }: UseHlsOptions): UseHlsReturn {
+    const liveSyncRef = useRef(liveSyncDuration);
+    useEffect(() => { liveSyncRef.current = liveSyncDuration; }, [liveSyncDuration]);
     const hlsRef = useRef<Hls | null>(null);
     const srcRef = useRef<string>('');
     const onErrorRef = useRef(onError);
@@ -274,7 +283,9 @@ export function useHls({
                 const buffers = playbackPrefs.buffers();
                 const seconds = isLive ? buffers.live : buffers.vod;
                 const maxSeconds = isLive ? buffers.maxLive : buffers.maxVod;
+                const atraso = isLive ? liveSyncRef.current : null;
                 const hls = adopted ?? new Hls({
+                    ...(atraso ? { liveSyncDuration: atraso } : {}),
                     enableWorker: true,
                     lowLatencyMode: false,
                     backBufferLength: isLive ? seconds : seconds + 30,

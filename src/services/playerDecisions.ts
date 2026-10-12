@@ -122,3 +122,21 @@ export function liveFeedStalled(s: LiveFeedSample): boolean {
     if (ultimaVida === 0) return s.now - s.startedAt >= LIVE_START_TIMEOUT_MS;
     return s.now - ultimaVida >= LIVE_STALL_MS;
 }
+
+/** Ao vivo: segundos de buffer à frente abaixo dos quais a fonte está em risco. */
+export const LIVE_BUFFER_LOW_S = 8;
+/** Ao vivo: tempo sem buffer novo (com ele baixo) até avisar que a fonte está morrendo. */
+export const LIVE_BUFFER_DRY_MS = 6000;
+
+/**
+ * Aviso ANTECIPADO (antes do liveFeedStalled): a imagem ainda anda, mas o
+ * buffer está acabando e nada novo chega — dá pra trocar de fonte enquanto o
+ * que resta toca. Buffer parado sozinho NÃO é sinal: cheio, o hls.js para de
+ * baixar de propósito, e ao vivo só cresce a cada segmento novo (10s neste
+ * provedor). Abaixo de LIVE_BUFFER_LOW_S o hls.js está SEMPRE tentando
+ * baixar (o menor perfil de buffer ao vivo pede 15s), então parado ali é falha.
+ */
+export function liveBufferDying(s: { now: number; lastBufferGrowthAt: number; bufferAheadS: number }): boolean {
+    if (s.lastBufferGrowthAt === 0) return false; // ainda subindo: é com o liveFeedStalled
+    return s.bufferAheadS < LIVE_BUFFER_LOW_S && s.now - s.lastBufferGrowthAt >= LIVE_BUFFER_DRY_MS;
+}

@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest';
 import {
     classifyStreamError, isTerminalCause, reconnectDelayMs, chooseCappedLevel,
     MAX_RECONNECT_ATTEMPTS, liveFeedStalled, LIVE_STALL_MS, LIVE_START_TIMEOUT_MS,
+    liveBufferDying, LIVE_BUFFER_LOW_S, LIVE_BUFFER_DRY_MS,
 } from './playerDecisions';
 
 describe('classifyStreamError', () => {
@@ -146,5 +147,28 @@ describe('liveFeedStalled', () => {
     it('sem quadro e sem buffer por LIVE_STALL_MS: troca', () => {
         const last = 200000 - LIVE_STALL_MS;
         expect(liveFeedStalled({ ...base, now: 200000, lastFrameAt: last, lastBufferGrowthAt: last - 500 })).toBe(true);
+    });
+});
+
+describe('liveBufferDying', () => {
+    const agora = 200000;
+
+    it('buffer cheio e parado é o hls.js esperando, não falha', () => {
+        expect(liveBufferDying({ now: agora, lastBufferGrowthAt: agora - 30000, bufferAheadS: 25 })).toBe(false);
+    });
+
+    it('buffer baixo mas recebendo: segue', () => {
+        expect(liveBufferDying({ now: agora, lastBufferGrowthAt: agora - 1000, bufferAheadS: 3 })).toBe(false);
+    });
+
+    it('baixo E sem nada novo há LIVE_BUFFER_DRY_MS: avisa antes de congelar', () => {
+        const seco = agora - LIVE_BUFFER_DRY_MS;
+        expect(liveBufferDying({ now: agora, lastBufferGrowthAt: seco + 1, bufferAheadS: LIVE_BUFFER_LOW_S - 1 })).toBe(false);
+        expect(liveBufferDying({ now: agora, lastBufferGrowthAt: seco, bufferAheadS: LIVE_BUFFER_LOW_S - 1 })).toBe(true);
+        expect(liveBufferDying({ now: agora, lastBufferGrowthAt: seco, bufferAheadS: LIVE_BUFFER_LOW_S })).toBe(false);
+    });
+
+    it('fonte que nunca subiu fica com o liveFeedStalled', () => {
+        expect(liveBufferDying({ now: agora, lastBufferGrowthAt: 0, bufferAheadS: 0 })).toBe(false);
     });
 });

@@ -223,3 +223,32 @@ export function variantGroup<T extends VariantChannel>(channels: T[], name: stri
     const { variantsOf } = groupChannelVariants(same);
     return variantsOf.values().next().value ?? same;
 }
+
+/**
+ * Próxima fonte do MESMO canal quando a atual falha (ao vivo): anda pra frente
+ * na lista de variantes e dá a volta — pega qualidade maior OU menor —,
+ * pulando as que já falharam nesta sessão. Nenhuma sobrando: null (aí o player
+ * volta a reconectar a atual em vez de girar sem fim).
+ *
+ * Com `saude` (benchmark passivo, ver liveHealth): vai primeiro na de melhor
+ * histórico e deixa por último a que costuma estar fora — que só entra se não
+ * sobrar nenhuma outra. Empate fica na ordem da volta.
+ */
+export function proximaVariante<T extends { stream_id: number }>(
+    variantes: T[],
+    atualId: number,
+    falharam: ReadonlySet<number>,
+    saude?: { pontuacao: (id: number) => number; costumaCair: (id: number) => boolean },
+): T | null {
+    const inicio = variantes.findIndex(v => v.stream_id === atualId);
+    const candidatas: T[] = [];
+    for (let passo = 1; passo < variantes.length; passo++) {
+        const candidata = variantes[(inicio + passo + variantes.length) % variantes.length];
+        if (candidata.stream_id !== atualId && !falharam.has(candidata.stream_id)) candidatas.push(candidata);
+    }
+    if (candidatas.length === 0) return null;
+    if (!saude) return candidatas[0];
+    const nota = (v: T) => (saude.costumaCair(v.stream_id) ? -1 : 0) + saude.pontuacao(v.stream_id);
+    // sort é estável: empate mantém a ordem da volta
+    return [...candidatas].sort((a, b) => nota(b) - nota(a))[0];
+}

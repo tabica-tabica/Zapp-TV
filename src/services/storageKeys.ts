@@ -103,7 +103,10 @@ export const KEYS_PREFERENCIAS = [
 
 // Só entra aqui o que volta sozinho de graça. O catálogo e o TMDB vêm por
 // prefixo (PREFIXOS_CACHE).
-export const KEYS_CACHE: readonly string[] = [];
+export const KEYS_CACHE: readonly string[] = [
+    // Saúde das fontes ao vivo (liveHealth): perder só faz reaprender
+    'neostream_live_health',
+];
 
 /** Famílias com sufixo dinâmico (aba, playlist). */
 export const PREFIXOS_PREFERENCIAS = [
