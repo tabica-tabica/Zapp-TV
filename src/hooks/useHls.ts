@@ -339,7 +339,13 @@ export function useHls({
                 // o DESTE uso — o hls.js lê o config a cada tique
                 if (adopted?.config) Object.assign(adopted.config, buffer);
                 const hls = adopted ?? new Hls({
-                    ...(atraso ? { liveSyncDuration: atraso } : {}),
+                    // Ao vivo: troca de canal mais rápida (medido na LG, 12/10/2026:
+                    // 4,6–6,6 s do início da troca até tocar). O 1º segmento baixa
+                    // junto com a montagem do MediaSource, e começa a 2 segmentos da
+                    // borda em vez de 3. O atraso do failover manda quando vem
+                    // (o hls.js não aceita misturar Count com Duration).
+                    ...(isLive ? { startFragPrefetch: true } : {}),
+                    ...(atraso ? { liveSyncDuration: atraso } : isLive ? { liveSyncDurationCount: 2 } : {}),
                     enableWorker: true,
                     workerPath: hlsWorkerUrl,
                     lowLatencyMode: false,
@@ -472,8 +478,12 @@ export function useHls({
                                 networkFatalCount++;
                                 // 404/403 não se recupera com retry; e com MSE o
                                 // video.error NUNCA seta em erro de rede — o
-                                // callback tem que ser entregue diretamente
-                                if (cause === 'notfound' || networkFatalCount >= 2) {
+                                // callback tem que ser entregue diretamente.
+                                // Limite de conexões também vai direto: o player
+                                // tem o laço dele (a cada 3 s) — o startLoad + 5 s
+                                // daqui atrasava a 1ª nova tentativa pra ~8 s
+                                // (troca de canal levava 15 s na LG, 12/10/2026)
+                                if (cause === 'notfound' || cause === 'connlimit' || networkFatalCount >= 2) {
                                     if (retryTimeoutRef.current) {
                                         clearTimeout(retryTimeoutRef.current);
                                         retryTimeoutRef.current = null;
