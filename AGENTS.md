@@ -10,6 +10,12 @@ App de IPTV (Xtream) em React 19 + TypeScript + Vite, com 4 alvos de build:
 web, desktop (Tauri), Samsung Tizen (Chromium 69) e **LG webOS 4 (Chromium 53)**.
 O alvo mais restrito — e o que mais quebra — é o webOS.
 
+## Pendências (comece por aqui)
+
+- **TV (webOS/Tizen):** seção 4 de [`docs/WEBOS_DESEMPENHO.md`](docs/WEBOS_DESEMPENHO.md)
+  — lista viva, atualizada a cada sessão. Item feito vira `[x]` com data e número medido.
+- **Desktop (Tauri):** [`TODO.md`](TODO.md).
+
 ## Antes de mexer
 
 - **Player, prévia ao vivo, grade da TV ao Vivo, CSS de TV ou bundle:** leia
