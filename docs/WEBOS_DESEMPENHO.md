@@ -98,12 +98,29 @@ fora da tela em 1/3 das setas.
       histórico), e o player só contava acerto aos 60 s (agora 10 s) — a
       variante achada pelo failover nunca virava a padrão. Falta ver na TV
       com a HD fora de novo.
-- [ ] **Home ⇄ TV ao Vivo sem mover o `<video>`**: a prévia → player da TV ao
-      Vivo já é instantânea (vídeo no lugar). Entre páginas ainda move (a
-      página desmonta); precisa de uma camada de vídeo única na raiz do app.
-- [ ] **Troca de página lenta**: voltar a tocar leva 6–11 s (era 6–16 s; a
-      Home caiu de ~16 s pra ~9 s com o lote). É o `recoverMediaError` refazendo o
-      MediaSource + a Home montando ao mesmo tempo. Investigar com a bancada.
+- [ ] **Home ⇄ TV ao Vivo sem mover o `<video>`** (troca de página lenta):
+      voltar a tocar leva 6–11 s (era 6–16 s). A prévia → player da TV ao
+      Vivo já é instantânea (vídeo no lugar, 12/10/2026); entre páginas o
+      `<video>` ainda é movido (a página desmonta) e o `recoverMediaError`
+      refaz o MediaSource. Precisa de uma camada de vídeo única na raiz do app.
+- [ ] **Troca de canal: retorno imediato.** Hoje 4,3–6,2 s do início da
+      troca até tocar, 7,7–21 s quando esbarra no limite de 1 conexão (o
+      painel segura a anterior por 6–16 s — só uma conta com 2 conexões
+      resolve isso). Mostrar nome/logo do canal novo na hora, por cima do
+      último quadro, em vez de tela preta + "Aguardando o provedor…".
+- [ ] **Troca automática de variante no player** ("Sinal fraco — preparando…"):
+      visto 38391 tocando bem e, 13 s depois, o player trocar sozinho pra
+      42411 — sessão nova, limite, 11 s esperando. Ver se o
+      `liveBufferDying` dispara à toa (segmentos de 10 s) e se vale trocar
+      numa conta de 1 conexão.
+- [ ] **Prazo extra do pipeline assumido** (`LIVE_ADOPT_GRACE_MS`): o caso
+      lento (>10 s pra voltar) não reapareceu nos testes; com o vídeo no
+      lugar quase não se aplica mais. Confirmar no uso e, se sobrar, tirar.
+- [ ] **Logos dos canais com 429** do host de imagens (dezenas por visita à
+      TV ao Vivo). Não afeta o vídeo; cache das capas ou menos requisições.
+- [ ] **Buffer do player**: perfil "equilibrado" = 30 s ao vivo (processo
+      135–167 MB, ~150 MB livres na TV). Decidir se sobe (o "generoso" tem
+      60 s) agora que a prévia foi pra 20 s.
 - [x] **Foco da grade re-renderiza a página inteira** (12/10/2026): o foco
       foi pro `src/pages/ChannelGrid.tsx` (memo; o LiveTV fala por `ref`).
       Grade: mediana 194 → 114–124 ms, p90 755 → 396–713 ms (6 rodadas). O
