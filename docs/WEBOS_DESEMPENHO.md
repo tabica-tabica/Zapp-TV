@@ -149,6 +149,11 @@ O que funcionou em 12/10/2026:
       foi pro `src/pages/ChannelGrid.tsx` (memo; o LiveTV fala por `ref`).
       Grade: mediana 194 → 114–124 ms, p90 755 → 396–713 ms (6 rodadas). O
       máximo (1,7–2,2 s) segue sendo os picos do item abaixo.
+- [ ] **Bancada: cenários `zap` e `assistir`** na `tv-perf.mjs` (CH+ ×5 do
+      `emptied` ao `playing` + sessões novas; Assistir/Voltar com o mesmo
+      `<video>` e `readyState` sem queda) — hoje só por medição avulsa (seção 3).
+      Depois, regravar o baseline: o atual (12/10) é de antes da grade em
+      componente próprio, do vídeo no lugar e da troca de canal mais rápida.
 - [ ] **Picos de 2–4 s na grade** ao inverter o sentido da rolagem (vistos na
       v1.2.0 e depois). Perfilar com `scripts/tv-perf.mjs` + perfil de CPU.
 - [x] **"Foco visível" 76 %**: 100 % nas 6 rodadas depois do lote (sem as
