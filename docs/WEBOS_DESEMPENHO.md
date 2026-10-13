@@ -28,7 +28,9 @@ Regras que saem disso:
   Vivo ainda move, ver pendências).
 - **Nada de recorte arredondado em volta de `<video>`** nos builds de TV.
 - **Sort estável não é garantido** antes do Chrome 70 — por isso `es.array.sort` está na lista de polyfills.
-- **Conta de 1 conexão**: o painel segue contando a conexão fechada por ~20 s. Fechar e reabrir o app em sequência (ou testar com `curl` enquanto a TV toca) derruba a prévia por "limite" — não é bug do app.
+- **Conta de 1 conexão**: o painel segue contando a conexão fechada por 6–16 s (medido trocando de canal, 12/10/2026; antes se estimava ~20 s) e recusa a nova com **500** (às vezes 403) — o app mostra "Aguardando o provedor liberar a conexão…" e tenta a cada ~3 s. Fechar e reabrir o app em sequência (ou testar com `curl` enquanto a TV toca) derruba a prévia por "limite" — não é bug do app.
+- **Sessão do painel**: `.m3u8` **sem** `?token=` abre sessão nova (= conexão); as recargas da sessão aberta vão com token. Segmentos de 10 s. As capas dos canais vêm de um host de imagens que responde 429 em rajada.
+- **`<video>` no webOS**: ao refazer o MediaSource dispara `error` com `video.error` **null** (não é erro — o player ignora); o seek inicial ao vivo só termina com 2–3 segmentos no buffer (~2 s); um ancestral com `z-index` + `position` cria contexto de empilhamento e prende um `<video>` `position: fixed` por baixo do resto da página.
 - Foto da tela por SSAP (`executeOneShot`) **inclui** o plano de vídeo: preto na foto é preto na TV.
 
 ## 2. Decisões de desempenho (e por quê)
@@ -80,6 +82,28 @@ checagem de imagem da bancada tenta por ~8 s; uma foto só dava "preta" à toa.
 
 Referência anterior (v1.2.0, script avulso): grade 1033 ms de mediana e foco
 fora da tela em 1/3 das setas.
+
+### Medições avulsas (o que a bancada não cobre)
+
+Troca de canal, prévia → player, sessão por requisição: dirigir pelo inspetor
+(porta 9998, `Runtime.evaluate`) + teclas por SSAP, como a `tv-perf.mjs` faz.
+O que funcionou em 12/10/2026:
+
+- **Sessões**: embrulhar `XMLHttpRequest.prototype.open/send` na página e
+  anotar url, status e tempo no `loadend` — `.m3u8` sem token = sessão nova.
+  No XHR binário (segmentos) `responseText` **lança**: use `response.byteLength`.
+- **Tempo até tocar**: eventos do `<video>` (`emptied` = começou a troca,
+  `loadedmetadata`, `seeking/seeked`, `playing`) com `performance.now()` da
+  página. O mesmo `<video>` dos dois lados? Marque o elemento (`v.__tag`) antes.
+- **Inspetor do Chromium 53**: `Worker.enable` lista os workers (o `Target.*`
+  não existe); `Console.enable` devolve as mensagens antigas; o buffer de
+  resource timing enche (~150 entradas) — `performance.clearResourceTimings()`.
+- **Foto da tela**: `ssap://tv/executeOneShot` (inclui o plano de vídeo).
+- **Instalar sem o Key Server**: a passphrase da sessão também destrava uma
+  chave baixada antes (`ssh-keygen -p` numa cópia) — mesmo fluxo do
+  `instalar()` da `tv-perf.mjs`, sem o fetch da chave.
+- **Antes de dirigir a TV**: confira que ninguém está vendo (uma foto da tela
+  resolve) — a bancada aperta Voltar/CH± e atrapalha quem estiver assistindo.
 
 ## 4. Pendências
 
