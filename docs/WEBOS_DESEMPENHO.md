@@ -13,7 +13,7 @@ grade ou CSS de TV, leia a seção 1.
 | Grade da TV ao Vivo lenta (0,4–2,2 s por seta) e cards sumindo ao rolar | (a) `height: 100%` não resolve contra altura vinda de flex → a grade crescia até o conteúdo e montava todos os cards; (b) `Element.scrollTo` não existe (Chrome 61) e o react-window pula a rolagem em silêncio; (c) react-window 2 cria `style` novo por célula e furava o `memo` | `src/pages/LiveTV.css`, `src/legacyPolyfills.ts`, `src/pages/ChannelCard.tsx` |
 | Prévia (Home/TV ao Vivo) só com áudio, caixa preta | O vídeo sai num plano de hardware **por baixo** da página; `border-radius` + `overflow: hidden` em volta do `<video>` tira ele desse plano | `src/theme.css` (canto reto em `html.tv-lite`) |
 | Stream morria ao trocar Home ⇄ TV ao Vivo ⇄ player | `<video>` que sai do documento perde o pipeline de mídia (volta com `readyState 0` e não sai mais) — mover pausa no spec, mas aqui reseta | `src/hooks/useHls.ts`: ao assumir um `<video>` movido, `hls.recoverMediaError()` no **mesmo** hls (mesma sessão/conexão) |
-| Player abria com erro depois de prévia → player (CNN Internacional, 2ª ida) | O `<video>` movido leva 6–16 s pra voltar; o watchdog desistia aos 10 s, marcava falha no canal e reconectava com sessão NOVA (403 na conta de 1 conexão) | `src/components/VideoPlayer/VideoPlayer.tsx`: pipeline assumido ganha +10 s (`LIVE_ADOPT_GRACE_MS`) e o 1º remédio é `recoverMediaError` na mesma sessão |
+| Player abria com erro depois de prévia → player (CNN Internacional, 2ª ida) | O `<video>` movido leva 6–16 s pra voltar; o watchdog desistia aos 10 s, marcava falha no canal e reconectava com sessão NOVA (403 na conta de 1 conexão) | Hoje não acontece: com a camada única (`camadaVideo.ts`) o player usa o `<video>` no lugar. O prazo extra (`LIVE_ADOPT_GRACE_MS`) saiu em 14/10/2026 |
 | `enableWorker: true` não fazia nada; transmux na thread principal | O build ESM do hls.js (o que o Vite empacota) só cria worker com `workerPath` | `src/hooks/useHls.ts` (`workerPath` = `hls.js/dist/hls.worker.js?url`) |
 | Medição pelo inspetor mentia | Sem `awaitPromise` no Chromium 53; e polling pelo DevTools atrasa quando a TV está ocupada | `scripts/tv-perf.mjs` mede **dentro** da página |
 | Lint não pegava API que falta no webOS | O `browserslist` do projeto é `chrome >= 69` (Tizen) | `npm run lint:webos` (Chrome 53 + polyfills do webOS) |
@@ -32,7 +32,7 @@ Regras que saem disso:
 - **Nada de recorte arredondado em volta de `<video>`** nos builds de TV.
 - **Sort estável não é garantido** antes do Chrome 70 — por isso `es.array.sort` está na lista de polyfills.
 - **Conta de 1 conexão**: o painel segue contando a conexão fechada por 6–16 s (medido trocando de canal, 12/10/2026; antes se estimava ~20 s) e recusa a nova com **500** (às vezes 403) — o app mostra "Aguardando o provedor liberar a conexão…" e tenta a cada ~3 s. Fechar e reabrir o app em sequência (ou testar com `curl` enquanto a TV toca) derruba a prévia por "limite" — não é bug do app.
-- **Sessão do painel**: `.m3u8` **sem** `?token=` abre sessão nova (= conexão); as recargas da sessão aberta vão com token. Segmentos de 10 s. As capas dos canais vêm de um host de imagens que responde 429 em rajada.
+- **Sessão do painel**: `.m3u8` **sem** `?token=` abre sessão nova (= conexão); as recargas da sessão aberta vão com token. Segmentos de 10 s. As logos dos canais (quase todas num host de imagens) dão **429 pra qualquer User-Agent com "SmartTV"** — o da LG tem; o do navegador do PC não (por isso o app web mostra). O webOS ignora `setRequestHeader('User-Agent')`.
 - **`<video>` no webOS**: ao refazer o MediaSource dispara `error` com `video.error` **null** (não é erro — o player ignora); o seek inicial ao vivo só termina com 2–3 segmentos no buffer (~2 s); um ancestral com `z-index` + `position` cria contexto de empilhamento e prende um `<video>` `position: fixed` por baixo do resto da página.
 - Foto da tela por SSAP (`executeOneShot`) **inclui** o plano de vídeo: preto na foto é preto na TV.
 
@@ -127,45 +127,29 @@ O que funcionou em 12/10/2026:
       alternativas). RecordTV tem CEA-608 no stream (Record News e GloboNews
       não), mas o app nunca expôs 608 nem no build cheio (o menu só lista
       `hls.subtitleTracks`).
-- [ ] **Variante HD/FHD** (CNN Brasil Money): na prática, depois de a HD cair
-      uma vez, Home e TV ao Vivo devem abrir direto na FHD. Lógica testada
-      (unit + TV com HD marcada como caída); falta ver no uso real.
-      12/10/2026, CNN Internacional (HD padrão fora): CH±, guia, painéis e
-      aleatório abriam a variante crua (agora `tocarCanal` → melhor
-      histórico), e o player só contava acerto aos 60 s (agora 10 s) — a
-      variante achada pelo failover nunca virava a padrão. Falta ver na TV
-      com a HD fora de novo.
-- [x] **Home ⇄ TV ao Vivo sem mover o `<video>`** (14/10/2026): camada
-      única (`src/services/camadaVideo.ts`). Bancada, 3 rodadas: troca
-      Home → TV ao Vivo → player → Voltar → Home **0 ms** em todos os passos
-      (era 6,2–10,6 s, média 8,3 s), mesmo `<video>`, 1 playlist; prévia da
-      TV ao Vivo 7,1 s → 0. Achados na TV e consertados: (a) player em tela
-      cheia por baixo da sidebar (o quadro z 15 prendia o z 9998 do vídeo);
-      (b) Voltar no meio de um CH± deixava o `<video>` morto em tela cheia
-      com o pôster (logo do canal) por cima da página. A camada também
-      escurece com o anti burn-in. Fica de olho: overlay de z baixo que cubra
-      só a borda do slot (o teste de cobertura olha o meio). Visto e não
-      mexido: Voltar no meio do CH− deixa a ficha no canal do zap e a prévia
-      cai no logo (limite de 1 conexão com a sessão do player).
-- [x] **Troca de canal: retorno imediato** (14/10/2026): logo + nome do
-      canal novo ficam na tela do CH± até o primeiro `playing` (máx. 30 s),
-      em vez de tela preta + "Aguardando o provedor…" (visto na TV). O tempo
-      até tocar segue do painel: zap mediana 4,8 s, máx. 8 s, 1–3 falhas em
-      6 por limite de conexão — só uma conta com 2 conexões resolve.
-- [x] **Troca automática de variante no player** (14/10/2026): o
-      `liveBufferDying` não é alarme falso — sessão nova do painel entrega
-      segmentos de 10 s a cada ~16–18 s. Mas trocar numa conta de 1 conexão
-      só leva 403/limite: `trocaAntecipadaPermitida` (playerDecisions) não
-      troca antes da hora com `maxConnections <= 1`.
-- [ ] **Prazo extra do pipeline assumido** (`LIVE_ADOPT_GRACE_MS`): o caso
-      lento (>10 s pra voltar) não reapareceu nos testes; com o vídeo no
-      lugar quase não se aplica mais. Confirmar no uso e, se sobrar, tirar.
-- [ ] **Logos dos canais com 429** do host de imagens. 14/10/2026: o host
-      responde 429 pra TV em TODA logo, até uma só depois de 60 s quieto (o PC
-      na mesma rede recebe 200) — é do host, o app não resolve. Feito: falha
-      vale 30 min (`logoFalho.ts`) e as que carregam viram miniatura WebP de
-      128 px no IndexedDB (`logoPequeno.ts`, no máx. 2 downloads por vez;
-      eram até 3500×3495). Funcionando na TV com a logo de outro host.
+- [x] **Variante HD/FHD → qualquer variante no ar** (14/10/2026): a
+      variante que cai vai pra qualquer outra do grupo (4K, FHD, SD...), dando
+      a volta e pulando as que já falharam — `proximaVariante` agora em todo
+      lugar que toca ao vivo. Antes: a Busca só andava pra frente na lista
+      (começando na FHD nunca tentava a HD) e a prévia da Home caía direto no
+      logo. Visto na TV (HD da CNN Brasil Money derrubada no próprio app): a
+      prévia da Home pulou pra FHD sozinha e ela virou o último assistido.
+      Limite de conexões continua sem trocar (seria mais uma conexão).
+- [x] **Prazo extra do pipeline assumido** (`LIVE_ADOPT_GRACE_MS`), tirado
+      em 14/10/2026: com a camada única o player sempre usa o `<video>` no
+      lugar, então o caso do `<video>` movido (6–16 s) não existe mais.
+      Visto na TV: Assistir na Home toca e Voltar devolve pra prévia.
+- [ ] **Logos dos canais com 429 na TV** — causa achada em 14/10/2026: o
+      host (2932 das 2961 logos) recusa User-Agent com **"SmartTV"** (o da LG:
+      `Web0S; Linux/SmartTV`). Mesmo PC, mesma URL: 200 com UA de navegador,
+      429 com "SmartTV"; "Web0S" sozinho passa. Outras URLs do mesmo host
+      (miniatura, outro domínio) também dão 429, e o webOS ignora
+      `setRequestHeader('User-Agent')`. O app sozinho não muda o UA da TV:
+      precisa de um intermediário que busque a logo com outro UA (proxy de
+      imagem público, que também reduziria pra 128 px, ou um próprio). Decisão
+      pendente — proxy público vê o IP da TV e quais logos ela pede.
+      Já feito: falha vale 30 min (`logoFalho.ts`) e as que carregam viram
+      miniatura WebP de 128 px no IndexedDB (`logoPequeno.ts`).
 - [x] **Buffer do player** (14/10/2026): **fica em 30 s** ("equilibrado").
       Medido no player em tela cheia (canal 720p, renderer do WebAppMgr por
       SSH + `video.buffered` pelo inspetor, a cada 3 s): com 30 s, 13–21 s à
@@ -207,10 +191,15 @@ O que funcionou em 12/10/2026:
       máx. 1535 → 599 ms.
 - [x] **"Foco visível" 76 %**: 100 % nas 6 rodadas depois do lote (sem as
       transições, o quadro medido já é o final).
-- [ ] **Home vazia** uma vez ao voltar da TV ao Vivo (sem seções); um reload
-      resolveu e não reproduziu. Ficar de olho.
-- [ ] **Carregar telas raras sob demanda** (Configurações, perfis, modal de
-      detalhes, QR): não reduz o pacote, encurta o parse no boot. Exige sair
-      do bundle único (iife) dos builds de TV — só se o boot incomodar.
+- [x] **Home vazia** ao voltar da TV ao Vivo (14/10/2026): não reproduziu
+      em 23 idas e voltas (seções em 0,2–0,6 s). Falha de carga já mostra o
+      aviso com "tentar de novo"; o caso antigo é anterior ao `settle()` por
+      endpoint. Fechado; se voltar, anotar o que estava na tela.
+- [x] **Carregar telas raras sob demanda**: **não vale** (14/10/2026).
+      Boot na LG: página interativa em 0,73–1,36 s, `load` em 1,6–2,4 s;
+      compilar o `index.js` (966 KB) custa ~500 ms. As telas raras
+      (Configurações 31 KB, QR 20 KB, modal 12 KB, perfis 10 KB...) são 99 KB
+      (10 %): ~50 ms, contra sair do bundle único dos builds de TV. O maior
+      pedaço é o hls.js (335 KB), que a prévia da Home usa no boot.
 - [x] **Polyfill de ResizeObserver** (14/10/2026): já é 1 s com cache de
       tamanho e não aparece no perfil. Deixado como está.
