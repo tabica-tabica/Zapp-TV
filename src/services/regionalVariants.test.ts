@@ -78,6 +78,16 @@ describe('detectRegionalFamilies', () => {
         expect(detectRegionalFamilies(channels).size).toBe(0);
     });
 
+    // Visto na TV (14/10/2026): o dedup tirava o Nick Jr. da grade e do perfil Kids
+    it('"Nick" + "Nick Jr." + "Nick Jr. Club" NÃO merge — público, não praça', () => {
+        const channels = [
+            { stream_id: 1, name: 'Nick HD' },
+            { stream_id: 2, name: 'Nick Jr. HD' },
+            { stream_id: 3, name: 'Nick Jr. Club' },
+        ];
+        expect(detectRegionalFamilies(channels).size).toBe(0);
+    });
+
     // Achado real: "RecordTV" tem dezenas de praças (RecordTV Bahia, RecordTV
     // Recife...), e ALGUMAS delas têm sub-praças (RecordTV Bahia Itabuna).
     // Sem achatar, "RecordTV Bahia" virava o canal-mãe de uma família SEPARADA

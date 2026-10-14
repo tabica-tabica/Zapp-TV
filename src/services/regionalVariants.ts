@@ -59,6 +59,9 @@ const GENRE_OR_CATEGORY_WORDS = new Set([
     // economia da mesma marca.
     'money', 'internacional', 'international', 'nacional',
     'latino', 'latina', 'espanhol', 'spanish', 'italiano', 'italian',
+    // Público: "Nick Jr." e "Nick Jr. Club" não são praças de "Nick" — o
+    // dedup escondia o Nick Jr. da grade (e do perfil Kids). 14/10/2026.
+    'jr', 'junior', 'júnior', 'club', 'teen',
 ]);
 
 /**
