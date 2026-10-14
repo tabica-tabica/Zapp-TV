@@ -153,10 +153,31 @@ O que funcionou em 12/10/2026:
       - DuckDuckGo (`external-content.duckduckgo.com/iu/`): 200, mas é
         interno deles (pode bloquear a qualquer hora), não reduz e o CORS
         pro canvas não foi conferido.
-      Sem proxy nem servidor próprio, o caminho que sobra é um serviço JS do
-      webOS (Node na própria TV, busca com outro UA) — só LG, não feito.
+      Sem proxy nem servidor próprio, o caminho que sobra é o item abaixo.
       Já feito: falha vale 30 min (`logoFalho.ts`) e as que carregam viram
       miniatura WebP de 128 px no IndexedDB (`logoPequeno.ts`).
+- [ ] **Logos via serviço JS do webOS** (proposto em 14/10/2026, só LG) —
+      o pacote `.ipk` pode levar, além da página, um serviço Node que roda
+      na própria TV; o Node escolhe o próprio User-Agent, então o host de
+      imagens responde 200 (como pro PC na mesma rede). Sem proxy de
+      terceiro, sem servidor pra hospedar. Fluxo:
+      1. o app pede a URL da logo ao serviço pelo barramento da TV
+         (`luna://com.tabica.zapptv.service/`);
+      2. o serviço baixa com UA de navegador e devolve a imagem em base64;
+      3. o app segue o caminho que já existe (`logoPequeno.ts`): reduz pra
+         128 px no canvas e guarda no IndexedDB — o serviço só é chamado na
+         1ª vez de cada logo.
+      Riscos a conferir na TV ANTES de construir o resto (começar por um
+      serviço que busca UMA logo):
+      - limite de tamanho da mensagem do barramento: há logo de 3500×3495;
+        se não couber, o serviço grava em arquivo e o app abre o arquivo;
+      - memória: mais um processo Node (estimativa: dezenas de MB) com
+        137–185 MB livres tocando;
+      - 1ª chamada sobe o serviço (~1–2 s) e cada logo faz um salto a mais:
+        logos aparecem mais tarde só na 1ª visita;
+      - empacotamento (`package:webos`, `install-tv-remote.sh`) e o
+        `lint:webos` precisam incluir o serviço.
+      Tizen não tem equivalente: lá seguem os placeholders.
 - [x] **Buffer do player** (14/10/2026): **fica em 30 s** ("equilibrado").
       Medido no player em tela cheia (canal 720p, renderer do WebAppMgr por
       SSH + `video.buffered` pelo inspetor, a cada 3 s): com 30 s, 13–21 s à
