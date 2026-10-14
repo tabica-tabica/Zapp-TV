@@ -27,8 +27,8 @@ import {
     catalogFilters, matchesFilters, normalizeSearch, fuzzyMatches,
     DECADES, MIN_RATINGS, type CatalogFilters,
 } from '../services/catalogExtras';
-import { groupVodVersions, hasTag, versionLabel, ALL_VOD_TAGS, type VodTag } from '../services/vodVariants';
-// versionLabel é usado nos botões de versão da ficha (abaixo)
+import { groupVodVersions, hasTag, rotulosDasVersoes, ALL_VOD_TAGS, type VodTag } from '../services/vodVariants';
+// rotulosDasVersoes é usado nos botões de versão da ficha (abaixo)
 import { storage } from '../services/storage';
 import { kidsFilter, isAdultCategoryName } from '../services/kidsFilter';
 import { secretList, type ItemSecreto } from '../services/secretList';
@@ -833,10 +833,11 @@ export function Movies() {
                         // foco por contentId já cuida de reancorar o D-pad
                         setSelectedMovie(alvo);
                     }}
-                    versions={(versionsOf.get(String(selectedMovie.stream_id)) || []).map(v => ({
-                        id: String(v.stream_id),
-                        label: versionLabel(v.name),
-                    }))}
+                    versions={(() => {
+                        const todas = versionsOf.get(String(selectedMovie.stream_id)) || [];
+                        const rotulos = rotulosDasVersoes(todas.map(v => v.name));
+                        return todas.map((v, i) => ({ id: String(v.stream_id), label: rotulos[i] }));
+                    })()}
                     onSelectVersion={(versionId) => {
                         const version = (versionsOf.get(String(selectedMovie.stream_id)) || [])
                             .find(v => String(v.stream_id) === versionId);

@@ -5,7 +5,7 @@
 // tem pelo menos um caso que JÁ QUEBROU em produção — estão marcados.
 
 import { describe, it, expect } from 'vitest';
-import { versionBaseName, groupVodVersions } from './vodVariants';
+import { versionBaseName, groupVodVersions, versionLabel, tagsOf, rotulosDasVersoes } from './vodVariants';
 import { isRadioChannel } from './liveDiscovery';
 import { fuzzyMatches, normalizeSearch, isRecentlyAdded } from './catalogExtras';
 import { isAdultCategoryName } from './kidsFilter';
@@ -70,6 +70,37 @@ describe('groupVodVersions', () => {
             0
         );
         expect(total).toBe(entrada.length);
+    });
+});
+
+describe('legendado "[L]" do painel (14/10/2026)', () => {
+    const nomes = ['007 Contra GoldenEye (1995)', '007 Contra GoldenEye (1995) [L]', '007 Contra GoldenEye (1995) [4K]'];
+
+    it('agrupa com a dublada e a 4K, como as outras versões', () => {
+        expect(new Set(nomes.map(versionBaseName)).size).toBe(1);
+        expect(versionBaseName('MIB: Internacional [L] (2019)')).toBe(versionBaseName('MIB: Internacional (2019)'));
+    });
+
+    it('a dublada representa o card (abrir toca a de sempre); 4K ainda ganha', () => {
+        const so = groupVodVersions([filme(nomes[1], 2), filme(nomes[0], 1)]);
+        expect(so.groups.map(g => g.stream_id)).toEqual([1]);
+        const com4k = groupVodVersions(nomes.map((n, i) => filme(n, i + 1)));
+        expect(com4k.groups.map(g => g.stream_id)).toEqual([3]);
+    });
+
+    it('rótulos: LEG no [L], DUB na sem marca, 4K DUB na 4K', () => {
+        expect(nomes.map(n => versionLabel(n, nomes))).toEqual(['DUB', 'LEG', '4K DUB']);
+        // Sem legendado no grupo, nada de inventar DUB
+        expect(versionLabel('Duna (2021) [4K]', ['Duna (2021)', 'Duna (2021) [4K]'])).toBe('4K');
+    });
+
+    it('versão repetida pelo painel ganha número no botão', () => {
+        expect(rotulosDasVersoes(['A Gangue (2021)', 'A Gangue (2021) [L]', 'A Gangue [L] (2021)'])).toEqual(['DUB', 'LEG', 'LEG 2']);
+    });
+
+    it('"L" solto no título não é legendado', () => {
+        expect(versionBaseName('L.A. Confidential (1997)')).not.toBe(versionBaseName('A. Confidential (1997)'));
+        expect(tagsOf('L.A. Confidential (1997)')).toEqual([]);
     });
 });
 

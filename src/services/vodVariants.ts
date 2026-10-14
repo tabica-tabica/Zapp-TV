@@ -22,7 +22,10 @@ const QUALITY_SCORE: Array<{ re: RegExp; score: number }> = [
 
 const TAG_PATTERNS: Array<{ tag: VodTag; re: RegExp }> = [
     { tag: 'DUB', re: /(^|[^a-z0-9])(dub|dublado|dublada)([^a-z0-9]|$)/i },
-    { tag: 'LEG', re: /(^|[^a-z0-9])(leg|legendado|legendada|sub)([^a-z0-9]|$)/i },
+    // "[L]"/"(L)": a marca de legendado do painel (1675 filmes, 882 com a
+    // versão dublada ao lado — 14/10/2026). Só ENTRE colchetes/parênteses:
+    // "L" solto casaria "L.A. Confidential"
+    { tag: 'LEG', re: /(^|[^a-z0-9])(leg|legendado|legendada|sub)([^a-z0-9]|$)|[[(]l[\])]/i },
     { tag: '4K', re: /(^|[^a-z0-9])(4k|uhd|2160p?)([^a-z0-9]|$)/i },
     { tag: 'HD', re: /(^|[^a-z0-9])(hd|fhd|1080p?|720p?)([^a-z0-9]|$)/i },
     { tag: 'H265', re: /(^|[^a-z0-9])(h\.?265|hevc)([^a-z0-9]|$)/i },
@@ -59,7 +62,7 @@ function qualityScore(name: string): number {
 export function versionBaseName(name: string): string {
     const year = /[[(]((?:19|20)\d{2})[\])]/.exec(name)?.[1] || '';
     const base = name
-        .replace(/\s*[[(](dub|dublado|dublada|leg|legendado|legendada|sub|fhd|hd|sd|4k|uhd|h\.?26[456]|hevc|avc|2160p?|1080p?|720p?|480p?)[\])]/gi, ' ')
+        .replace(/\s*[[(](dub|dublado|dublada|leg|legendado|legendada|sub|l|fhd|hd|sd|4k|uhd|h\.?26[456]|hevc|avc|2160p?|1080p?|720p?|480p?)[\])]/gi, ' ')
         .replace(/\s+(dub|dublado|dublada|leg|legendado|legendada|fhd|hd|sd|4k|uhd|2160p?|1080p?|720p?|480p?)\s*$/gi, '')
         .replace(/\s*[[(](19|20)\d{2}[\])]\s*/g, ' ')
         .replace(/\s+/g, ' ')
@@ -92,9 +95,11 @@ export function groupVodVersions<T extends VariantableItem>(
             groups.push(list[0]);
             continue;
         }
+        // Mesma qualidade: o legendado vai depois — abrir o card toca a
+        // versão de sempre (dublada), e a legendada fica no botão da ficha
         const sorted = list
-            .map(item => ({ item, score: qualityScore(item.name) }))
-            .sort((a, b) => a.score - b.score)
+            .map(item => ({ item, score: qualityScore(item.name), leg: hasTag(item.name, 'LEG') ? 1 : 0 }))
+            .sort((a, b) => a.score - b.score || a.leg - b.leg)
             .map(entry => entry.item);
         groups.push(sorted[0]);
         versionsOf.set(String(sorted[0].stream_id), sorted);
@@ -105,11 +110,29 @@ export function groupVodVersions<T extends VariantableItem>(
 /**
  * Rótulo curto da versão pro botão da ficha ("4K DUB", "HD LEG"...).
  * Sem tags, cai num trecho do próprio nome — dois botões "Padrão"
- * idênticos não diriam ao usuário qual é qual.
+ * idênticos não diriam ao usuário qual é qual. Com `irmaos`: sem marca de
+ * idioma num grupo que tem legendado, a versão é a dublada (o painel só
+ * marca o [L]), então ganha "DUB".
  */
-export function versionLabel(name: string): string {
+export function versionLabel(name: string, irmaos: readonly string[] = []): string {
     const tags = tagsOf(name).filter(t => t !== 'H265');
+    if (!tags.includes('LEG') && !tags.includes('DUB') && irmaos.some(n => hasTag(n, 'LEG'))) tags.push('DUB');
     if (tags.length > 0) return tags.join(' ');
     const trimmed = name.trim();
     return trimmed.length > 22 ? `${trimmed.slice(0, 20)}…` : trimmed;
+}
+
+/**
+ * Rótulos dos botões de versão de UM grupo. O painel repete a mesma versão
+ * (dois "[L]", "(2019) [L]" e "[L] (2019)"): rótulo repetido ganha número —
+ * dois botões "LEG" iguais não diriam qual é qual.
+ */
+export function rotulosDasVersoes(nomes: readonly string[]): string[] {
+    const vistos = new Map<string, number>();
+    return nomes.map(nome => {
+        const rotulo = versionLabel(nome, nomes);
+        const n = (vistos.get(rotulo) ?? 0) + 1;
+        vistos.set(rotulo, n);
+        return n > 1 ? `${rotulo} ${n}` : rotulo;
+    });
 }
