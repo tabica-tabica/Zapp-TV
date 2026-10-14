@@ -156,6 +156,14 @@ O que funcionou em 12/10/2026:
       Sem proxy nem servidor próprio, o caminho que sobra é o item abaixo.
       Já feito: falha vale 30 min (`logoFalho.ts`) e as que carregam viram
       miniatura WebP de 128 px no IndexedDB (`logoPequeno.ts`).
+- [ ] **Conferir na TV: Jogos/Kids e o Sair com confirmação** (14/10/2026) —
+      a TV ficou deslogada (o Sair de um OK só apagou a conta; a conta
+      precisa ser cadastrada de novo na TV e abre no perfil Kids, PIN 0000).
+      Já visto: modo Jogos (entra/sai, prévia maior, "Jogos de Hoje"
+      primeiro), Notícias/Infantil, Kids na TV ao Vivo só com as 10 marcas.
+      Falta: o 2º OK do Sair; Kids em Filmes, Séries e Home (nomes reais das
+      categorias de VOD — `isKidsVodCategory` só aceita Infantil/Kids/
+      Desenhos); voltar pro Principal pelo PIN; `perf:tv` de uma rodada.
 - [ ] **Logos via serviço JS do webOS** (proposto em 14/10/2026, só LG) —
       o pacote `.ipk` pode levar, além da página, um serviço Node que roda
       na própria TV; o Node escolhe o próprio User-Agent, então o host de
