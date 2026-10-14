@@ -175,7 +175,16 @@ O que funcionou em 12/10/2026:
       subir só dobra o buffer de trás, que nada usa (voltar no ao vivo é
       pelo catch-up). Por isso o buffer de trás **ao vivo é 0** (o VOD
       mantém, pra voltar no filme): 9–17 s atrás (só o segmento atual),
-      renderer 117–134 MB e 167–185 MB livres — ~20 MB a mais na TV. Memória igual nos dois (renderer 135–157 MB, 137–164 MB
+      renderer 117–134 MB e 167–185 MB livres — ~20 MB a mais na TV.
+      **Distância da borda testada** (14/10/2026, bancada 3 rodadas + 90–180 s
+      de player): **fica em 2 segmentos**. 3 = 25–34 s à frente, 0 engasgo,
+      mas zap mediana 4,8 → 6,1 s e máx. 8,0 → 11,4 s, e +10 s atrás da
+      transmissão. 1 = zap mediana 11,2 s, máx. até 26 s (engasga logo depois
+      de começar, e os engasgos já empurram pra trás: à frente fica 9–18 s,
+      igual a 2). Crescer a folga depois de 30 s no canal (tocar a 0,9× até
+      ficar a 3 segmentos) **não dá no webOS 4**: aceita `playbackRate = 0.9`
+      e segue tocando a 1× (10,2 s de vídeo a cada 10 s, distância da borda
+      parada). Sem isso, só pausa ou pulo pra trás — os dois aparecem na tela. Memória igual nos dois (renderer 135–157 MB, 137–164 MB
       livres na TV; a prévia sozinha 117–138 MB, sem vídeo 99 MB) — os dados
       do MSE não parecem morar no renderer. Se travar por rede, a alavanca é
       a distância da borda (3 segmentos = +10 s de folga e de atraso, e zap
