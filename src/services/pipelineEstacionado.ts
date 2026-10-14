@@ -13,6 +13,7 @@
 
 import type { LivePipeline } from '../components/LiveChannelPreview';
 import type { LiveStream } from '../types';
+import { descartarVideo } from './camadaVideo';
 
 const VALIDADE_MS = 8000;
 const REENTREGA_MS = 2000;
@@ -29,6 +30,7 @@ function destruir(p: LivePipeline): void {
     p.video.pause();
     p.video.removeAttribute('src');
     p.video.load();
+    descartarVideo(p.video);
 }
 
 export const pipelineEstacionado = {

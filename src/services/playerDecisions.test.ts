@@ -6,7 +6,7 @@ import { describe, it, expect } from 'vitest';
 import {
     classifyStreamError, isTerminalCause, reconnectDelayMs, chooseCappedLevel,
     MAX_RECONNECT_ATTEMPTS, liveFeedStalled, LIVE_STALL_MS, LIVE_START_TIMEOUT_MS,
-    liveBufferDying, LIVE_BUFFER_LOW_S, LIVE_BUFFER_DRY_MS,
+    liveBufferDying, LIVE_BUFFER_LOW_S, LIVE_BUFFER_DRY_MS, trocaAntecipadaPermitida,
 } from './playerDecisions';
 
 describe('classifyStreamError', () => {
@@ -170,5 +170,16 @@ describe('liveBufferDying', () => {
 
     it('fonte que nunca subiu fica com o liveFeedStalled', () => {
         expect(liveBufferDying({ now: agora, lastBufferGrowthAt: 0, bufferAheadS: 0 })).toBe(false);
+    });
+});
+
+describe('trocaAntecipadaPermitida', () => {
+    it('conta de 1 conexão não abre a 2ª sessão (o painel dá 403)', () => {
+        expect(trocaAntecipadaPermitida(1)).toBe(false);
+    });
+    it('2+ conexões ou máximo desconhecido: permite', () => {
+        expect(trocaAntecipadaPermitida(2)).toBe(true);
+        expect(trocaAntecipadaPermitida(null)).toBe(true);
+        expect(trocaAntecipadaPermitida(undefined)).toBe(true);
     });
 });

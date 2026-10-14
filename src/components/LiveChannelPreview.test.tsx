@@ -10,6 +10,7 @@ import { render, cleanup } from '@testing-library/react';
 import type Hls from 'hls.js';
 import { LiveChannelPreview, type LiveChannelPreviewHandle } from './LiveChannelPreview';
 import { LIVE_START_TIMEOUT_MS } from '../services/playerDecisions';
+import { pipelineEstacionado } from '../services/pipelineEstacionado';
 
 afterEach(() => {
     cleanup();
@@ -38,7 +39,10 @@ describe('LiveChannelPreview: assumir o pipeline devolvido pelo player', () => {
             <LiveChannelPreview ref={ref} src="http://painel/live/1.m3u8" adopt={devolvido} />,
         );
 
-        expect(container.querySelector('video')).toBe(devolvido.video);
+        // O <video> mora na camada (fora da página); na página só o slot
+        expect(container.querySelector('video')).toBeNull();
+        expect(container.querySelector('.live-channel-preview-slot')).not.toBeNull();
+        expect(devolvido.video.parentElement?.className).toBe('camada-video-quadro');
         expect(devolvido.video.className).toBe('live-channel-preview-video');
         // Nada de loadSource/attachMedia: segue no stream que já estava tocando
         expect(devolvido.hls.loadSource).not.toHaveBeenCalled();
@@ -50,6 +54,42 @@ describe('LiveChannelPreview: assumir o pipeline devolvido pelo player', () => {
         expect(deNovo?.video).toBe(devolvido.video);
         expect(deNovo?.hls).toBe(devolvido.hls);
         expect(devolvido.hls.destroy).not.toHaveBeenCalled();
+    });
+});
+
+describe('LiveChannelPreview: troca de página sem mover o <video>', () => {
+    it('Home → TV ao Vivo: a página que entra assume o estacionado e o <video> nunca sai do documento', () => {
+        const pipeline = pipelineTocando();
+        const ref = createRef<LiveChannelPreviewHandle>();
+        // 1ª página: prévia tocando (o <video> entra na camada uma vez, aqui)
+        const home = render(<LiveChannelPreview ref={ref} src="http://painel/live/7.m3u8" adopt={pipeline} />);
+        const quadro = pipeline.video.parentElement;
+
+        // webOS: sair do documento derruba o pipeline — vigia QUALQUER remoção dele
+        const removido = vi.fn();
+        const vigia = new MutationObserver(ms => ms.forEach(m => m.removedNodes.forEach(n => {
+            if (n === pipeline.video || n === quadro) removido();
+        })));
+        vigia.observe(document.body, { childList: true, subtree: true });
+
+        // Página saindo: estaciona e desmonta
+        const entregue = ref.current!.handOff()!;
+        pipelineEstacionado.estacionar(7, entregue);
+        home.unmount();
+
+        // Página entrando: assume pelo canal
+        const { container } = render(<LiveChannelPreview src="http://painel/live/7.m3u8" canalId={7} />);
+        vigia.takeRecords().forEach(m => m.removedNodes.forEach(n => {
+            if (n === pipeline.video || n === quadro) removido();
+        }));
+        vigia.disconnect();
+
+        expect(removido).not.toHaveBeenCalled();
+        expect(pipeline.video.parentElement).toBe(quadro);
+        expect(pipeline.video.isConnected).toBe(true);
+        expect(container.querySelector('.live-channel-preview-slot')).not.toBeNull();
+        expect(pipeline.hls.destroy).not.toHaveBeenCalled();
+        pipelineEstacionado.descartar();
     });
 });
 

@@ -24,7 +24,10 @@ import { groupChannelVariants, qualityLabel, channelDisplayName, proximaVariante
 import { resolverUrlFinal } from '../services/urlFinal';
 import { liveHealth, ultimoCanalNoAr } from '../services/liveHealth';
 import { pipelineEstacionado } from '../services/pipelineEstacionado';
-import { CONNLIMIT_WINDOW_MS, type StreamErrorCause } from '../services/playerDecisions';
+import { CONNLIMIT_WINDOW_MS, trocaAntecipadaPermitida, type StreamErrorCause } from '../services/playerDecisions';
+import { accountService } from '../services/accountService';
+import { useLogoPequeno } from '../services/logoPequeno';
+import { quadroDe } from '../services/camadaVideo';
 import {
     curatedHiddenPrefs, detectJunkCategories, detectQualityOnlyCategories,
     isQualityTaggedChannel, computeEffectiveVisibility, type DetectedGroup,
@@ -84,6 +87,7 @@ export function LiveTV() {
     const [selectedChannel, setSelectedChannel] = useState<LiveStream | null>(null);
     const [playingChannel, setPlayingChannel] = useState<LiveStream | null>(null);
     const { isBroken, markBroken } = useBrokenImages<number>();
+    const logoSelecionado = useLogoPequeno(selectedChannel && !isBroken(selectedChannel.stream_id) ? selectedChannel.stream_icon : null);
     const { containerRef: scrollContainerRef, columns, columnWidth } = useMeasuredColumns({
         cardWidth: CARD_WIDTH, gap: CARD_GAP, minColumns: 3, maxColumns: 10,
     });
@@ -252,7 +256,9 @@ export function LiveTV() {
                 setSelectedChannel(found);
                 if (wantsAutoplay) {
                     // "Assistir" da Home: o player assume o stream estacionado
-                    handoffRef.current = pipelineEstacionado.retirar(found.stream_id);
+                    // Na camada (ver camadaVideo): o player usa o <video> NO LUGAR, sem mover
+                    const parado = pipelineEstacionado.retirar(found.stream_id);
+                    handoffRef.current = parado ? { ...parado, noLugar: !!quadroDe(parado.video) } : null;
                     setPlayingChannel(found);
                     storage.setLastChannel(found.stream_id);
                     zapHistory.push(found.stream_id);
@@ -786,6 +792,9 @@ export function LiveTV() {
         // menos de INTERVALO_TROCA_AUTO_MS, NÃO prepara outra fonte (seria mais
         // uma conexão contando). A rede de segurança do player segue valendo.
         if (porLimite || Date.now() - ultimaTrocaAutoRef.current < INTERVALO_TROCA_AUTO_MS) return;
+        // Conta de 1 conexão: a 2ª sessão só ganha 403. Nem marca falha — o
+        // buffer secando ali costuma ser a sessão nova do painel subindo
+        if (!trocaAntecipadaPermitida(accountService.get()?.maxConnections)) return;
         liveHealth.registrar(atual.stream_id, 'falha');
         const repId = representativeOf.get(atual.stream_id) ?? atual.stream_id;
         const variants = variantsOf.get(String(repId));
@@ -1324,14 +1333,16 @@ export function LiveTV() {
                                     onAutoMuted={() => setPreviewMuted(true)}
                                     onResolvedUrl={url => canalDaPrevia && setPreviewSession({ id: canalDaPrevia.stream_id, url })}
                                     onError={handlePreviewFailed}
+                                    // O mesmo selo de baixo, por cima do vídeo (que mora na camada)
+                                    sobre={<div className="live-badge"><span className="live-dot" /><span>AO VIVO</span></div>}
                                 />
                             ) : (
                                 <div className="preview-placeholder">
-                                    {isBroken(selectedChannel.stream_id) || !selectedChannel.stream_icon ? (
+                                    {!logoSelecionado ? (
                                         <span className="placeholder-emoji"><FaBroadcastTower /></span>
                                     ) : (
-                                        <img decoding="async"
-                                            src={selectedChannel.stream_icon}
+                                        <img
+                                            src={logoSelecionado}
                                             alt={selectedChannel?.name || 'Canal'}
                                             onError={() => markBroken(selectedChannel.stream_id)}
                                         />

@@ -4,13 +4,15 @@
 // estático de sempre (logo). Nunca é o player de verdade: o botão "Assistir"
 // continua abrindo VideoPlayer.tsx normalmente.
 
-import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref } from 'react';
+import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from 'react';
+import { createPortal } from 'react-dom';
 import type Hls from 'hls.js';
 import { useHls } from '../hooks/useHls';
 import { LIVE_START_TIMEOUT_MS, type StreamErrorCause } from '../services/playerDecisions';
 import { pipelineEstacionado } from '../services/pipelineEstacionado';
 import { naDesktop } from '../services/platformApp';
 import { liveHealth } from '../services/liveHealth';
+import { acompanhar, criarQuadro, desmontar, montar, quadroDe } from '../services/camadaVideo';
 
 /** Pipeline vivo da prévia, pronto pro player assumir (ver useHls `adopt`). */
 export interface LivePipeline {
@@ -57,26 +59,39 @@ interface LiveChannelPreviewProps {
      * estacionou pra este canal (Home ⇄ TV ao Vivo, ver pipelineEstacionado).
      */
     canalId?: number;
+    /** Vai POR CIMA do vídeo (selo AO VIVO): o vídeo mora na camada, fora da página. */
+    sobre?: ReactNode;
     ref?: Ref<LiveChannelPreviewHandle>;
 }
 
-export function LiveChannelPreview({ src, onError, muted = true, onResolvedUrl, onAutoMuted, adopt, canalId, ref }: LiveChannelPreviewProps) {
+export function LiveChannelPreview({ src, onError, muted = true, onResolvedUrl, onAutoMuted, adopt, canalId, sobre, ref }: LiveChannelPreviewProps) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const [failed, setFailed] = useState(false);
-    // Mesmo truque do player: o <video> adotado entra no host no MESMO commit
-    // em que o player sai da tela, e segue tocando sem engasgar
     const [adotado] = useState<LivePipeline | null>(() => adopt ?? (canalId != null ? pipelineEstacionado.retirar(canalId) : null));
-    const hostRef = useRef<HTMLDivElement>(null);
+    // O <video> mora num quadro da camada (ver camadaVideo): o estacionado já
+    // está lá (não move: nada de refazer o MediaSource); o devolvido pelo
+    // player entra nele uma vez; sem nenhum, um quadro novo
+    const [{ quadro, movido }] = useState(() => {
+        const naCamada = adotado ? quadroDe(adotado.video) : null;
+        return { quadro: naCamada ?? criarQuadro(adotado?.video), movido: !!adotado && !naCamada };
+    });
+    // Pipeline entregue (estacionado ou com o player): ao desmontar, o quadro fica
+    const entregueRef = useRef(false);
+    const slotRef = useRef<HTMLDivElement>(null);
     useLayoutEffect(() => {
-        const host = hostRef.current;
-        if (!adotado || !host) return;
-        // Pelo ref (mutável); o valor do useState não pode ser mexido
-        videoRef.current = adotado.video;
-        const video = videoRef.current;
-        host.appendChild(video);
-        video.className = 'live-channel-preview-video';
-        video.playsInline = true;
-    }, [adotado]);
+        // Pelo ref (mutável) e ANTES do efeito do useHls, que lê o videoRef
+        videoRef.current = quadro.video;
+        // Devolvido pelo player em tela cheia (video-no-lugar): volta a ser prévia
+        quadro.video.className = 'live-channel-preview-video';
+        montar(quadro);
+        entregueRef.current = false;
+        return () => desmontar(quadro, entregueRef.current);
+    }, [quadro]);
+    useLayoutEffect(() => {
+        const slot = slotRef.current;
+        if (!slot || failed) return;
+        return acompanhar(quadro, slot);
+    }, [quadro, failed]);
 
     // A prévia avisa UMA vez que não vai tocar (erro OU relógio de partida):
     // dois avisos fariam a TV ao Vivo pular duas variantes de uma vez
@@ -88,6 +103,7 @@ export function LiveChannelPreview({ src, onError, muted = true, onResolvedUrl, 
         isLive: true,
         preview: true,
         adopt: adotado?.hls,
+        adoptMovido: movido,
         onResolvedUrl,
         onStreamError: (causa) => {
             if (avisouRef.current) return;
@@ -142,6 +158,7 @@ export function LiveChannelPreview({ src, onError, muted = true, onResolvedUrl, 
             // carregando não poupa nada e pode estar preso num erro
             if (!video || video.readyState < 3 || failed) return null;
             const hls = handOff();
+            if (hls) entregueRef.current = true;
             return hls ? { video, hls } : null;
         },
         retomar: (pipeline) => {
@@ -151,6 +168,7 @@ export function LiveChannelPreview({ src, onError, muted = true, onResolvedUrl, 
             // nela porque a prop não mudou
             video.className = 'live-channel-preview-video';
             video.muted = muted;
+            entregueRef.current = false;
             retomar(pipeline.hls);
             return true;
         },
@@ -182,17 +200,23 @@ export function LiveChannelPreview({ src, onError, muted = true, onResolvedUrl, 
         // eslint-disable-next-line react-hooks/exhaustive-deps -- só na montagem
     }, [adotado]);
 
+    // `canplay` pelo DOM: o <video> não é mais JSX
+    const tocarRef = useRef(tocarMesmoBarrado);
+    useEffect(() => { tocarRef.current = tocarMesmoBarrado; });
+    useEffect(() => {
+        const video = quadro.video;
+        const aoPoder = () => tocarRef.current();
+        video.addEventListener('canplay', aoPoder);
+        return () => video.removeEventListener('canplay', aoPoder);
+    }, [quadro]);
+
     if (failed) return null;
 
-    if (adotado) return <div ref={hostRef} className="live-channel-preview-host" />;
-
+    // Só o lugar na página; o vídeo fica por cima, na camada
     return (
-        <video
-            ref={videoRef}
-            className="live-channel-preview-video"
-            muted={muted}
-            playsInline
-            onCanPlay={tocarMesmoBarrado}
-        />
+        <>
+            <div ref={slotRef} className="live-channel-preview-video live-channel-preview-slot" />
+            {sobre && createPortal(sobre, quadro.sobre)}
+        </>
     );
 }

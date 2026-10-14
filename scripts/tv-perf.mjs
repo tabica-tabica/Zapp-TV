@@ -11,7 +11,7 @@
 // --ipk instala antes de medir: precisa do Key Server ligado (TV_PASSPHRASE,
 // ou pergunta) — mesmo caminho de scripts/install-tv.command.
 //
-// Cenários (--only): home, grade, troca, ocioso. Saída: tabela + JSON em
+// Cenários (--only): home, grade, troca, assistir, zap, ocioso (zap por último antes do ocioso: esbarra no limite de 1 conexão e segura o painel). Saída: tabela + JSON em
 // .tv-perf/ultimo.json; com baseline salvo, mostra a diferença.
 // "imagem" (prévia com quadro, não só áudio) usa python3 + Pillow se houver.
 
@@ -27,9 +27,9 @@ const args = process.argv.slice(2);
 const IP = args.find(a => /^\d+\.\d+\.\d+\.\d+$/.test(a));
 const opt = (nome, padrao) => { const i = args.indexOf(`--${nome}`); return i < 0 ? padrao : args[i + 1]; };
 const flag = nome => args.includes(`--${nome}`);
-if (!IP) { console.error('Uso: node scripts/tv-perf.mjs <ip-da-tv> [--ipk arq.ipk] [--runs N] [--save-baseline] [--only home,grade,troca,ocioso]'); process.exit(1); }
+if (!IP) { console.error('Uso: node scripts/tv-perf.mjs <ip-da-tv> [--ipk arq.ipk] [--runs N] [--save-baseline] [--only home,grade,troca,assistir,zap,ocioso]'); process.exit(1); }
 const RUNS = Number(opt('runs', 1));
-const SO = (opt('only', 'home,grade,troca,ocioso')).split(',');
+const SO = (opt('only', 'home,grade,troca,assistir,zap,ocioso')).split(',');
 fs.mkdirSync(ESTADO, { recursive: true });
 const dormir = ms => new Promise(r => setTimeout(r, ms));
 
@@ -199,7 +199,8 @@ async function troca(controle, tv) {
 // CPU parado na TV ao Vivo com a prévia tocando (10s de perfil)
 async function ocioso(controle, tv) {
     await tv.js(NAV('TV Ao Vivo'));
-    await ate(tv, VIDEO_OK, 20000);
+    // Sem prévia tocando (limite de conexão depois do zap) o perfil dava 0% e entrava na mediana
+    if (await ate(tv, VIDEO_OK, 20000) == null) return { ocioso_obs: 'prévia não tocou' };
     await dormir(5000);
     await tv.call('Profiler.enable');
     await tv.call('Profiler.start');
@@ -212,6 +213,59 @@ async function ocioso(controle, tv) {
     for (const n of nos) { const nome = (n.callFrame || n).functionName; if (nome === '(idle)') ocioso += cont[n.id] || 0; if (nome === '(garbage collector)') gc += cont[n.id] || 0; }
     const mem = await tv.js('performance.memory?Math.round(performance.memory.usedJSHeapSize/1048576):null');
     return { ocioso_cpu_pct: Math.round(100 * (1 - ocioso / p.samples.length)), ocioso_gc_pct: Math.round(100 * gc / p.samples.length), heap_mb: mem };
+}
+
+// Eventos do <video> com o relógio da TV. Escuta em captura no document:
+// eventos de mídia não borbulham, e o <video> pode ser outro depois da troca
+const EVENTOS = '(function(){if(window.__ev)return 1;window.__ev=[];["emptied","playing"].forEach(function(n){document.addEventListener(n,function(e){if(e.target.tagName==="VIDEO")__ev.push([n,performance.now()])},true)});return 1})()';
+const ASSISTIR = '(function(){var b=[].slice.call(document.querySelectorAll("button")).filter(function(e){return /Assistir/.test(e.textContent)})[0];if(!b)return 0;b.click();return 1})()';
+const MARCA = '(function(){var v=document.querySelector("video");if(!v)return null;if(!v.__perf)v.__perf="V"+(window.__perfN=(window.__perfN||0)+1);return v.__perf})()';
+const sessoes = tv => new Set(tv.rede.filter(u => /\.m3u8(\?|$)/.test(u)).map(u => u.split('?')[0])).size;
+
+// Player da TV ao Vivo, CH+/CH− ×6 alternados: do `emptied` (começou a troca)
+// ao `playing`. Alternar termina no canal de partida — CH+ ×5 deixava como
+// "último canal" um que nem toca e a prévia das rodadas seguintes não subia
+async function zap(controle, tv) {
+    await tv.js(NAV('TV Ao Vivo'));
+    if (await ate(tv, VIDEO_OK, 25000) == null) return { zap_obs: 'prévia não tocou' };
+    await tv.js(ASSISTIR);
+    if (await ate(tv, VIDEO_OK, 20000) == null) return { zap_obs: 'player não tocou' };
+    await dormir(3000);
+    await tv.js(EVENTOS);
+    tv.rede.length = 0;
+    const tempos = []; let falhas = 0;
+    for (let i = 0; i < 6; i++) {
+        await tv.js('__ev.length=0;1');
+        await controle.teclas([i % 2 ? 'CHANNELDOWN' : 'CHANNELUP'], 0);
+        // Limite de 1 conexão: o painel segura a anterior por até ~16 s
+        const ok = await ate(tv, '(function(){var e=-1;for(var i=0;i<__ev.length;i++){if(__ev[i][0]==="emptied"&&e<0)e=__ev[i][1];if(__ev[i][0]==="playing"&&e>=0)return true}return false})()', 30000);
+        const ms = ok == null ? null : await tv.js('(function(){var e=-1;for(var i=0;i<__ev.length;i++){if(__ev[i][0]==="emptied"&&e<0)e=__ev[i][1];if(__ev[i][0]==="playing"&&e>=0)return Math.round(__ev[i][1]-e)}return null})()');
+        if (ms == null) falhas++; else tempos.push(ms);
+        await dormir(3000);
+    }
+    await controle.teclas(['BACK']);
+    await dormir(1500);
+    return { zap_mediana_ms: q(tempos, 0.5), zap_max_ms: tempos.length ? Math.max(...tempos) : null, zap_falhas: falhas, zap_sessoes: sessoes(tv) };
+}
+
+// Prévia da TV ao Vivo → Assistir → Voltar: o vídeo tem que ficar no lugar
+// (mesmo <video>, readyState sem cair, nenhuma sessão nova)
+async function assistir(controle, tv) {
+    await tv.js(NAV('TV Ao Vivo'));
+    if (await ate(tv, VIDEO_OK, 25000) == null) return { assistir_obs: 'prévia não tocou' };
+    await dormir(3000);
+    const inicial = await tv.js(MARCA);
+    const RS = 'window.__rs=4;if(window.__rsT)clearInterval(window.__rsT);window.__rsT=setInterval(function(){var v=document.querySelector("video");var r=v?v.readyState:0;if(r<__rs)__rs=r},50);1';
+    tv.rede.length = 0;
+    const out = {};
+    for (const [nome, acao] of [['entrar', () => tv.js(ASSISTIR)], ['voltar', () => controle.teclas(['BACK'], 0)]]) {
+        await tv.js(RS);
+        await acao();
+        await dormir(4000);
+        out[`assistir_${nome}_rs_min`] = await tv.js('clearInterval(window.__rsT);__rs');
+        out[`assistir_${nome}_mesmo_video`] = (await tv.js(MARCA)) === inicial;
+    }
+    return { ...out, assistir_sessoes: sessoes(tv) };
 }
 
 // ---------- Instalação (opcional) ----------
@@ -232,14 +286,16 @@ async function instalar(ipk) {
 }
 
 // ---------- Main ----------
-const CENARIOS = { home, grade, troca, ocioso };
+const CENARIOS = { home, grade, troca, zap, assistir, ocioso };
 if (opt('ipk')) await instalar(opt('ipk'));
 const controle = await ssap();
 const resultados = [];
 for (let run = 1; run <= RUNS; run++) {
     // Cada rodada parte do app recém-aberto (mesma condição pra todo build)
     await controle.req('ssap://system.launcher/close', { id: APP }).catch(() => {});
-    await dormir(2000);
+    // Conta de 1 conexão: o painel demora a soltar a sessão do app fechado
+    // (e o zap da rodada anterior); sem esperar, a prévia da Home não tocava
+    await dormir(run > 1 ? 30000 : 2000);
     await controle.req('ssap://system.launcher/launch', { id: APP });
     const tv = await inspetor();
     await ate(tv, '!!document.querySelector(".nav-item")', 40000);

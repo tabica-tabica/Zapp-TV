@@ -143,13 +143,16 @@ html[data-motion="reduzido"] .tv-focused {
 
 /* Menu parado marca painel OLED. Depois de 5 min sem tecla a interface
    escurece — mas NUNCA durante a reprodução (`data-playing` é posto pelo
-   VideoPlayer enquanto ele existe). */
-html.app-dimmed:not([data-playing]) .app {
+   VideoPlayer enquanto ele existe). A prévia ao vivo mora fora do .app
+   (camada do vídeo, ver camadaVideo.ts) e escurece junto. */
+html.app-dimmed:not([data-playing]) .app,
+html.app-dimmed:not([data-playing]) .camada-video {
     opacity: 0.35;
     transition: opacity 1.2s ease;
 }
 
-html:not(.app-dimmed) .app {
+html:not(.app-dimmed) .app,
+html:not(.app-dimmed) .camada-video {
     transition: opacity 0.4s ease;
 }
 

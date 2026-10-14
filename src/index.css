@@ -383,3 +383,20 @@ body {
 .mylist-hints .hint-red {
     color: #f87171;
 }
+
+/* Camada do vídeo das prévias (src/services/camadaVideo.ts): fora da árvore
+   do React, por cima do slot da página. Sem border-radius nem overflow: no
+   webOS 4 o vídeo some com canto arredondado. */
+.camada-video-quadro {
+  position: fixed;
+  z-index: 15;
+  pointer-events: none;
+}
+
+.camada-video-sobre {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+}

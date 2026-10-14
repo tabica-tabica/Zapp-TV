@@ -5,6 +5,7 @@ import { memo, type CSSProperties } from 'react';
 import { FaBroadcastTower, FaStar, FaHistory } from 'react-icons/fa';
 import type { LiveStream } from '../types';
 import { channelDisplayName } from '../services/channelVariants';
+import { useLogoPequeno } from '../services/logoPequeno';
 import './ChannelCard.css';
 
 
@@ -24,6 +25,7 @@ export interface ChannelCardProps {
 function ChannelCardImpl({
     stream, focused, selected, isFavorite, broken, onImageError, onSelect, style, gap = 12,
 }: ChannelCardProps) {
+    const logo = useLogoPequeno(broken ? null : stream?.stream_icon);
     return (
         <div className="channel-card-cell" style={style}>
             <div
@@ -36,13 +38,11 @@ function ChannelCardImpl({
                 onClick={() => onSelect(stream)}
             >
                 <div className="channel-logo">
-                    {broken || !stream?.stream_icon ? (
+                    {!logo ? (
                         <span className="channel-placeholder"><FaBroadcastTower /></span>
                     ) : (
                         <img
-                            decoding="async"
-                            loading="lazy"
-                            src={stream.stream_icon}
+                            src={logo}
                             alt={stream?.name ? channelDisplayName(stream.name) : 'Canal'}
                             onError={() => onImageError(stream.stream_id)}
                         />

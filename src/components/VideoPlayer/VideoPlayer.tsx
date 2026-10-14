@@ -29,6 +29,8 @@ import { storage } from '../../services/storage';
 import { searchSubtitles, resolveSubtitleTrack, type SubtitleResult } from '../../services/openSubtitles';
 import type { LivePipeline } from '../LiveChannelPreview';
 import { nextMoment, prevMoment, TOLERANCIA_MOMENTO_S } from '../../services/secretList';
+import { useLogoPequeno } from '../../services/logoPequeno';
+import { elevarQuadro } from '../../services/camadaVideo';
 import './VideoPlayer.css';
 
 export interface PlayerChannel {
@@ -504,6 +506,10 @@ export function VideoPlayer({
     // imagem troca (ver .zap-preview-stage); o HLS de verdade só troca
     // quando isto volta a null (ZAP_SETTLE_MS depois do último aperto)
     const [zapPreview, setZapPreview] = useState<PlayerChannel | null>(null);
+    // Depois do commit, o mesmo palco (logo + nome do canal NOVO) fica até o
+    // vídeo novo tocar: a troca leva 4–6 s, ou 8–30 s no limite de 1 conexão,
+    // e antes era tela preta + "Aguardando o provedor…" (LG, 14/10/2026)
+    const [zapCarregando, setZapCarregando] = useState<PlayerChannel | null>(null);
     useEffect(() => {
         if (playerFocus !== 'zap-list' || !channelList) return;
         const channel = channelList[zapIndex];
@@ -1084,6 +1090,7 @@ export function VideoPlayer({
             zapSettleTimeoutRef.current = null;
             zapPreviewChannelRef.current = null;
             setZapPreview(null);
+            setZapCarregando(target);
             onSwitchChannel?.(target.stream_id);
         }, ZAP_SETTLE_MS);
     }, [canZap, channelList, currentChannelIndex, onSwitchChannel]);
@@ -1099,6 +1106,22 @@ export function VideoPlayer({
         zapPreviewChannelRef.current = null;
         setZapPreview(null);
     }, [currentChannelId]);
+
+    // Palco do canal novo sai no primeiro `playing` depois do commit (ou no
+    // erro; 30 s no máximo, pra nunca ficar preso por cima de um vídeo tocando)
+    useEffect(() => {
+        const v = videoRef.current;
+        if (!zapCarregando || !v) return;
+        const sair = () => setZapCarregando(null);
+        v.addEventListener('playing', sair);
+        v.addEventListener('error', sair);
+        const limite = setTimeout(sair, 30000);
+        return () => {
+            v.removeEventListener('playing', sair);
+            v.removeEventListener('error', sair);
+            clearTimeout(limite);
+        };
+    }, [zapCarregando]);
 
     // Desmontagem com um zap em andamento não pode disparar onSwitchChannel
     // num componente que já não existe mais (o efeito acima só limpa quando
@@ -1533,6 +1556,7 @@ export function VideoPlayer({
         if (isRadio || !poster) video.removeAttribute('poster');
         else video.poster = poster;
     }, [adopted, noLugar, videoClassName, isRadio, poster]);
+    useLayoutEffect(() => (noLugar && adopted ? elevarQuadro(adopted.video) : undefined), [adopted, noLugar]);
     useEffect(() => {
         if (!adopted) return;
         const onClick = () => togglePlayRef.current();
@@ -2250,6 +2274,9 @@ export function VideoPlayer({
         return level?.label || 'Auto';
     };
 
+    const palcoZap = zapPreview ?? zapCarregando;
+    const logoZap = useLogoPequeno(palcoZap?.stream_icon);
+
     return (
         <div
             ref={containerRef}
@@ -2314,21 +2341,21 @@ export function VideoPlayer({
                 {/* Zapando: só a imagem troca por cima do vídeo (que continua
                     tocando por baixo, sem interrupção) até assentar em
                     ZAP_SETTLE_MS — daí sim o HLS de verdade troca de canal. */}
-                {zapPreview && (
+                {palcoZap && (
                     <div className="zap-preview-stage">
-                        {zapPreview.stream_icon
-                            ? <img decoding="async" className="zap-preview-logo" src={zapPreview.stream_icon} alt={zapPreview.name} />
+                        {logoZap
+                            ? <img className="zap-preview-logo" src={logoZap} alt={palcoZap.name} />
                             : <div className="zap-preview-logo zap-preview-logo-fallback"><FaBroadcastTower /></div>}
                         <div className="zap-preview-name">
-                            {zapPreview.num != null && <span className="zap-preview-num">{zapPreview.num}</span>}
-                            {zapPreview.name}
+                            {palcoZap.num != null && <span className="zap-preview-num">{palcoZap.num}</span>}
+                            {palcoZap.name}
                         </div>
                     </div>
                 )}
             </div>
 
             {/* Aviso "a seguir" perto do fim do programa (item 9) */}
-            {nextSoon && !showControls && liveEpg?.now && !zapPreview && (
+            {nextSoon && !showControls && liveEpg?.now && !palcoZap && (
                 <div className="next-soon-banner">
                     Em {Math.max(1, Math.ceil((liveEpg.now.end - Date.now()) / 60000))} min: {nextSoon.title}
                 </div>
@@ -2337,7 +2364,7 @@ export function VideoPlayer({
             {/* Onde eu caí? (banner curto na troca de canal) — escondido
                 enquanto zap-preview está ativo pra não mostrar o canal ANTIGO
                 por cima da prévia do canal NOVO */}
-            {canZap && zapBanner && !showControls && !zapPreview && (
+            {canZap && zapBanner && !showControls && !palcoZap && (
                 <div className="zap-banner">
                     {zapBanner.num != null && <span className="zap-banner-num">{zapBanner.num}</span>}
                     <span className="zap-banner-name">{zapBanner.name}</span>

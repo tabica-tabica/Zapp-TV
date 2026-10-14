@@ -23,6 +23,7 @@ import { epgService } from '../services/epgService';
 import { channelDisplayName } from '../services/channelVariants';
 import { useTranslation } from '../hooks/useTranslation';
 import type { LiveStream } from '../types';
+import { useLogoPequeno } from '../services/logoPequeno';
 import './HomeChannelPreview.css';
 
 interface HomeChannelPreviewProps {
@@ -43,6 +44,7 @@ export function HomeChannelPreview({ channel, focused, onWatch, previewRef }: Ho
     const [nowTitle, setNowTitle] = useState<string | null>(null);
     const [nowTime, setNowTime] = useState<string | null>(null);
     const [imgBroken, setImgBroken] = useState(false);
+    const logo = useLogoPequeno(imgBroken ? null : channel.stream_icon);
     const { t } = useTranslation();
 
     // Sem reset manual de estado aqui: o chamador (Home.tsx) usa
@@ -80,15 +82,16 @@ export function HomeChannelPreview({ channel, focused, onWatch, previewRef }: Ho
                             if (causa !== 'connlimit') liveHealth.registrar(channel.stream_id, 'falha');
                             setFailed(true);
                         }}
+                        // O mesmo selo de baixo, por cima do vídeo (que mora na camada)
+                        sobre={<div className="home-channel-preview-live-badge"><span className="live-dot" /><span>{t('home_live_badge')}</span></div>}
                     />
                 ) : (
                     <div className="home-channel-preview-fallback">
-                        {imgBroken || !channel.stream_icon ? (
+                        {!logo ? (
                             <FaBroadcastTower />
                         ) : (
                             <img
-                                decoding="async"
-                                src={channel.stream_icon}
+                                src={logo}
                                 alt={channel.name}
                                 onError={() => setImgBroken(true)}
                             />
@@ -145,6 +148,7 @@ interface HomeChannelCoverCardProps {
 
 function HomeChannelCoverCard({ channel, focused, onSelect }: HomeChannelCoverCardProps) {
     const [broken, setBroken] = useState(false);
+    const logo = useLogoPequeno(broken ? null : channel.stream_icon);
     return (
         <button
             className={`home-channel-cover ${focused ? 'tv-focused' : ''}`}
@@ -152,13 +156,11 @@ function HomeChannelCoverCard({ channel, focused, onSelect }: HomeChannelCoverCa
             title={channelDisplayName(channel.name)}
         >
             <div className="home-channel-cover-logo">
-                {broken || !channel.stream_icon ? (
+                {!logo ? (
                     <FaBroadcastTower />
                 ) : (
                     <img
-                        decoding="async"
-                        loading="lazy"
-                        src={channel.stream_icon}
+                        src={logo}
                         alt=""
                         onError={() => setBroken(true)}
                     />

@@ -142,3 +142,14 @@ export function liveBufferDying(s: { now: number; lastBufferGrowthAt: number; bu
     if (s.lastBufferGrowthAt === 0) return false; // ainda subindo: é com o liveFeedStalled
     return s.bufferAheadS < LIVE_BUFFER_LOW_S && s.now - s.lastBufferGrowthAt >= LIVE_BUFFER_DRY_MS;
 }
+
+/**
+ * Troca ANTECIPADA de variante (buffer secando) abre a sessão da próxima com a
+ * atual ainda tocando: 2 conexões. Numa conta de 1 conexão o painel recusa a
+ * nova com 403 até soltar a velha. Visto na LG (14/10/2026): sessão nova
+ * entrega segmentos de 10 s a cada 16–18 s no começo, o buffer seca, a troca
+ * dispara e a variante nova esbarra no limite. Sem máximo informado, permite.
+ */
+export function trocaAntecipadaPermitida(maxConnections: number | null | undefined): boolean {
+    return maxConnections == null || maxConnections > 1;
+}

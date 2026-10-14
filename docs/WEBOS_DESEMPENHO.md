@@ -24,8 +24,11 @@ Regras que saem disso:
 
 - **Não mover `<video>` tocando entre lugares do DOM sem o `recoverMediaError`** no webOS.
   Melhor ainda: não mover — redimensionar no lugar (fixed + z-index) mantém
-  o pipeline sem engasgo (TV ao Vivo → player já faz assim; Home ⇄ TV ao
-  Vivo ainda move, ver pendências).
+  o pipeline sem engasgo. A prévia mora na camada única
+  (`src/services/camadaVideo.ts`, fora da árvore do React, por cima do slot
+  da página): Home ⇄ TV ao Vivo ⇄ player usam o MESMO `<video>` sem mover.
+  O quadro da camada é contexto de empilhamento (z 15): o player em tela
+  cheia sobe o quadro junto (`elevarQuadro`), senão a sidebar fica por cima.
 - **Nada de recorte arredondado em volta de `<video>`** nos builds de TV.
 - **Sort estável não é garantido** antes do Chrome 70 — por isso `es.array.sort` está na lista de polyfills.
 - **Conta de 1 conexão**: o painel segue contando a conexão fechada por 6–16 s (medido trocando de canal, 12/10/2026; antes se estimava ~20 s) e recusa a nova com **500** (às vezes 403) — o app mostra "Aguardando o provedor liberar a conexão…" e tenta a cada ~3 s. Fechar e reabrir o app em sequência (ou testar com `curl` enquanto a TV toca) derruba a prévia por "limite" — não é bug do app.
@@ -50,7 +53,7 @@ Regras que saem disso:
 ```bash
 npm run perf:tv -- <ip-da-tv> --runs 3                 # compara com o baseline
 npm run perf:tv -- <ip-da-tv> --runs 3 --save-baseline # grava novo baseline
-npm run perf:tv -- <ip-da-tv> --only grade,troca       # cenários: home, grade, troca, ocioso
+npm run perf:tv -- <ip-da-tv> --only grade,troca       # cenários: home, grade, troca, assistir, zap, ocioso
 npm run perf:tv -- <ip-da-tv> --ipk dist/ipk/x.ipk     # instala antes (Key Server ligado)
 ```
 
@@ -119,8 +122,11 @@ O que funcionou em 12/10/2026:
       flex com `gap` e texto solto ao lado de elemento cola do mesmo jeito.
       Esperado: Voltar com o teclado virtual aberto fecha só o teclado
       (a busca precisa de um segundo Voltar).
-- [ ] **Abrir o menu de áudio/legenda num canal ao vivo** com o hls light e
-      confirmar que nada que se usa sumiu.
+- [x] **Menu de áudio/legenda com o hls light** (14/10/2026): nada que se
+      usava sumiu. O painel serve a playlist de mídia direto (sem faixas
+      alternativas). RecordTV tem CEA-608 no stream (Record News e GloboNews
+      não), mas o app nunca expôs 608 nem no build cheio (o menu só lista
+      `hls.subtitleTracks`).
 - [ ] **Variante HD/FHD** (CNN Brasil Money): na prática, depois de a HD cair
       uma vez, Home e TV ao Vivo devem abrir direto na FHD. Lógica testada
       (unit + TV com HD marcada como caída); falta ver no uso real.
@@ -129,26 +135,37 @@ O que funcionou em 12/10/2026:
       histórico), e o player só contava acerto aos 60 s (agora 10 s) — a
       variante achada pelo failover nunca virava a padrão. Falta ver na TV
       com a HD fora de novo.
-- [ ] **Home ⇄ TV ao Vivo sem mover o `<video>`** (troca de página lenta):
-      voltar a tocar leva 6–11 s (era 6–16 s). A prévia → player da TV ao
-      Vivo já é instantânea (vídeo no lugar, 12/10/2026); entre páginas o
-      `<video>` ainda é movido (a página desmonta) e o `recoverMediaError`
-      refaz o MediaSource. Precisa de uma camada de vídeo única na raiz do app.
-- [ ] **Troca de canal: retorno imediato.** Hoje 4,3–6,2 s do início da
-      troca até tocar, 7,7–21 s quando esbarra no limite de 1 conexão (o
-      painel segura a anterior por 6–16 s — só uma conta com 2 conexões
-      resolve isso). Mostrar nome/logo do canal novo na hora, por cima do
-      último quadro, em vez de tela preta + "Aguardando o provedor…".
-- [ ] **Troca automática de variante no player** ("Sinal fraco — preparando…"):
-      visto 38391 tocando bem e, 13 s depois, o player trocar sozinho pra
-      42411 — sessão nova, limite, 11 s esperando. Ver se o
-      `liveBufferDying` dispara à toa (segmentos de 10 s) e se vale trocar
-      numa conta de 1 conexão.
+- [x] **Home ⇄ TV ao Vivo sem mover o `<video>`** (14/10/2026): camada
+      única (`src/services/camadaVideo.ts`). Bancada, 3 rodadas: troca
+      Home → TV ao Vivo → player → Voltar → Home **0 ms** em todos os passos
+      (era 6,2–10,6 s, média 8,3 s), mesmo `<video>`, 1 playlist; prévia da
+      TV ao Vivo 7,1 s → 0. Achados na TV e consertados: (a) player em tela
+      cheia por baixo da sidebar (o quadro z 15 prendia o z 9998 do vídeo);
+      (b) Voltar no meio de um CH± deixava o `<video>` morto em tela cheia
+      com o pôster (logo do canal) por cima da página. A camada também
+      escurece com o anti burn-in. Fica de olho: overlay de z baixo que cubra
+      só a borda do slot (o teste de cobertura olha o meio). Visto e não
+      mexido: Voltar no meio do CH− deixa a ficha no canal do zap e a prévia
+      cai no logo (limite de 1 conexão com a sessão do player).
+- [x] **Troca de canal: retorno imediato** (14/10/2026): logo + nome do
+      canal novo ficam na tela do CH± até o primeiro `playing` (máx. 30 s),
+      em vez de tela preta + "Aguardando o provedor…" (visto na TV). O tempo
+      até tocar segue do painel: zap mediana 4,8 s, máx. 8 s, 1–3 falhas em
+      6 por limite de conexão — só uma conta com 2 conexões resolve.
+- [x] **Troca automática de variante no player** (14/10/2026): o
+      `liveBufferDying` não é alarme falso — sessão nova do painel entrega
+      segmentos de 10 s a cada ~16–18 s. Mas trocar numa conta de 1 conexão
+      só leva 403/limite: `trocaAntecipadaPermitida` (playerDecisions) não
+      troca antes da hora com `maxConnections <= 1`.
 - [ ] **Prazo extra do pipeline assumido** (`LIVE_ADOPT_GRACE_MS`): o caso
       lento (>10 s pra voltar) não reapareceu nos testes; com o vídeo no
       lugar quase não se aplica mais. Confirmar no uso e, se sobrar, tirar.
-- [ ] **Logos dos canais com 429** do host de imagens (dezenas por visita à
-      TV ao Vivo). Não afeta o vídeo; cache das capas ou menos requisições.
+- [ ] **Logos dos canais com 429** do host de imagens. 14/10/2026: o host
+      responde 429 pra TV em TODA logo, até uma só depois de 60 s quieto (o PC
+      na mesma rede recebe 200) — é do host, o app não resolve. Feito: falha
+      vale 30 min (`logoFalho.ts`) e as que carregam viram miniatura WebP de
+      128 px no IndexedDB (`logoPequeno.ts`, no máx. 2 downloads por vez;
+      eram até 3500×3495). Funcionando na TV com a logo de outro host.
 - [ ] **Buffer do player**: perfil "equilibrado" = 30 s ao vivo (processo
       135–167 MB, ~150 MB livres na TV). Decidir se sobe (o "generoso" tem
       60 s) agora que a prévia foi pra 20 s.
@@ -156,13 +173,18 @@ O que funcionou em 12/10/2026:
       foi pro `src/pages/ChannelGrid.tsx` (memo; o LiveTV fala por `ref`).
       Grade: mediana 194 → 114–124 ms, p90 755 → 396–713 ms (6 rodadas). O
       máximo (1,7–2,2 s) segue sendo os picos do item abaixo.
-- [ ] **Bancada: cenários `zap` e `assistir`** na `tv-perf.mjs` (CH+ ×5 do
-      `emptied` ao `playing` + sessões novas; Assistir/Voltar com o mesmo
-      `<video>` e `readyState` sem queda) — hoje só por medição avulsa (seção 3).
-      Depois, regravar o baseline: o atual (12/10) é de antes da grade em
-      componente próprio, do vídeo no lugar e da troca de canal mais rápida.
-- [ ] **Picos de 2–4 s na grade** ao inverter o sentido da rolagem (vistos na
-      v1.2.0 e depois). Perfilar com `scripts/tv-perf.mjs` + perfil de CPU.
+- [x] **Bancada: cenários `zap` e `assistir`** (14/10/2026): zap = CH+/CH−
+      alternados ×6 (termina no canal de partida), do `emptied` ao `playing` +
+      sessões; assistir = Assistir/Voltar com o mesmo `<video>` e
+      `readyState` mínimo. Baseline regravado (14/10, 3 rodadas): grade
+      mediana 127 ms / p90 290 / máx. 599; Home 5,7 s do boot; assistir
+      `rs_min` 4 e 1 sessão; CPU parada 18–22 % (era 15; a camada mede o slot
+      a cada 500 ms). Entre rodadas a bancada espera 30 s: sem isso o painel
+      ainda segurava a sessão e a prévia da Home não tocava.
+- [x] **Picos de 2–4 s na grade** (14/10/2026): não reproduziram (máx.
+      184 ms em 60 teclas com 3 inversões, sem logos carregando). Suspeita:
+      decodificar as logos gigantes — resolvido pelas miniaturas. Bancada:
+      máx. 1535 → 599 ms.
 - [x] **"Foco visível" 76 %**: 100 % nas 6 rodadas depois do lote (sem as
       transições, o quadro medido já é o final).
 - [ ] **Home vazia** uma vez ao voltar da TV ao Vivo (sem seções); um reload
@@ -170,5 +192,5 @@ O que funcionou em 12/10/2026:
 - [ ] **Carregar telas raras sob demanda** (Configurações, perfis, modal de
       detalhes, QR): não reduz o pacote, encurta o parse no boot. Exige sair
       do bundle único (iife) dos builds de TV — só se o boot incomodar.
-- [ ] **Polyfill de ResizeObserver** mede tudo a cada 1 s (força layout).
-      Baixo impacto; deixar a não ser que apareça no perfil.
+- [x] **Polyfill de ResizeObserver** (14/10/2026): já é 1 s com cache de
+      tamanho e não aparece no perfil. Deixado como está.
