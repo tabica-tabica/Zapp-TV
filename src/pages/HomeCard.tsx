@@ -16,6 +16,8 @@ export interface HomeCardProps<T> {
     /** Ícone do pôster de reserva quando a imagem falha (FaFilm/FaTv). Omitido = só o fundo. */
     fallbackIcon?: IconType;
     onSelect: (item: T) => void;
+    /** A capa não carregou: a Home tira o card (filme/série sem capa não entra na vitrine) */
+    onImageError?: (image: string) => void;
     /** Classe extra no <button> raiz — hoje só 'top10-card'. */
     cardClassName?: string;
     /** Sibling ANTES de .card-image — hoje só o rank do Top 10. */
@@ -27,7 +29,7 @@ export interface HomeCardProps<T> {
 }
 
 function HomeCardImpl<T>({
-    item, focused, title, image, fallbackIcon: FallbackIcon, onSelect, cardClassName, rankBadge, imageOverlay, subtitle,
+    item, focused, title, image, fallbackIcon: FallbackIcon, onSelect, onImageError, cardClassName, rankBadge, imageOverlay, subtitle,
 }: HomeCardProps<T>) {
     const [broken, setBroken] = useState(false);
     return (
@@ -47,7 +49,7 @@ function HomeCardImpl<T>({
                         loading="lazy"
                         src={posterThumb(image)}
                         alt={title}
-                        onError={() => setBroken(true)}
+                        onError={() => { setBroken(true); onImageError?.(image); }}
                     />
                 )}
                 {imageOverlay}

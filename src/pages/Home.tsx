@@ -90,6 +90,12 @@ function sample<T>(arr: readonly T[], k: number): T[] {
     return [...picked].map(i => arr[i]);
 }
 
+/** Capa do título: filme usa stream_icon (cai no cover), série usa cover. */
+function getCover(item: VODStream | Series): string {
+    if ('stream_id' in item) return item.stream_icon || item.cover || '';
+    return item.cover || '';
+}
+
 export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
     const { t, currentLang } = useTranslation();
     const locale = LOCALES[currentLang];
@@ -118,7 +124,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
     const continueItems = useMemo(() => !adultContinueIds ? [] : continueRaw.filter(item => {
         const nome = item.kind === 'movie' ? item.progress.name : item.progress.seriesName;
         const chave = item.kind === 'movie' ? `m-${item.progress.id}` : `s-${item.progress.seriesId}`;
-        return !isAdultCategoryName(nome || '') && !adultContinueIds.has(chave);
+        return !isAdultCategoryName(nome || '') && !adultContinueIds.has(chave) && !!item.progress.poster;
     }), [continueRaw, adultContinueIds]);
     // OK num pôster abria a página Filmes inteira, no topo, sem o item
     // selecionado — o usuário perdia o que tinha achado
@@ -136,6 +142,18 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
 
     // Novos episódios de séries seguidas + roleta 🎲
     const [newEpisodesList, setNewEpisodesList] = useState<Series[]>([]);
+    // Capa que não carregou: o card sai de todas as fileiras (o foco já se
+    // reajusta sozinho quando a fileira encolhe — ver maxFocusedItem)
+    const descartarCapa = useCallback((url: string) => {
+        const fica = (item: VODStream | Series) => getCover(item) !== url;
+        setRecentMovies(l => l.filter(fica));
+        setRecentSeries(l => l.filter(fica));
+        setRecommendations(l => l.filter(fica));
+        setTopItems(l => l.filter(fica));
+        setNewEpisodesList(l => l.filter(fica));
+        setSeedRow(r => r && { ...r, itens: r.itens.filter(fica) });
+        setContinueRaw(l => l.filter(item => item.progress.poster !== url));
+    }, []);
 
     // Prévia de canal ao vivo (último assistido, ou sugestão aleatória
     // dentre os visíveis por padrão — ver src/services/liveVisibility.ts),
@@ -249,6 +267,11 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 streams = streams.filter(s => !ehAdulto(s, adultLive));
                 movies = movies.filter(m => !ehAdulto(m, adultVod));
                 series = series.filter(s => !ehAdulto(s, adultSeries));
+                // Vitrine sem pôster vazio: filme/série sem capa não entra em
+                // fileira nenhuma (a capa que existe mas não carrega sai no
+                // onImageError do card — descartarCapa)
+                movies = movies.filter(m => !!getCover(m));
+                series = series.filter(s => !!getCover(s));
 
                 // Prévia de canal ao vivo: o último assistido (se ainda
                 // existir no catálogo já filtrado por Kids/adulto) puxa a
@@ -686,15 +709,6 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
         card?.scrollIntoView({ block: 'nearest', inline: 'center' });
     }, [focusedSectionId, focusedItem]);
 
-    // Helper to get cover image
-    const getCover = (item: VODStream | Series) => {
-        if ('stream_id' in item) {
-            // VODStream - use stream_icon as primary
-            return item.stream_icon || item.cover || '';
-        }
-        // Series - use cover
-        return item.cover || '';
-    };
 
     const getName = (item: VODStream | Series) => {
         return item.name;
@@ -795,6 +809,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                                 const key = isMovie ? `m-${item.progress.id}` : `s-${item.progress.seriesId}`;
                                 return (
                                     <HomeCard
+                                onImageError={descartarCapa}
                                         key={key}
                                         item={item}
                                         index={index}
@@ -825,6 +840,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                         <div className="content-row">
                             {seedRow.itens.map((item, index) => (
                                 <HomeCard
+                                onImageError={descartarCapa}
                                     key={getKey(item)}
                                     item={item}
                                     index={index}
@@ -846,6 +862,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                         <div className="content-row">
                             {topItems.map((item, index) => (
                                 <HomeCard
+                                onImageError={descartarCapa}
                                     key={getKey(item)}
                                     item={item}
                                     index={index}
@@ -868,6 +885,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                         <div className="content-row">
                             {newEpisodesList.map((s, index) => (
                                 <HomeCard
+                                onImageError={descartarCapa}
                                     key={s.series_id}
                                     item={s}
                                     index={index}
@@ -892,6 +910,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                     <div className="content-row">
                         {recommendations.map((item, index) => (
                             <HomeCard
+                                onImageError={descartarCapa}
                                 key={getKey(item)}
                                 item={item}
                                 index={index}
@@ -913,6 +932,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                     <div className="content-row">
                         {recentSeries.map((series, index) => (
                             <HomeCard
+                                onImageError={descartarCapa}
                                 key={series.series_id}
                                 item={series}
                                 index={index}
@@ -935,6 +955,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                     <div className="content-row">
                         {recentMovies.map((movie, index) => (
                             <HomeCard
+                                onImageError={descartarCapa}
                                 key={movie.stream_id}
                                 item={movie}
                                 index={index}
