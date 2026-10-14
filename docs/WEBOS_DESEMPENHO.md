@@ -110,8 +110,15 @@ O que funcionou em 12/10/2026:
 - [x] **Validar na TV** o lote (12/10/2026): tudo igual ou melhor, números
       na seção 3. Worker do hls.js sobe a partir de `file://` (visto pelo
       inspetor: `Worker.workerCreated` com `assets/hls.worker.js`).
-- [ ] **Passear por todas as telas** no webOS (Configurações, Filmes, Séries,
-      Minha Lista, perfis, busca): polyfill faltando aparece como tela quebrada.
+- [x] **Passear por todas as telas** no webOS (14/10/2026): Início, Filmes,
+      Séries (+ modal de detalhe), Minha Lista, Configurações, busca e perfis
+      abrem sem exceção nem `console.error`. Achados: título do gerenciador de
+      perfis colado ("PerfisGerenciar Perfis" — o fallback de `gap` não pega
+      nó de texto solto) e episódios com título "-" (" Série - S01E01 - " do
+      provedor; não é do webOS). Os dois consertados. Fica de olho: outro
+      flex com `gap` e texto solto ao lado de elemento cola do mesmo jeito.
+      Esperado: Voltar com o teclado virtual aberto fecha só o teclado
+      (a busca precisa de um segundo Voltar).
 - [ ] **Abrir o menu de áudio/legenda num canal ao vivo** com o hls light e
       confirmar que nada que se usa sumiu.
 - [ ] **Variante HD/FHD** (CNN Brasil Money): na prática, depois de a HD cair

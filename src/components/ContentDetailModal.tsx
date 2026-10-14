@@ -12,7 +12,8 @@ import { abrirExterno, podeAbrirExterno, naTV } from '../services/platformApp';
 import { TrailerOverlay } from './TrailerOverlay';
 import { extrairChaveYoutube } from '../services/trailer';
 import { progressService } from '../services/progressService';
-import type { Episode, SeriesInfo } from '../types';
+import { getEpisodeTitle } from '../services/episodeTitle';
+import type { SeriesInfo } from '../types';
 import './ContentDetailModal.css';
 
 interface ContentDetailModalProps {
@@ -551,27 +552,6 @@ export function ContentDetailModal({
         enabled: isOpen && !trailerAberto
     });
 
-    // Helper function for episode titles
-    const getEpisodeTitle = (ep: Episode): string => {
-        const epNum = Number(ep.episode_num);
-        const rawTitle = ep.title || '';
-
-        const cleanTitle = rawTitle
-            .replace(/^(.*?)[\s-–—]*S\d+[\s:.]*E\d+[\s:.–—]*/i, '')
-            .replace(/\s*(?:\[|\()?S\d+[\s.-]*E\d+(?:\]|\))?\s*/gi, '')
-            .replace(/Episode\s*\d+/gi, '')
-            .replace(/^\d+\.?\s*/, '')
-            .trim();
-
-        const genericPatterns = [
-            /^ep\s*\d+$/i,
-            /^\d+$/,
-            /^episode$/i
-        ];
-        const isValidTitle = cleanTitle.length > 0 && !genericPatterns.some(p => p.test(cleanTitle));
-
-        return isValidTitle ? cleanTitle : `Episódio ${epNum}`;
-    };
     if (!isOpen) return null;
 
     // Duração/termina às (item 28) e classificação indicativa (item 35)

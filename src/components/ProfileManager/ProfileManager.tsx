@@ -401,7 +401,8 @@ export function ProfileManager({ onClose, onProfileSwitched }: ProfileManagerPro
             <div className="pm-header">
                 <h1 className="pm-title">
                     <span className="pm-title-icon">Perfis</span>
-                    Gerenciar Perfis
+                    {/* span: o fallback de gap (`.pm-title > * + *`) não pega nó de texto solto */}
+                    <span>Gerenciar Perfis</span>
                 </h1>
                 <button
                     className={`pm-close-btn ${closeButtonFocused ? 'focused' : ''}`}
