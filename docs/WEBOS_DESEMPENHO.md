@@ -166,9 +166,18 @@ O que funcionou em 12/10/2026:
       vale 30 min (`logoFalho.ts`) e as que carregam viram miniatura WebP de
       128 px no IndexedDB (`logoPequeno.ts`, no máx. 2 downloads por vez;
       eram até 3500×3495). Funcionando na TV com a logo de outro host.
-- [ ] **Buffer do player**: perfil "equilibrado" = 30 s ao vivo (processo
-      135–167 MB, ~150 MB livres na TV). Decidir se sobe (o "generoso" tem
-      60 s) agora que a prévia foi pra 20 s.
+- [x] **Buffer do player** (14/10/2026): **fica em 30 s** ("equilibrado").
+      Medido no player em tela cheia (canal 720p, renderer do WebAppMgr por
+      SSH + `video.buffered` pelo inspetor, a cada 3 s): com 30 s, 13–21 s à
+      frente e 31–37 s atrás; com 60 s ("generoso"), os MESMOS 13–21 s à
+      frente e 60–67 s atrás. À frente o teto é a borda do ao vivo
+      (`liveSyncDurationCount: 2` = ~20 s atrás da borda), não o perfil:
+      subir só dobra o buffer de trás, que nada usa (voltar no ao vivo é
+      pelo catch-up). Memória igual nos dois (renderer 135–157 MB, 137–164 MB
+      livres na TV; a prévia sozinha 117–138 MB, sem vídeo 99 MB) — os dados
+      do MSE não parecem morar no renderer. Se travar por rede, a alavanca é
+      a distância da borda (3 segmentos = +10 s de folga e de atraso, e zap
+      mais lento), não o perfil.
 - [x] **Foco da grade re-renderiza a página inteira** (12/10/2026): o foco
       foi pro `src/pages/ChannelGrid.tsx` (memo; o LiveTV fala por `ref`).
       Grade: mediana 194 → 114–124 ms, p90 755 → 396–713 ms (6 rodadas). O
