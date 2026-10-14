@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    FaChild, FaBookmark, FaFilm, FaTv, FaTrashAlt, FaPlus, FaCheckSquare, FaRegSquare,
+    FaChild, FaBookmark, FaFilm, FaTv, FaTrashAlt, FaPlus, FaCheckSquare, FaRegSquare, FaExchangeAlt,
 } from 'react-icons/fa';
 import { Grid, type CellComponentProps } from 'react-window';
 import { RemoteColorHint } from '../components/RemoteColorHint';
+import { MyListTransfer } from '../components/MyListTransfer';
 import { storage, type WatchLaterItem } from '../services/storage';
 import { useTVNavigation } from '../hooks/useTVNavigation';
 import { useVirtualGridNavigation } from '../hooks/useVirtualGridNavigation';
@@ -75,6 +76,8 @@ export function MyList({ onNavigate }: MyListProps) {
     const [addAlvo, setAddAlvo] = useState<WatchLaterItem | null>(null);
     const [addIndex, setAddIndex] = useState(0);
     const [aviso, setAviso] = useState('');
+    // Exportar/importar (🟢): QR/colar na TV, arquivo no computador
+    const [transferindo, setTransferindo] = useState(false);
     // Confirmacao de dois toques pra apagar uma lista (mesmo padrao do
     // "Limpar Tudo"): guarda o id armado, nao um booleano
     const [excluirArmado, setExcluirArmado] = useState<string | null>(null);
@@ -338,6 +341,7 @@ export function MyList({ onNavigate }: MyListProps) {
         },
         onAction: (action) => {
             if (criandoLista || addAlvo) return;
+            if (action === 'green' && !kidsActive) { setTransferindo(true); return; }
             // 🔵 na aba de uma lista nomeada: exclui a lista (dois toques).
             // Sem isto, lista criada nunca mais saia — e uma lista criada por
             // engano ficava ocupando uma aba pra sempre.
@@ -376,7 +380,7 @@ export function MyList({ onNavigate }: MyListProps) {
                 setAddAlvo(item);
             }
         },
-        enabled: focusZone === 'content' && !modalItem && !playingMovie && !seriesQueue,
+        enabled: focusZone === 'content' && !modalItem && !playingMovie && !seriesQueue && !transferindo,
     });
 
     // Altura da linha: pôster 2:3 (a mesma proporção do CSS) + a faixa de
@@ -393,6 +397,16 @@ export function MyList({ onNavigate }: MyListProps) {
         onRemove: removerDaVista,
         onPlay: playItem,
     }), [displayItems, columns, focusArea, focusedIndex, removingId, openItem, removerDaVista, playItem]);
+
+    // Na MESMA posição nos dois ramos (vazio e com itens): importar numa lista
+    // vazia troca de ramo, e em outra posição o painel remontava (perdia o
+    // aviso de importado e voltava pro QR)
+    const painelTransferencia = transferindo && (
+        <MyListTransfer
+            onClose={() => setTransferindo(false)}
+            onImported={() => { loadItems(); recarregarListas(); }}
+        />
+    );
 
     // Perfil Kids: listas sao globais do aparelho e podem conter conteudo
     // adulto salvo por outros perfis — bloqueadas no modo Kids
@@ -421,6 +435,7 @@ export function MyList({ onNavigate }: MyListProps) {
         return (
             <div className="mylist-page">
                 <div className="mylist-backdrop" />
+                {painelTransferencia}
                 <div className="empty-state">
                     <div className="empty-icon-container">
                         <div className="empty-icon"><FaBookmark /></div>
@@ -448,6 +463,9 @@ export function MyList({ onNavigate }: MyListProps) {
                         </button>
                     </div>
                 </div>
+                <div className="mylist-hints">
+                    <RemoteColorHint color="green" label="Importar lista" />
+                </div>
             </div>
         );
     }
@@ -455,6 +473,7 @@ export function MyList({ onNavigate }: MyListProps) {
     return (
         <div className="mylist-page">
             <div className="mylist-backdrop" />
+            {painelTransferencia}
 
             {/* Header */}
             <header className="mylist-header">
@@ -469,6 +488,11 @@ export function MyList({ onNavigate }: MyListProps) {
                         </p>
                     </div>
                 </div>
+                {/* Mouse; no controle é o 🟢 */}
+                <button className="clear-btn transfer-btn" onClick={() => setTransferindo(true)} title="Exportar / importar (🟢)">
+                    <span><FaExchangeAlt /></span>
+                    <span>Exportar / importar</span>
+                </button>
                 {items.length > 0 && (
                     <button
                         className={`clear-btn ${focusArea === 'tabs' && focusedTabIndex >= tabs.length ? 'tv-focused' : ''} ${clearArmed ? 'armed' : ''}`}
@@ -604,6 +628,7 @@ export function MyList({ onNavigate }: MyListProps) {
                 <RemoteColorHint color="red" label="Remover" />
                 <RemoteColorHint color="yellow" label="Adicionar a uma lista" />
                 <RemoteColorHint color="blue" label="Apagar lista" />
+                <RemoteColorHint color="green" label="Exportar / importar" />
                 <span>← Voltar</span>
             </div>
 

@@ -98,6 +98,21 @@
     transform: translateY(-2px);
 }
 
+/* Exportar/importar: mesmo formato do "Limpar Tudo", sem o vermelho de perigo,
+   encostado nele (o space-between do cabeçalho o deixaria no meio) */
+.transfer-btn {
+    margin-left: auto;
+    margin-right: 12px;
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.2);
+    color: #e2e8f0;
+}
+
+.transfer-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.4);
+}
+
 /* Tabs */
 .tabs-container {
     position: relative;

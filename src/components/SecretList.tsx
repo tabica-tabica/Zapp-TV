@@ -11,25 +11,16 @@
 
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { FaFire, FaPlay, FaTimes, FaTrashAlt, FaFilm, FaQrcode, FaDownload, FaUpload, FaPaste } from 'react-icons/fa';
-import qrcode from 'qrcode-generator';
 import {
     secretList, formatMoment, exportarSecreta, exportarSecretaQr, importarSecreta, type ItemSecreto,
 } from '../services/secretList';
-import { qrPath } from '../utils/qrPath';
+import { desenharQr } from '../utils/qrPath';
 import { posterThumb } from '../services/tmdb';
 import { useTVNavigation } from '../hooks/useTVNavigation';
 import './SecretList.css';
 
 /** TV não baixa nem escolhe arquivo: lá só o QR. */
 const TEM_ARQUIVO = __BUILD_TARGET__ !== 'tizen' && __BUILD_TARGET__ !== 'webos';
-
-function desenharQr(texto: string): { count: number; path: string } {
-    const qr = qrcode(0, 'L');
-    qr.addData(texto);
-    qr.make();
-    const count = qr.getModuleCount();
-    return { count, path: qrPath(qr, count) };
-}
 
 interface SecretListProps {
     onClose: () => void;

@@ -13,6 +13,7 @@ import { scopedKey } from './profileScope';
 import { readJson, writeJson } from './safeStorage';
 import { storage } from './storage';
 import { listsService } from './listsService';
+import { paginasQr, MAX_BYTES_QR } from '../utils/qrPath';
 
 /**
  * "Mover" pra lista secreta: o filme sai da Minha Lista, dos favoritos e das
@@ -144,12 +145,8 @@ function gravar(itens: ItemSecreto[]): void {
 export const FORMATO_SECRETO = 'neostream-secret-1';
 /** QR: sem capa nem miniatura, item = [id, título, container, momentos] */
 export const FORMATO_SECRETO_QR = 'neostream-secret-q1';
-/** Mesmo teto do backup por QR (backupService): legível da distância da sala. */
-export const MAX_BYTES_QR = 2200;
 
 type ItemQr = [string, string, string, number[]];
-
-const bytes = (s: string) => new TextEncoder().encode(s).length;
 
 /** Arquivo completo (com miniaturas), pra guardar no computador. */
 export function exportarSecreta(): string {
@@ -161,19 +158,11 @@ export function exportarSecreta(): string {
  * sozinho cabe (título enorme, 50 momentos) vai mesmo assim, numa página só dele.
  */
 export function exportarSecretaQr(max = MAX_BYTES_QR): string[] {
-    const pagina = (i: ItemQr[]) => JSON.stringify({ f: FORMATO_SECRETO_QR, i });
-    const paginas: string[] = [];
-    let atual: ItemQr[] = [];
-    for (const item of ler()) {
-        const q: ItemQr = [item.id, item.title, item.container ?? '', item.moments];
-        if (atual.length > 0 && bytes(pagina([...atual, q])) > max) {
-            paginas.push(pagina(atual));
-            atual = [];
-        }
-        atual.push(q);
-    }
-    if (atual.length > 0) paginas.push(pagina(atual));
-    return paginas;
+    return paginasQr(
+        ler().map((item): ItemQr => [item.id, item.title, item.container ?? '', item.moments]),
+        i => JSON.stringify({ f: FORMATO_SECRETO_QR, i }),
+        max,
+    );
 }
 
 export interface ResultadoImportacao {

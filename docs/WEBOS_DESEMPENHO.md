@@ -163,7 +163,9 @@ O que funcionou em 12/10/2026:
       primeiro), Notícias/Infantil, Kids na TV ao Vivo só com as 10 marcas.
       Falta: o 2º OK do Sair; Kids em Filmes, Séries e Home (nomes reais das
       categorias de VOD — `isKidsVodCategory` só aceita Infantil/Kids/
-      Desenhos); voltar pro Principal pelo PIN; `perf:tv` de uma rodada.
+      Desenhos); voltar pro Principal pelo PIN; `perf:tv` de uma rodada;
+      Minha Lista 🟢 (QR legível da sala, colar pelo teclado do celular —
+      na web já foi visto: arquivo, colar e lista vazia).
 - [ ] **Logos via serviço JS do webOS** (proposto em 14/10/2026, só LG) —
       o pacote `.ipk` pode levar, além da página, um serviço Node que roda
       na própria TV; o Node escolhe o próprio User-Agent, então o host de
