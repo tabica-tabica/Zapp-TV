@@ -173,7 +173,9 @@ O que funcionou em 12/10/2026:
       frente e 60–67 s atrás. À frente o teto é a borda do ao vivo
       (`liveSyncDurationCount: 2` = ~20 s atrás da borda), não o perfil:
       subir só dobra o buffer de trás, que nada usa (voltar no ao vivo é
-      pelo catch-up). Memória igual nos dois (renderer 135–157 MB, 137–164 MB
+      pelo catch-up). Por isso o buffer de trás **ao vivo é 0** (o VOD
+      mantém, pra voltar no filme): 9–17 s atrás (só o segmento atual),
+      renderer 117–134 MB e 167–185 MB livres — ~20 MB a mais na TV. Memória igual nos dois (renderer 135–157 MB, 137–164 MB
       livres na TV; a prévia sozinha 117–138 MB, sem vídeo 99 MB) — os dados
       do MSE não parecem morar no renderer. Se travar por rede, a alavanca é
       a distância da borda (3 segmentos = +10 s de folga e de atraso, e zap

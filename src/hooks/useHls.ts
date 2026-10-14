@@ -327,7 +327,11 @@ export function useHls({
                 const maxSeconds = preview ? PREVIEW_BUFFER_S : isLive ? buffers.maxLive : buffers.maxVod;
                 const atraso = isLive ? liveSyncRef.current : null;
                 const buffer = {
-                    backBufferLength: isLive ? seconds : seconds + 30,
+                    // Ao vivo não volta no buffer: pausa vira catch-up e o seek
+                    // por D-pad rebaixa da janela da playlist (mesma sessão).
+                    // O já assistido sai na hora (o hls.js segura o segmento
+                    // atual). Na LG, 30 s guardavam 31–37 s atrás à toa.
+                    backBufferLength: isLive ? 0 : seconds + 30,
                     maxBufferLength: seconds,
                     maxMaxBufferLength: maxSeconds,
                     // Teto em BYTES além dos segundos: stream 4K de bitrate
