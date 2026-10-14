@@ -23,6 +23,7 @@ import { epgService } from '../services/epgService';
 import { channelDisplayName } from '../services/channelVariants';
 import { useTranslation } from '../hooks/useTranslation';
 import type { LiveStream } from '../types';
+import type { StreamErrorCause } from '../hooks/useHls';
 import { useLogoPequeno } from '../services/logoPequeno';
 import './HomeChannelPreview.css';
 
@@ -32,6 +33,8 @@ interface HomeChannelPreviewProps {
     onWatch: () => void;
     /** Pra a Home estacionar o stream tocando ao sair da página (ver pipelineEstacionado) */
     previewRef?: Ref<LiveChannelPreviewHandle>;
+    /** Prévia não subiu: true se a Home trocou pra outra variante (senão, logo) */
+    onFailed?: (causa?: StreamErrorCause | 'stall') => boolean;
 }
 
 function formatClock(ms: number): string {
@@ -39,7 +42,7 @@ function formatClock(ms: number): string {
     return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
 }
 
-export function HomeChannelPreview({ channel, focused, onWatch, previewRef }: HomeChannelPreviewProps) {
+export function HomeChannelPreview({ channel, focused, onWatch, previewRef, onFailed }: HomeChannelPreviewProps) {
     const [failed, setFailed] = useState(false);
     const [nowTitle, setNowTitle] = useState<string | null>(null);
     const [nowTime, setNowTime] = useState<string | null>(null);
@@ -80,7 +83,7 @@ export function HomeChannelPreview({ channel, focused, onWatch, previewRef }: Ho
                         onError={(causa) => {
                             // Benchmark: limite de conexões não é culpa do canal
                             if (causa !== 'connlimit') liveHealth.registrar(channel.stream_id, 'falha');
-                            setFailed(true);
+                            if (!onFailed?.(causa)) setFailed(true);
                         }}
                         // O mesmo selo de baixo, por cima do vídeo (que mora na camada)
                         sobre={<div className="home-channel-preview-live-badge"><span className="live-dot" /><span>{t('home_live_badge')}</span></div>}

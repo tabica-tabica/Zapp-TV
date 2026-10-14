@@ -20,7 +20,9 @@ import { usageStats } from '../services/usageStats';
 import { kidsFilter, isAdultCategoryName } from '../services/kidsFilter';
 import { contentFlags } from '../services/contentFlags';
 import { computeDefaultVisibleChannels, withMinimum } from '../services/liveVisibility';
-import { ultimoCanalNoAr, variantesNoAr } from '../services/liveHealth';
+import { liveHealth, ultimoCanalNoAr, variantesNoAr } from '../services/liveHealth';
+import { proximaVariante, variantGroup } from '../services/channelVariants';
+import type { StreamErrorCause } from '../hooks/useHls';
 import { ContentDetailModal } from '../components/ContentDetailModal';
 import { MoviePlayer } from '../components/MoviePlayer';
 import { SeriesQueuePlayer } from '../components/SeriesQueuePlayer';
@@ -144,6 +146,9 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
     // ("Continue assistindo" só quando o SELECIONADO é o último de verdade
     // — escolher outro canal na fileira já deixa de ser "continuar").
     const [channelPreviewPool, setChannelPreviewPool] = useState<{ lastWatchedId: number | null; channels: LiveStream[] } | null>(null);
+    // Catálogo ao vivo já filtrado (Kids/adulto): de onde saem as variantes do failover da prévia
+    const previewStreamsRef = useRef<LiveStream[]>([]);
+    const previewFalhasRef = useRef(new Set<number>());
     const [selectedPreviewChannelId, setSelectedPreviewChannelId] = useState<number | null>(null);
     // Vindo da TV ao Vivo com a prévia TOCANDO: o canal estacionado vira o
     // herói JÁ, sem esperar o catálogo (aqui inclui VOD e séries e pode passar
@@ -254,6 +259,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 // MIN_PREVIEW_CHANNELS, pra trocar a prévia sem
                 // sair da Home. `streams` aqui já vem vazio quando "Incluir
                 // canais de TV" está desligado, então a seção some sozinha.
+                previewStreamsRef.current = streams;
                 if (streams.length > 0) {
                     const visible = computeDefaultVisibleChannels(streams, liveCats);
                     // A variante que está no ar, não a que caiu da última vez
@@ -548,6 +554,26 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
         onNavigate?.('live');
     }, [selectedPreviewChannel, onNavigate]);
 
+    // A prévia não subiu: tenta outra variante do MESMO canal (qualquer uma
+    // que sobrar — HD fora com 4K no ar vai pra 4K), como a TV ao Vivo faz,
+    // em vez de cair direto no logo. Limite de conexões: não (seria mais uma
+    // conexão numa conta estourada). Devolve se trocou.
+    const handlePreviewFailed = useCallback((causa?: StreamErrorCause | 'stall'): boolean => {
+        const atual = selectedPreviewChannel;
+        if (!atual || !channelPreviewPool || causa === 'connlimit') return false;
+        const falharam = previewFalhasRef.current.add(atual.stream_id);
+        const next = proximaVariante(variantGroup(previewStreamsRef.current, atual.name), atual.stream_id, falharam, liveHealth);
+        if (!next) return false;
+        // Era o último assistido: a variante que funciona passa a ser ele
+        if (storage.getLastChannel() === atual.stream_id) storage.setLastChannel(next.stream_id);
+        setChannelPreviewPool(p => p && {
+            lastWatchedId: p.lastWatchedId === atual.stream_id ? next.stream_id : p.lastWatchedId,
+            channels: p.channels.map(c => (c.stream_id === atual.stream_id ? next : c)),
+        });
+        setSelectedPreviewChannelId(next.stream_id);
+        return true;
+    }, [selectedPreviewChannel, channelPreviewPool]);
+
     // Clicar uma capa da fileira de "outros canais" só TROCA a prévia
     // grande (nova seleção) — não navega. O foco vai pra prévia: o canal
     // escolhido sai da fileira, e manter o índice deixava o destaque no
@@ -739,6 +765,7 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                                 previewRef={homePreviewRef}
                                 focused={focusedSection === sectionIndex('channelpreview') && focusedItem === 0}
                                 onWatch={handleWatchChannelPreview}
+                                onFailed={handlePreviewFailed}
                             />
                             <HomeChannelCoverRow
                                 channels={otherPreviewChannels}
