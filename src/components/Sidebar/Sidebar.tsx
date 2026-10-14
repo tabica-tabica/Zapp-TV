@@ -65,8 +65,17 @@ export function Sidebar({ activeItem, onItemSelect, onLogout, onProfileClick, fo
         menuItems.findIndex(item => item.id === activeItem)
     );
     const [hoveredItem, setHoveredItem] = useState<string | null>(null);
+    // "Sair" apaga a playlist e a conta do aparelho: pede um 2º OK. Um ↓ a
+    // mais no menu (o foco lembrava o botão Perfil) caía nele e um OK só
+    // deslogava a TV (visto em 14/10/2026). Mover o foco desarma.
+    const [sairArmado, setSairArmado] = useState(false);
+    const sair = () => {
+        if (sairArmado) onLogout();
+        else setSairArmado(true);
+    };
 
     const handleNavigate = (direction: 'up' | 'down' | 'left' | 'right') => {
+        setSairArmado(false);
         if (direction === 'up') {
             setFocusedIndex(prev => Math.max(0, prev - 1));
         } else if (direction === 'down') {
@@ -80,7 +89,7 @@ export function Sidebar({ activeItem, onItemSelect, onLogout, onProfileClick, fo
     const handleEnter = () => {
         if (focusedIndex === menuItems.length + 2) {
             // Logout button
-            onLogout();
+            sair();
         } else if (focusedIndex === menuItems.length + 1) {
             // Profile button - open profile manager
             onProfileClick();
@@ -104,7 +113,7 @@ export function Sidebar({ activeItem, onItemSelect, onLogout, onProfileClick, fo
     useTVNavigation({
         onNavigate: handleNavigate,
         onEnter: handleEnter,
-        onBack,
+        onBack: onBack && (() => { setSairArmado(false); onBack(); }),
         enabled: focused,
     });
 
@@ -223,9 +232,9 @@ export function Sidebar({ activeItem, onItemSelect, onLogout, onProfileClick, fo
                     {/* Logout */}
                     <button
                         className={`logout-btn ${focused && focusedIndex === menuItems.length + 2 ? 'tv-focused' : ''}`}
-                        onClick={onLogout}
+                        onClick={sair}
                         onMouseEnter={() => setHoveredItem('logout')}
-                        onMouseLeave={() => setHoveredItem(null)}
+                        onMouseLeave={() => { setHoveredItem(null); setSairArmado(false); }}
                         onFocus={() => setFocusedIndex(menuItems.length + 2)}
                         data-focusable="true"
                     >
@@ -235,9 +244,9 @@ export function Sidebar({ activeItem, onItemSelect, onLogout, onProfileClick, fo
                             <path d="M21 12H9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                         </svg>
                         {/* Logout Tooltip */}
-                        <div className={`tooltip danger ${(focused && focusedIndex === menuItems.length + 2) || hoveredItem === 'logout' ? 'visible' : ''}`}>
+                        <div className={`tooltip danger ${(focused && focusedIndex === menuItems.length + 2) || hoveredItem === 'logout' || sairArmado ? 'visible' : ''}`}>
                             <span className="tooltip-emoji"><FaSignOutAlt /></span>
-                            <span className="tooltip-label">{t('sidebar_logout')}</span>
+                            <span className="tooltip-label">{t(sairArmado ? 'sidebar_logout_confirm' : 'sidebar_logout')}</span>
                         </div>
                     </button>
                 </div>

@@ -47,6 +47,7 @@ export const es = {
     sidebar_settings: "Ajustes",
     sidebar_profile: "Perfil",
     sidebar_logout: "Salir",
+    sidebar_logout_confirm: "OK de nuevo para salir",
 
     // Contenido nuevo (diff al recargar la playlist)
     new_content_title: "Nuevo contenido disponible",

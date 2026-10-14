@@ -47,6 +47,7 @@ export const en = {
     sidebar_settings: "Settings",
     sidebar_profile: "Profile",
     sidebar_logout: "Logout",
+    sidebar_logout_confirm: "Press OK again to log out",
 
     // New content (diff on playlist reload)
     new_content_title: "New content available",
