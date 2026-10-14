@@ -1,5 +1,5 @@
 // Reaproveita a MESMA cadeia de visibilidade que a grade de TV ao Vivo usa
-// (`src/pages/LiveTV.tsx`) — ocultação manual, categorias adultas,
+// (`src/pages/LiveTV.tsx`) — ocultação manual, categorias adultas e de esporte,
 // categorias "ruído"/"só com tag de qualidade" curadas, agrupamento de
 // variantes de qualidade, dedup de afiliadas regionais/redes nacionais —
 // mas chamável de FORA da página, sem montar a grade inteira (ex.: sortear
@@ -17,6 +17,7 @@
 
 import { hiddenChannels, hiddenCategories } from './liveExtras';
 import { isAdultCategoryName } from './kidsFilter';
+import { categoriasQue, isSportsCategory, modoDoCanal } from './channelGroups';
 import {
     detectJunkCategories, detectQualityOnlyCategories, isQualityTaggedChannel,
     curatedHiddenPrefs, computeEffectiveVisibility, type DetectedGroup,
@@ -61,6 +62,10 @@ export function computeDefaultVisibleChannels<T extends VisibilityCheckChannel>(
     if (adultCatIds.size > 0) {
         list = list.filter(s => !adultCatIds.has(s.category_id));
     }
+
+    // Esporte também fica fora, como na grade normal (mora no modo Jogos)
+    const sportsCatIds = categoriasQue(categories, isSportsCategory);
+    list = list.filter(s => modoDoCanal(s, adultCatIds, sportsCatIds) === 'normal');
 
     // Categorias "ruído" curadas (dinâmicas, ver curatedHiddenGroups.ts) +
     // exceção individual. "Só com tag de qualidade" NÃO entra aqui de

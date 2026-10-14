@@ -6,7 +6,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { versionBaseName, groupVodVersions } from './vodVariants';
-import { looksLikeMatch, isRadioChannel, collectTodaysEvents } from './liveDiscovery';
+import { isRadioChannel } from './liveDiscovery';
 import { fuzzyMatches, normalizeSearch, isRecentlyAdded } from './catalogExtras';
 import { isAdultCategoryName } from './kidsFilter';
 import type { LiveStream, VODStream } from '../types';
@@ -100,46 +100,6 @@ describe('isRadioChannel', () => {
 
     it('canal com EPG nunca é rádio, por mais sugestivo que seja o nome', () => {
         expect(isRadioChannel(canal('FM TV', { epg_channel_id: 'fmtv.br' }))).toBe(false);
-    });
-});
-
-describe('looksLikeMatch', () => {
-    it.each(['Flamengo x Vasco', 'Brasil vs Argentina', 'AO VIVO: Palmeiras'])(
-        'reconhece confronto: %s', (titulo) => {
-            expect(looksLikeMatch(titulo)).toBe(true);
-        });
-
-    it.each(['Jornal Nacional', 'Missa', 'x', ''])(
-        'não vê confronto onde não há: %s', (titulo) => {
-            expect(looksLikeMatch(titulo)).toBe(false);
-        });
-});
-
-describe('collectTodaysEvents', () => {
-    const meioDia = new Date(2026, 7, 21, 12, 0, 0).getTime();
-    const hora = (h: number) => new Date(2026, 7, 21, h, 0, 0).getTime();
-
-    it('pega só os de hoje que ainda não acabaram, em ordem de horário', () => {
-        const eventos = collectTodaysEvents([{
-            channel: canal('ESPN'),
-            programs: [
-                { title: 'Fla x Vasco', start: hora(20), end: hora(22), description: '' },
-                { title: 'Grêmio x Inter', start: hora(16), end: hora(18), description: '' },
-                { title: 'Jogo de ontem x Nada', start: hora(8), end: hora(10), description: '' },
-                { title: 'Jornal', start: hora(19), end: hora(20), description: '' },
-            ],
-        }], meioDia);
-
-        expect(eventos.map(e => e.program.title)).toEqual(['Grêmio x Inter', 'Fla x Vasco']);
-    });
-
-    it('ignora o que é de outro dia', () => {
-        const amanha = new Date(2026, 7, 22, 20, 0, 0).getTime();
-        const eventos = collectTodaysEvents([{
-            channel: canal('ESPN'),
-            programs: [{ title: 'Fla x Vasco', start: amanha, end: amanha + 3600000, description: '' }],
-        }], meioDia);
-        expect(eventos).toHaveLength(0);
     });
 });
 

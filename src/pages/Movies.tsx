@@ -142,7 +142,7 @@ export function Movies() {
                     api.getVodCategories()
                 ]);
                 // Gate do perfil Kids (remove categorias adultas e seus filmes)
-                const gated = kidsFilter.apply(streamsData, categoriesData);
+                const gated = kidsFilter.apply(streamsData, categoriesData, 'vod');
                 setStreams(gated.items);
                 setCategories(gated.categories);
             } catch (err: unknown) {

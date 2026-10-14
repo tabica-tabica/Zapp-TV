@@ -7,7 +7,7 @@
 import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback, type ReactNode } from 'react';
 import {
     FaExclamationTriangle, FaStar, FaRegStar, FaEye, FaEyeSlash, FaBell, FaBellSlash,
-    FaBroadcastTower, FaCalendarAlt, FaThLarge, FaRandom, FaFutbol, FaPlay, FaHistory,
+    FaBroadcastTower, FaCalendarAlt, FaThLarge, FaRandom, FaFutbol, FaNewspaper, FaChild, FaPlay, FaHistory,
     FaClipboardList, FaTimes, FaVolumeUp, FaVolumeMute,
     FaLock, FaLockOpen,
 } from 'react-icons/fa';
@@ -44,9 +44,10 @@ import { useFocusZone } from '../contexts/FocusContext';
 import { CategoryMenu, type CategoryMenuHandle } from '../components/CategoryMenu';
 import { ChannelAgendaOverlay } from '../components/ChannelAgendaOverlay';
 import { EpgGrid } from '../components/EpgGrid';
-import { FavoritesNowPanel, SportsPanel } from '../components/LivePanels';
+import { FavoritesNowPanel } from '../components/LivePanels';
 import { reminderService } from '../services/reminderService';
-import { favoriteOrder, isRadioChannel, isSportsCategory, type SportsEvent } from '../services/liveDiscovery';
+import { favoriteOrder, isRadioChannel } from '../services/liveDiscovery';
+import { categoriasQue, isSportsCategory, isNewsCategory, isKidsCategory, canalAdulto, modoDoCanal, canaisDoModo, type ModoDaGrade } from '../services/channelGroups';
 import { AnimatedSearchBar, type AnimatedSearchBarHandle } from '../components/AnimatedSearchBar';
 import { VideoPlayer, type PlayerChannel } from '../components/VideoPlayer';
 import { readRaw, writeRaw } from '../services/safeStorage';
@@ -70,16 +71,12 @@ const INTERVALO_TROCA_AUTO_MS = CONNLIMIT_WINDOW_MS;
 
 const PREVIEW_MUTED_KEY = 'neostream_preview_muted';
 
-/** Canal adulto: de categoria adulta OU de nome adulto ("[XX] ADULTO 23" fora da categoria) */
-function canalAdulto(canal: LiveStream, categoriasAdultas: Set<string>): boolean {
-    return categoriasAdultas.has(canal.category_id) || isAdultCategoryName(canal.name || '');
-}
 
 export function LiveTV() {
     const { focusZone, setFocusZone } = useFocusZone();
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
-    // Catálogo CRU (só o filtro Kids); `streams` mais abaixo é a visão do modo adulto
+    // Catálogo CRU (só o filtro Kids); `streams` mais abaixo é a visão do modo (normal/adulto/jogos)
     const [todosOsCanais, setStreams] = useState<LiveStream[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
     const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -96,25 +93,42 @@ export function LiveTV() {
     // aleatório, troca de canal e o menu de categorias. Dentro dele, só eles.
     // Apertar o botão de novo sai e TRANCA: voltar pede o PIN outra vez.
     // Perfil Kids nunca vê o botão (o kidsFilter já tirou os canais adultos).
-    const [modoAdulto, setModoAdulto] = useState(false);
+    // Modo Jogos (botão "Jogos", sem PIN, 14/10/2026): mesma separação pros
+    // canais de esporte (Premiere, ESPN, SporTV, Disney+, MAX, Paramount+...
+    // e o canal "Jogos de Hoje", primeiro da lista) — somem da grade normal
+    // e só aparecem dentro dele, com a prévia maior.
+    const [modo, setModo] = useState<ModoDaGrade>('normal');
+    const modoAdulto = modo === 'adulto';
     const [adultoPinAberto, setAdultoPinAberto] = useState(false);
     const [adultoPinProvisionado, setAdultoPinProvisionado] = useState(false);
     const categoriasAdultas = useMemo(
         () => new Set(categories.filter(c => isAdultCategoryName(c.category_name || '')).map(c => c.category_id)),
         [categories],
     );
+    const categoriasDeEsporte = useMemo(() => categoriasQue(categories, isSportsCategory), [categories]);
     const streams = useMemo(
-        () => todosOsCanais.filter(s => canalAdulto(s, categoriasAdultas) === modoAdulto),
-        [todosOsCanais, categoriasAdultas, modoAdulto],
+        () => canaisDoModo(todosOsCanais, modo, categoriasAdultas, categoriasDeEsporte),
+        [todosOsCanais, categoriasAdultas, categoriasDeEsporte, modo],
     );
     const temAdulto = useMemo(
         () => !kidsFilter.isKidsActive() && todosOsCanais.some(s => canalAdulto(s, categoriasAdultas)),
         [todosOsCanais, categoriasAdultas],
     );
-    const categoriasDoMenu = useMemo(
-        () => categories.filter(c => categoriasAdultas.has(c.category_id) === modoAdulto),
-        [categories, categoriasAdultas, modoAdulto],
+    const temJogos = useMemo(
+        () => todosOsCanais.some(s => modoDoCanal(s, categoriasAdultas, categoriasDeEsporte) === 'jogos'),
+        [todosOsCanais, categoriasAdultas, categoriasDeEsporte],
     );
+    const categoriasDoMenu = useMemo(
+        () => categories.filter(c => (categoriasAdultas.has(c.category_id) ? 'adulto' : categoriasDeEsporte.has(c.category_id) ? 'jogos' : 'normal') === modo),
+        [categories, categoriasAdultas, categoriasDeEsporte, modo],
+    );
+    // Filtros Notícias/Infantil da barra (os canais seguem na grade normal)
+    const categoriasDeNoticias = useMemo(() => categoriasQue(categories, isNewsCategory), [categories]);
+    const categoriasInfantis = useMemo(() => categoriasQue(categories, isKidsCategory), [categories]);
+    // Pelo catálogo inteiro, não pelo modo: a barra não muda ao entrar/sair
+    // do Jogos (senão o foco, que é por índice, caía no botão vizinho)
+    const temNoticias = useMemo(() => todosOsCanais.some(s => categoriasDeNoticias.has(s.category_id)), [todosOsCanais, categoriasDeNoticias]);
+    const temInfantil = useMemo(() => todosOsCanais.some(s => categoriasInfantis.has(s.category_id)), [todosOsCanais, categoriasInfantis]);
 
     // Filtros/toggles persistidos
     const [onlyWithEpg, setOnlyWithEpg] = useState(() => liveToggles.getOnlyWithEpg());
@@ -204,7 +218,6 @@ export function LiveTV() {
 
     // R4: painéis, lembretes e ordem manual dos favoritos
     const [showFavoritesPanel, setShowFavoritesPanel] = useState(false);
-    const [showSportsPanel, setShowSportsPanel] = useState(false);
     const [favOrderTick, setFavOrderTick] = useState(0);
 
     // Focus states for TV navigation
@@ -247,7 +260,11 @@ export function LiveTV() {
                 if (!found) return;
                 // Último canal adulto não volta sozinho (a prévia toca na hora)
                 const adultas = new Set(cats.filter(c => isAdultCategoryName(c.category_name || '')).map(c => c.category_id));
-                if (canalAdulto(found, adultas)) return;
+                const modoDele = modoDoCanal(found, adultas, categoriasQue(cats, isSportsCategory));
+                if (modoDele === 'adulto') return;
+                // Último canal de esporte: abre já no modo Jogos (senão a
+                // prévia, ou o stream estacionado da Home, ficava fora da grade)
+                setModo(modoDele);
                 // Prévia presa NESTA variante (a estacionada, ou a última
                 // assistida — que tocou bem): o "melhor" do benchmark podia ser
                 // outra, e aí o stream estacionado ficaria sem dono e a volta
@@ -282,7 +299,7 @@ export function LiveTV() {
                     direct_source: '',
                     tv_archive_duration: 0,
                 } satisfies LiveStream));
-                const gatedCache = kidsFilter.apply(restored, cachedCategories);
+                const gatedCache = kidsFilter.apply(restored, cachedCategories, 'live');
                 setStreams(gatedCache.items);
                 setCategories(gatedCache.categories);
                 setLoading(false);
@@ -306,7 +323,7 @@ export function LiveTV() {
                     dropCatalog('live-cats');
                 }
                 // Gate do perfil Kids (remove categorias adultas e seus canais)
-                const gated = kidsFilter.apply(streamsData, categoriesData);
+                const gated = kidsFilter.apply(streamsData, categoriesData, 'live');
                 setStreams(gated.items);
                 setCategories(gated.categories);
                 // Só restaura aqui se o cache não deu conta: repetir abriria o
@@ -365,7 +382,7 @@ export function LiveTV() {
 
         // Categorias ocultas somem da visão geral; selecionar a própria
         // categoria no menu ainda mostra (caminho pra rever/desocultar)
-        if (hiddenCatIds.size > 0 && selectedCategory !== 'FAVORITES' && !hiddenCatIds.has(selectedCategory)) {
+        if (hiddenCatIds.size > 0 && !hiddenCatIds.has(selectedCategory)) {
             list = list.filter(s => !hiddenCatIds.has(s.category_id));
         }
 
@@ -382,6 +399,10 @@ export function LiveTV() {
 
         if (selectedCategory === 'FAVORITES') {
             list = list.filter(s => favoriteChannelIds.has(s.stream_id));
+        } else if (selectedCategory === 'NEWS') {
+            list = list.filter(s => categoriasDeNoticias.has(s.category_id));
+        } else if (selectedCategory === 'KIDS') {
+            list = list.filter(s => categoriasInfantis.has(s.category_id));
         } else if (selectedCategory !== 'all') {
             list = list.filter(s => s.category_id === selectedCategory);
         }
@@ -392,7 +413,7 @@ export function LiveTV() {
         }
 
         return list;
-    }, [streams, hiddenIds, hiddenCatIds, junkGroupsByCategory, curatedUnhiddenGroups, curatedChannelOverrides, showOnlyHidden, onlyWithEpg, selectedCategory, favoriteChannelIds, searchQuery]);
+    }, [streams, hiddenIds, hiddenCatIds, junkGroupsByCategory, curatedUnhiddenGroups, curatedChannelOverrides, showOnlyHidden, onlyWithEpg, selectedCategory, favoriteChannelIds, categoriasDeNoticias, categoriasInfantis, searchQuery]);
 
     // Agrupamento de variantes FHD/HD/SD (port do desktop)
     const { groups: rawGrouped, variantsOf } = useMemo(() => {
@@ -446,15 +467,6 @@ export function LiveTV() {
         // favOrderTick força recomputo depois de mover um canal
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [streams, favoriteChannelIds, favOrderTick]);
-
-    // Canais de esporte pro painel "Jogos de hoje" (item 12)
-    const sportsChannels = useMemo(() => {
-        const sportsCategoryIds = new Set(
-            categories.filter(c => isSportsCategory(c.category_name)).map(c => c.category_id)
-        );
-        if (sportsCategoryIds.size === 0) return [];
-        return streams.filter(s => sportsCategoryIds.has(s.category_id));
-    }, [streams, categories]);
 
     // Nome da categoria por id (detecção de rádio — item 13)
     const categoryNameById = useMemo(() => {
@@ -561,14 +573,14 @@ export function LiveTV() {
     // stream estacionado morria sem dono.
     const filtroAnteriorRef = useRef<string | null>(null);
     useEffect(() => {
-        const filtro = JSON.stringify([searchQuery, selectedCategory, onlyWithEpg, showOnlyHidden, modoAdulto]);
+        const filtro = JSON.stringify([searchQuery, selectedCategory, onlyWithEpg, showOnlyHidden]);
         const anterior = filtroAnteriorRef.current;
         filtroAnteriorRef.current = filtro;
         if (anterior === null || anterior === filtro) return;
         setSelectedChannel(null);
         gradeRef.current?.focus(0);
         setFocusArea(prev => (prev === 'preview' ? 'channels' : prev));
-    }, [searchQuery, selectedCategory, onlyWithEpg, showOnlyHidden, modoAdulto]);
+    }, [searchQuery, selectedCategory, onlyWithEpg, showOnlyHidden]);
 
     // Variantes de qualidade do canal selecionado (botões da ficha)
     const selectedVariants = selectedChannel
@@ -584,7 +596,7 @@ export function LiveTV() {
     // Botões da toolbar na ordem do JSX — vira a extensão da zona do header
     // (sem isso, ⭐ Agora e ⚽ Jogos só abriam por mouse)
     const favFilterOn = selectedCategory === 'FAVORITES';
-    const toolbarItems: Array<'favfilter' | 'onlyepg' | 'guide' | 'random' | 'hidden' | 'favpanel' | 'sports' | 'adulto'> = [
+    const toolbarItems: Array<'favfilter' | 'onlyepg' | 'guide' | 'random' | 'hidden' | 'favpanel' | 'news' | 'kids' | 'sports' | 'adulto'> = [
         // Filtro ★ precisa existir enquanto ligado, mesmo sem favoritos: é ele que desliga
         ...(favoriteChannels.length > 0 || favFilterOn ? (['favfilter'] as const) : []),
         'onlyepg',
@@ -595,15 +607,27 @@ export function LiveTV() {
         // deixando a grade vazia sem nenhuma tecla que resolvesse
         ...(hiddenIds.size > 0 || showOnlyHidden ? (['hidden'] as const) : []),
         ...(favoriteChannels.length > 0 ? (['favpanel'] as const) : []),
-        ...(sportsChannels.length > 0 ? (['sports'] as const) : []),
+        ...(temNoticias || selectedCategory === 'NEWS' ? (['news'] as const) : []),
+        ...(temInfantil || selectedCategory === 'KIDS' ? (['kids'] as const) : []),
+        ...(temJogos ? (['sports'] as const) : []),
         ...(temAdulto ? (['adulto'] as const) : []),
     ];
     // Botão "Adulto": entra pedindo o PIN (sem PIN ainda, cria o "0000" e SÓ
     // DEPOIS abre o prompt — o hash é assíncrono); sai na hora, trancando
+    // Troca de modo pelo usuário zera seleção/foco como uma troca de filtro.
+    // Fora do efeito de filtro de propósito: o modo também muda sozinho no
+    // boot (último canal de esporte abre no Jogos) e aí a prévia restaurada
+    // não pode ser zerada.
+    const trocarModo = (novo: ModoDaGrade) => {
+        setModo(novo);
+        setSelectedCategory('all');
+        setSelectedChannel(null);
+        gradeRef.current?.focus(0);
+        setFocusArea(prev => (prev === 'preview' ? 'channels' : prev));
+    };
     const botaoAdulto = () => {
         if (modoAdulto) {
-            setModoAdulto(false);
-            setSelectedCategory('all');
+            trocarModo('normal');
             return;
         }
         if (!parentalService.isSet()) {
@@ -620,6 +644,14 @@ export function LiveTV() {
         if (favFilterOn) setSelectedCategory('all');
         else setSelectedCategory('FAVORITES');
     };
+    // Notícias/Infantil: mesmo esquema do ★ (categoria virtual). Os canais
+    // moram na grade normal: vindo do Jogos/Adulto, volta pra ela
+    const alternarGrupo = (grupo: 'NEWS' | 'KIDS') => {
+        if (modo !== 'normal') trocarModo('normal');
+        setSelectedCategory(selectedCategory === grupo && modo === 'normal' ? 'all' : grupo);
+    };
+    // Jogos: entra e sai sem PIN
+    const botaoJogos = () => trocarModo(modo === 'jogos' ? 'normal' : 'jogos');
     const HEADER_BASE = 2; // 0 = busca, 1 = menu de categorias
     const toolbarFocusIndex = (item: string) => HEADER_BASE + toolbarItems.indexOf(item as typeof toolbarItems[number]);
 
@@ -1060,7 +1092,9 @@ export function LiveTV() {
                 else if (item === 'random') randomZap();
                 else if (item === 'hidden') setShowOnlyHidden(prev => !prev);
                 else if (item === 'favpanel') setShowFavoritesPanel(true);
-                else if (item === 'sports') setShowSportsPanel(true);
+                else if (item === 'news') alternarGrupo('NEWS');
+                else if (item === 'kids') alternarGrupo('KIDS');
+                else if (item === 'sports') botaoJogos();
                 else if (item === 'adulto') botaoAdulto();
             }
         } else if (focusArea === 'preview') {
@@ -1114,7 +1148,7 @@ export function LiveTV() {
         onEnter: handleEnter,
         onBack: handleBack,
         onAction: handleAction,
-        enabled: focusZone === 'content' && !error && !playingChannel && !archivePlayback && !showAgenda && !showGuide && !categoryMenuOpen && !showFavoritesPanel && !showSportsPanel && !adultoPinAberto,
+        enabled: focusZone === 'content' && !error && !playingChannel && !archivePlayback && !showAgenda && !showGuide && !categoryMenuOpen && !showFavoritesPanel && !adultoPinAberto,
     });
 
     const getLivePlaybackUrl = (stream: LiveStream) => {
@@ -1174,7 +1208,7 @@ export function LiveTV() {
     }
 
     return (
-        <div className="livetv-page">
+        <div className={`livetv-page ${modo === 'jogos' ? 'livetv-jogos' : ''}`}>
             {/* Animated Background */}
             <div className="livetv-bg-gradient" />
             <div className="livetv-bg-glow" />
@@ -1213,8 +1247,7 @@ export function LiveTV() {
                         const ok = await parentalService.verify(pin);
                         if (ok) {
                             setAdultoPinAberto(false);
-                            setSelectedCategory('all');
-                            setModoAdulto(true);
+                            trocarModo('adulto');
                         }
                         return ok;
                     }}
@@ -1272,11 +1305,29 @@ export function LiveTV() {
                         <FaStar /> Agora
                     </button>
                 )}
-                {sportsChannels.length > 0 && (
+                {toolbarItems.includes('news') && (
                     <button
-                        className={`toolbar-btn ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('sports') ? 'tv-focused' : ''}`}
-                        onClick={() => setShowSportsPanel(true)}
-                        title="Jogos de hoje"
+                        className={`toolbar-btn ${selectedCategory === 'NEWS' ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('news') ? 'tv-focused' : ''}`}
+                        onClick={() => alternarGrupo('NEWS')}
+                        title="Só canais de notícias"
+                    >
+                        <FaNewspaper /> Notícias
+                    </button>
+                )}
+                {toolbarItems.includes('kids') && (
+                    <button
+                        className={`toolbar-btn ${selectedCategory === 'KIDS' ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('kids') ? 'tv-focused' : ''}`}
+                        onClick={() => alternarGrupo('KIDS')}
+                        title="Só canais infantis"
+                    >
+                        <FaChild /> Infantil
+                    </button>
+                )}
+                {temJogos && (
+                    <button
+                        className={`toolbar-btn ${modo === 'jogos' ? 'active' : ''} ${focusArea === 'categories' && focusedCategoryIndex === toolbarFocusIndex('sports') ? 'tv-focused' : ''}`}
+                        onClick={botaoJogos}
+                        title={modo === 'jogos' ? 'Voltar pra todos os canais' : 'Canais de esporte'}
                     >
                         <FaFutbol /> Jogos
                     </button>
@@ -1577,21 +1628,6 @@ export function LiveTV() {
                         tocarCanal(channel);
                     }}
                     onMove={moveFavorite}
-                />
-            )}
-
-            {/* Jogos de hoje (item 12) */}
-            {showSportsPanel && (
-                <SportsPanel
-                    channels={sportsChannels}
-                    onClose={() => setShowSportsPanel(false)}
-                    onPlay={(channel) => {
-                        setShowSportsPanel(false);
-                        tocarCanal(channel);
-                    }}
-                    onRemind={(event: SportsEvent) => toggleReminder(event.channel, event.program)}
-                    isReminded={(event: SportsEvent) =>
-                        reminderService.has(event.channel.stream_id, event.program.start)}
                 />
             )}
 

@@ -242,9 +242,9 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                     ...series.filter(s => ehAdulto(s, adultSeries)).map(s => `s-${s.series_id}`),
                 ]));
                 if (kidsFilter.isKidsActive()) {
-                    streams = kidsFilter.apply(streams, liveCats).items;
-                    movies = kidsFilter.apply(movies, vodCats).items;
-                    series = kidsFilter.apply(series, seriesCats).items;
+                    streams = kidsFilter.apply(streams, liveCats, 'live').items;
+                    movies = kidsFilter.apply(movies, vodCats, 'vod').items;
+                    series = kidsFilter.apply(series, seriesCats, 'vod').items;
                 }
                 streams = streams.filter(s => !ehAdulto(s, adultLive));
                 movies = movies.filter(m => !ehAdulto(m, adultVod));

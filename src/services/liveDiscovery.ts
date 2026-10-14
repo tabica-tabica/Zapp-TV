@@ -1,60 +1,9 @@
 // Descoberta na TV ao vivo (backlog itens 12, 13 e 17):
-// - detector de eventos esportivos no EPG ("Jogos de hoje")
 // - detecção de canais de rádio (player de áudio leve)
 // - ordem manual dos favoritos (zapping do jeito do dono)
 
-import type { EpgProgram } from './epgService';
 import type { LiveStream } from '../types';
 import { scopedKey } from './profileScope';
-
-// ---- Jogos de hoje (item 12) ----
-
-// "Flamengo x Vasco", "Brasil vs Argentina", "AO VIVO: Palmeiras"
-const MATCH_PATTERNS = [
-    /\s+x\s+/i,
-    /\s+vs\.?\s+/i,
-    /\bao vivo\b/i,
-];
-
-const SPORT_CATEGORY_HINTS = ['esporte', 'sport', 'futebol', 'football', 'dazn', 'premiere', 'espn', 'combate'];
-
-export function isSportsCategory(categoryName: string): boolean {
-    const lower = categoryName.toLowerCase();
-    return SPORT_CATEGORY_HINTS.some(hint => lower.includes(hint));
-}
-
-export interface SportsEvent {
-    channel: LiveStream;
-    program: EpgProgram;
-}
-
-/** Programa parece um confronto esportivo? (nome com "x"/"vs"/"ao vivo") */
-export function looksLikeMatch(title: string): boolean {
-    if (!title || title.length < 6) return false;
-    return MATCH_PATTERNS.some(pattern => pattern.test(title));
-}
-
-/** Eventos de HOJE (do início do dia local até o fim), ordenados por horário. */
-export function collectTodaysEvents(
-    entries: Array<{ channel: LiveStream; programs: EpgProgram[] }>,
-    nowMs: number
-): SportsEvent[] {
-    const dayStart = new Date(nowMs);
-    dayStart.setHours(0, 0, 0, 0);
-    const dayEnd = dayStart.getTime() + 24 * 60 * 60 * 1000;
-
-    const events: SportsEvent[] = [];
-    for (const entry of entries) {
-        for (const program of entry.programs) {
-            if (program.start < dayStart.getTime() || program.start >= dayEnd) continue;
-            if (program.end <= nowMs) continue; // já acabou
-            if (!looksLikeMatch(program.title)) continue;
-            events.push({ channel: entry.channel, program });
-        }
-    }
-    events.sort((a, b) => a.program.start - b.program.start);
-    return events;
-}
 
 // ---- Rádio (item 13) ----
 

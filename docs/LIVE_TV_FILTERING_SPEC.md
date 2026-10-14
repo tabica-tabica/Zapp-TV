@@ -33,8 +33,11 @@ deliberada, não incidental (ver seção "Por que a ordem importa" abaixo):
 streams (catálogo bruto do provedor)
   │
   ▼
+⓪ streams            — modo da grade: normal / adulto (PIN) / jogos (3b)
+  │
+  ▼
 ① processedStreams   — ocultação manual, categorias "ruído" INTEIRAS,
-                        bloqueio adulto por PIN, categoria selecionada, busca
+                        categoria selecionada (ou Notícias/Infantil), busca
   │
   ▼
 ② rawGrouped          — groupChannelVariants(): FHD/HD/SD/4K, H265/HEVC/AVC,
@@ -130,6 +133,44 @@ Categorias detectadas como adultas (`isAdultCategoryName`) ficam trancadas
 por PIN e somem da visão "Todos" até o usuário desbloquear — mecanismo
 anterior a esta rodada de trabalho, mas faz parte da mesma cadeia de
 filtros (roda dentro de `processedStreams`, antes do agrupamento).
+
+## 3b. Modos da grade, filtros de grupo e perfil Kids — `channelGroups.ts`
+
+Antes do estágio ①, o catálogo é dividido em 3 modos (`modoDoCanal`), e a
+grade mostra só um por vez (14/10/2026):
+
+- **normal**: tudo que não é adulto nem esporte;
+- **adulto**: botão "Adulto", com PIN (ver acima);
+- **jogos**: botão "Jogos", sem PIN — categorias de esporte (`isSportsCategory`:
+  Esportes, Premiere, ESPN, SporTV, Disney+, MAX, Paramount+, Prime Video,
+  DAZN, Brasileirão, Estaduais, NBA, UFC, Fórmula 1) e o canal "Jogos de
+  Hoje", que abre a lista. Prévia maior (`.livetv-jogos`). Último canal
+  assistido de esporte abre a página já no Jogos. A Home
+  (`liveVisibility.ts`) segue a grade normal: sem esporte nos sorteios.
+  Adulto ganha de esporte.
+
+Os botões **Notícias** e **Infantil** são categorias virtuais (`'NEWS'`,
+`'KIDS'`, como o `'FAVORITES'`): filtram por categoria (`isNewsCategory`,
+`isKidsCategory`) e os canais seguem na grade normal.
+
+Tudo pela CATEGORIA: no catálogo real o provedor já separa esporte, notícias
+e infantil em categorias limpas, e padrão de nome de canal só trazia falso
+positivo ("Universal Premiere HD" é filme).
+
+**Perfil Kids** (`kidsFilter.apply(itens, categorias, 'live' | 'vod')`):
+lista fechada. Ao vivo, só marca infantil conhecida pelo começo do nome
+(`isKidsBrandChannel`: Cartoon Network, Cartoonito, Boomerang, Discovery
+Kids, Gloob, Gloobinho, Nick, Nick Jr., Nickelodeon, Disney Channel/Junior,
+TV Rá Tim Bum, Tooncast) — 35 dos 44 canais da categoria Infantil; o resto
+(Box Kids, DumDum, Urban Kids, TV Loading, PlayKids, BabyFirst, maratonas
+"[24hs]") fica fora por ninguém ter conferido. Filmes/séries: só categoria
+infantil (`isKidsVodCategory`: "Infantil", "Kids", "Desenhos"); "Animação"
+solta fica fora (animação adulta, anime).
+
+**Acrescentar um nome:** canal infantil novo entra em `MARCA_INFANTIL` só se
+for marca conhecida; categoria de esporte/notícias nova, no regex da
+categoria. Nos dois casos, conferir contra o catálogo real que nada mais
+casa, e pôr o nome em `channelGroups.test.ts`.
 
 ## 4. Agrupamento de variantes de qualidade — `channelVariants.ts`
 

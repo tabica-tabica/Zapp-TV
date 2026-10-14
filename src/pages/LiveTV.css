@@ -219,6 +219,11 @@
     justify-content: center;
 }
 
+/* Modo Jogos: prévia maior, a lista de canais de esporte logo abaixo */
+.livetv-jogos .preview-video {
+    width: 560px;
+}
+
 .preview-placeholder {
     display: flex;
     align-items: center;

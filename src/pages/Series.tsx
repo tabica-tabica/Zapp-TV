@@ -128,7 +128,7 @@ export function Series() {
                     api.getSeriesCategories()
                 ]);
                 // Gate do perfil Kids (remove categorias adultas e suas séries)
-                const gated = kidsFilter.apply(seriesData, categoriesData);
+                const gated = kidsFilter.apply(seriesData, categoriesData, 'vod');
                 setSeries(gated.items);
                 setCategories(gated.categories);
             } catch (err: unknown) {

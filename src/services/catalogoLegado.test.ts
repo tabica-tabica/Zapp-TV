@@ -223,7 +223,7 @@ describe('kidsFilter', () => {
         );
         const itens = [{ category_id: '1' }, { category_id: '2' }];
         const cats = [cat('1', 'ADULTOS'), cat('2', 'Infantil')];
-        const saida = kidsFilter.apply(itens, cats);
+        const saida = kidsFilter.apply(itens, cats, 'vod');
         expect(saida.items).toBe(itens); // MESMA referência: sem custo
         expect(saida.categories).toBe(cats);
     });
@@ -237,11 +237,36 @@ describe('kidsFilter', () => {
         );
         const saida = kidsFilter.apply(
             [{ category_id: '1' }, { category_id: '2' }, { category_id: '2' }],
-            [cat('1', 'XXX'), cat('2', 'Desenhos')]
+            [cat('1', 'XXX'), cat('2', 'Desenhos')],
+            'vod',
         );
         expect(saida.categories.map(c => c.category_name)).toEqual(['Desenhos']);
         expect(saida.items).toHaveLength(2);
         expect(saida.items.every(i => i.category_id === '2')).toBe(true);
+    });
+
+    // Lista fechada (14/10/2026): antes o Kids via tudo menos adulto
+    it('perfil kids em filmes: só categoria infantil (ação, animação solta e anime somem)', () => {
+        vi.spyOn(profileService, 'getActiveProfile').mockReturnValue(
+            { id: 'k', name: 'Kids', avatar: '🧒', isKids: true } as never
+        );
+        const cats = [cat('1', 'FILMES | AÇÃO'), cat('2', 'FILMES | INFANTIL'), cat('3', 'Animação'), cat('4', 'Anime'), cat('5', 'Kids 2024')];
+        const saida = kidsFilter.apply(['1', '2', '3', '4', '5'].map(id => ({ category_id: id })), cats, 'vod');
+        expect(saida.categories.map(c => c.category_id)).toEqual(['2', '5']);
+        expect(saida.items.map(i => i.category_id)).toEqual(['2', '5']);
+    });
+
+    it('perfil kids ao vivo: só canal de marca infantil, e o menu só com categoria que sobrou canal', () => {
+        vi.spyOn(profileService, 'getActiveProfile').mockReturnValue(
+            { id: 'k', name: 'Kids', avatar: '🧒', isKids: true } as never
+        );
+        const canais = [
+            { category_id: '9', name: 'Cartoon Network HD' }, { category_id: '9', name: 'Box Kids' },
+            { category_id: '12', name: 'GloboNews' }, { category_id: '311', name: '[24hs] Nick Classico' },
+        ];
+        const saida = kidsFilter.apply(canais, [cat('9', 'Canais | Infantil'), cat('12', 'Canais | Noticias'), cat('311', 'Canais | 24h Infantil')], 'live');
+        expect(saida.items.map(c => c.name)).toEqual(['Cartoon Network HD']);
+        expect(saida.categories.map(c => c.category_id)).toEqual(['9']);
     });
 
     it('getBlockedCategoryIds funciona mesmo fora do perfil kids', () => {

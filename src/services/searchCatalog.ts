@@ -52,9 +52,9 @@ export async function loadSearchCatalog(): Promise<SearchCatalogData> {
                 includeVOD ? api.getVodCategories() : Promise.resolve([]),
                 includeVOD ? api.getSeriesCategories() : Promise.resolve([]),
             ]);
-            let gatedChannels = kidsFilter.apply(channels, liveCats).items;
-            let gatedMovies = kidsFilter.apply(movies, vodCats).items;
-            let gatedSeries = kidsFilter.apply(series, seriesCats).items;
+            let gatedChannels = kidsFilter.apply(channels, liveCats, 'live').items;
+            let gatedMovies = kidsFilter.apply(movies, vodCats, 'vod').items;
+            let gatedSeries = kidsFilter.apply(series, seriesCats, 'vod').items;
             // Fora do perfil Kids, a busca global ainda não pode devolver
             // categoria travada por PIN — a busca não tem "selecionar a
             // categoria" pra provar o PIN, então some incondicionalmente.

@@ -83,9 +83,9 @@ async function fetchVisibleEntries(): Promise<{ live: GatedEntry[]; vod: GatedEn
         includeVOD ? api.getSeriesCategories() : Promise.resolve([]),
     ]);
 
-    const gatedLive = kidsFilter.apply(liveStreams, liveCats);
-    const gatedVod = kidsFilter.apply(vodStreams, vodCats);
-    const gatedSeries = kidsFilter.apply(seriesList, seriesCats);
+    const gatedLive = kidsFilter.apply(liveStreams, liveCats, 'live');
+    const gatedVod = kidsFilter.apply(vodStreams, vodCats, 'vod');
+    const gatedSeries = kidsFilter.apply(seriesList, seriesCats, 'vod');
 
     const lockedLive = lockedCategoryIds(gatedLive.categories);
     const lockedVod = lockedCategoryIds(gatedVod.categories);

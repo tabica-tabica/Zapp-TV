@@ -20,7 +20,8 @@ const CATEGORIES = [
     { category_id: '1', category_name: 'Canais | Diversos' },
     { category_id: '2', category_name: 'Canais | Adultos' },
     { category_id: '3', category_name: 'Canais | Shows' }, // bate no padrão "ruído" 'show'
-    { category_id: '4', category_name: 'Canais | Esportes' }, // "só com tag de qualidade"
+    { category_id: '4', category_name: 'Canais | Variedades' }, // "só com tag de qualidade"
+    { category_id: '6', category_name: 'Canais | Premiere' }, // esporte: mora no modo Jogos
     { category_id: '5', category_name: 'Canais | Globo' }, // rede nacional (detectCategoryFamilies)
 ];
 
@@ -55,6 +56,14 @@ describe('computeDefaultVisibleChannels', () => {
     it('categoria adulta é excluída incondicionalmente, sem checagem de PIN', () => {
         const streams = [
             chan({ stream_id: 1, name: 'Canal Adulto', category_id: '2' }),
+            chan({ stream_id: 2, name: 'Canal Normal', category_id: '1' }),
+        ];
+        expect(computeDefaultVisibleChannels(streams, CATEGORIES).map(s => s.stream_id)).toEqual([2]);
+    });
+
+    it('esporte fica fora, como na grade normal (mora no modo Jogos)', () => {
+        const streams = [
+            chan({ stream_id: 1, name: 'Premiere 2 FHD', category_id: '6' }),
             chan({ stream_id: 2, name: 'Canal Normal', category_id: '1' }),
         ];
         expect(computeDefaultVisibleChannels(streams, CATEGORIES).map(s => s.stream_id)).toEqual([2]);

@@ -1,4 +1,4 @@
-/* Painéis da TV ao vivo: favoritos agora + jogos de hoje */
+/* Painel da TV ao vivo: favoritos agora */
 
 .live-panel-overlay {
     position: fixed;
@@ -149,72 +149,6 @@
     color: rgba(255, 255, 255, 0.5);
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-/* Linha do painel de jogos */
-.sports-row {
-    display: flex;
-    align-items: center;
-    padding: 12px 24px;
-    color: rgba(255, 255, 255, 0.85);
-    font-size: 17px;
-    cursor: pointer;
-}
-
-.sports-row > * + * {
-    margin-left: 14px;
-}
-
-.sports-row.tv-focused {
-    background: rgba(var(--ns-accent-rgb), 0.3);
-    box-shadow: inset 3px 0 0 var(--ns-accent);
-}
-
-.sports-time {
-    min-width: 62px;
-    font-weight: 700;
-    color: #fff;
-    font-variant-numeric: tabular-nums;
-}
-
-.sports-title {
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.sports-channel {
-    min-width: 170px;
-    max-width: 170px;
-    color: rgba(255, 255, 255, 0.55);
-    font-size: 15px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.sports-badge-live {
-    background: #dc2626;
-    color: #fff;
-    font-size: 13px;
-    font-weight: 800;
-    padding: 3px 9px;
-    border-radius: 6px;
-    white-space: nowrap;
-}
-
-.sports-badge-bell {
-    color: #facc15;
-    font-size: 14px;
-    font-weight: 700;
-    white-space: nowrap;
-}
-
-.sports-badge-hint {
-    color: rgba(255, 255, 255, 0.35);
-    font-size: 13px;
     white-space: nowrap;
 }
 

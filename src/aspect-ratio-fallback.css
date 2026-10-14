@@ -60,6 +60,11 @@
         height: 168.75px;
     }
 
+    /* Modo Jogos: 560 × 9/16 */
+    .livetv-jogos .preview-video {
+        height: 315px;
+    }
+
     /* --- Prévias 16/9 de canal ao vivo (larguras fixas) ---
        .zap-peek tem 280px sem padding → 158px; a prévia da Home tem 220px → 124px. */
     .zap-peek-placeholder,
