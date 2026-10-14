@@ -139,15 +139,22 @@ O que funcionou em 12/10/2026:
       em 14/10/2026: com a camada única o player sempre usa o `<video>` no
       lugar, então o caso do `<video>` movido (6–16 s) não existe mais.
       Visto na TV: Assistir na Home toca e Voltar devolve pra prévia.
-- [ ] **Logos dos canais com 429 na TV** — causa achada em 14/10/2026: o
-      host (2932 das 2961 logos) recusa User-Agent com **"SmartTV"** (o da LG:
-      `Web0S; Linux/SmartTV`). Mesmo PC, mesma URL: 200 com UA de navegador,
-      429 com "SmartTV"; "Web0S" sozinho passa. Outras URLs do mesmo host
-      (miniatura, outro domínio) também dão 429, e o webOS ignora
-      `setRequestHeader('User-Agent')`. O app sozinho não muda o UA da TV:
-      precisa de um intermediário que busque a logo com outro UA (proxy de
-      imagem público, que também reduziria pra 128 px, ou um próprio). Decisão
-      pendente — proxy público vê o IP da TV e quais logos ela pede.
+- [x] **Logos dos canais com 429 na TV** — fica como está (placeholder),
+      decidido em 14/10/2026. Causa: o host de imagens (2932 das 2961 logos)
+      recusa User-Agent com **"SmartTV"** (o da LG: `Web0S; Linux/SmartTV`).
+      Mesmo PC, mesma URL: 200 com UA de navegador, 429 com "SmartTV";
+      "Web0S" sozinho passa. Outras URLs do mesmo host (miniatura, outro
+      domínio) também dão 429, e o webOS ignora `setRequestHeader('User-Agent')`.
+      Na web (navegador de PC) as logos carregam. Proxies públicos testados no
+      mesmo dia, com uma logo do host:
+      - wsrv.nl: o host recusa o próprio wsrv (`returned error: 429`);
+      - Statically: endpoint `/img/` desligado "due to abuse";
+      - proxy antigo do Google (`gadgets/proxy`): 404, não existe mais;
+      - DuckDuckGo (`external-content.duckduckgo.com/iu/`): 200, mas é
+        interno deles (pode bloquear a qualquer hora), não reduz e o CORS
+        pro canvas não foi conferido.
+      Sem proxy nem servidor próprio, o caminho que sobra é um serviço JS do
+      webOS (Node na própria TV, busca com outro UA) — só LG, não feito.
       Já feito: falha vale 30 min (`logoFalho.ts`) e as que carregam viram
       miniatura WebP de 128 px no IndexedDB (`logoPequeno.ts`).
 - [x] **Buffer do player** (14/10/2026): **fica em 30 s** ("equilibrado").
