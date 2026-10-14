@@ -18,6 +18,8 @@ export interface SeriesCardProps {
     selected: boolean;
     broken: boolean;
     badge: SeriesCardBadge;
+    /** Versões do mesmo título (dublada, [L], 4K) agrupadas neste card */
+    versionCount?: number;
     onSelect: (item: SeriesType) => void;
     onImageError: (id: number) => void;
     /** Style absoluto de posicionamento que o react-window injeta na célula. */
@@ -26,7 +28,7 @@ export interface SeriesCardProps {
 }
 
 function SeriesCardImpl({
-    item, focused, selected, broken, badge, onSelect, onImageError, style, gap = 16,
+    item, focused, selected, broken, badge, versionCount = 0, onSelect, onImageError, style, gap = 16,
 }: SeriesCardProps) {
     return (
         <div className="series-card-cell" style={style}>
@@ -59,6 +61,7 @@ function SeriesCardImpl({
                     {item.rating && parseFloat(item.rating) > 0 && (
                         <div className="series-rating"><FaStar /> {item.rating}</div>
                     )}
+                    {versionCount > 1 && <div className="version-badge">{versionCount} versões</div>}
                 </div>
                 <div className="series-title">{item?.name || 'Série Sem Nome'}</div>
             </div>

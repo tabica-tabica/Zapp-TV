@@ -29,6 +29,7 @@ import {
     type CatalogFilters,
 } from '../services/catalogExtras';
 import { kidsFilter } from '../services/kidsFilter';
+import { groupVodVersions, rotulosDasVersoes } from '../services/vodVariants';
 import { contentFlags } from '../services/contentFlags';
 import { progressService } from '../services/progressService';
 import { storage } from '../services/storage';
@@ -49,10 +50,11 @@ interface SeriesCellProps {
     onSelect: (item: SeriesType) => void;
     selectedId: number | undefined;
     badgeFor: (item: SeriesType) => SeriesCardBadge;
+    versionsOf: Map<string, SeriesType[]>;
 }
 
 function SeriesGridCell({
-    rowIndex, columnIndex, style, items, columns, focusedIndex, gap, isBroken, onImageError, onSelect, selectedId, badgeFor,
+    rowIndex, columnIndex, style, items, columns, focusedIndex, gap, isBroken, onImageError, onSelect, selectedId, badgeFor, versionsOf,
 }: CellComponentProps<SeriesCellProps>) {
     const index = rowIndex * columns + columnIndex;
     const item = items[index];
@@ -64,6 +66,7 @@ function SeriesGridCell({
             selected={selectedId === item.series_id}
             broken={isBroken(item.series_id)}
             badge={badgeFor(item)}
+            versionCount={versionsOf.get(String(item.series_id))?.length ?? 0}
             onSelect={onSelect}
             onImageError={onImageError}
             style={style}
@@ -186,7 +189,7 @@ export function Series() {
     const maxHeaderIndex = HEADER_BASE + toolbarItems.length - 1;
 
     // Filter series (memoizado — recalcular a cada tecla do D-pad trava TVs antigas)
-    const filteredSeries = useMemo(() => {
+    const seriesFiltradas = useMemo(() => {
         const query = normalizeSearch(searchQuery);
         const hasFilters = filters.decade > 0 || filters.minRating > 0;
         let list = sortedSeries.filter((s) => {
@@ -209,6 +212,12 @@ export function Series() {
         }
         return list;
     }, [sortedSeries, searchQuery, selectedCategory, finishedSeriesIds, filters, lockedCategoryIds]);
+    // Dublada e legendada "[L]" (ou 4K) da mesma série viram um card só; a
+    // ficha troca entre elas pelos botões de versão (mesmo esquema de Filmes)
+    const { groups: filteredSeries, versionsOf } = useMemo(
+        () => groupVodVersions(seriesFiltradas, s => s.series_id, true),
+        [seriesFiltradas],
+    );
 
     // Grade vazia numa TV e indistinguivel de defeito: dizer QUAIS filtros
     // estao ligados e o que fecha a duvida
@@ -225,6 +234,14 @@ export function Series() {
     useEffect(() => {
         setSelectedSeries(null);
     }, [searchQuery, selectedCategory]);
+
+    // Grupo de versões de qualquer membro (o representante é a chave do mapa)
+    const versoesDe = (item: SeriesType): SeriesType[] => {
+        const direto = versionsOf.get(String(item.series_id));
+        if (direto) return direto;
+        for (const grupo of versionsOf.values()) if (grupo.includes(item)) return grupo;
+        return [];
+    };
 
     const openSeriesModal = useCallback((item: SeriesType) => {
         setSelectedSeries(item);
@@ -406,7 +423,8 @@ export function Series() {
         onSelect: openSeriesModal,
         selectedId: selectedSeries?.series_id,
         badgeFor,
-    }), [filteredSeries, columns, focusArea, focusedIndex, isBroken, markBroken, openSeriesModal, selectedSeries, badgeFor]);
+        versionsOf,
+    }), [filteredSeries, columns, focusArea, focusedIndex, isBroken, markBroken, openSeriesModal, selectedSeries, badgeFor, versionsOf]);
 
     // Loading State
     if (loading) {
@@ -533,6 +551,17 @@ export function Series() {
                     }}
                     contentId={String(selectedSeries.series_id)}
                     contentType="series"
+                    versions={(() => {
+                        // As versões são do card de ORIGEM: trocar pra legendada
+                        // muda selectedSeries, e o grupo segue achável por ela
+                        const todas = versoesDe(selectedSeries);
+                        const rotulos = rotulosDasVersoes(todas.map(v => v.name));
+                        return todas.map((v, i) => ({ id: String(v.series_id), label: rotulos[i] }));
+                    })()}
+                    onSelectVersion={(versionId) => {
+                        const alvo = versoesDe(selectedSeries).find(v => String(v.series_id) === versionId);
+                        if (alvo) setSelectedSeries(alvo);
+                    }}
                     contentData={{
                         name: selectedSeries.name,
                         cover: selectedSeries.cover,

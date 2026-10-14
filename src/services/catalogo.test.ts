@@ -98,6 +98,30 @@ describe('legendado "[L]" do painel (14/10/2026)', () => {
         expect(rotulosDasVersoes(['A Gangue (2021)', 'A Gangue (2021) [L]', 'A Gangue [L] (2021)'])).toEqual(['DUB', 'LEG', 'LEG 2']);
     });
 
+    it('séries: mesmo agrupamento, pela chave series_id', () => {
+        const series = [
+            { series_id: 10, name: 'A Coleção' },
+            { series_id: 11, name: 'A Coleção [L]' },
+            { series_id: 12, name: 'Dark' },
+        ];
+        const { groups, versionsOf } = groupVodVersions(series, s => s.series_id, true);
+        expect(groups.map(s => s.series_id)).toEqual([10, 12]);
+        expect(versionsOf.get('10')?.map(s => s.series_id)).toEqual([10, 11]);
+    });
+
+    it('séries: mesmo nome sem marca são obras diferentes (original e remake) e NÃO juntam', () => {
+        const series = [
+            { series_id: 1, name: 'Elas por Elas' },
+            { series_id: 2, name: 'Elas por Elas' },
+            { series_id: 3, name: 'Elas por Elas [L]' },
+            { series_id: 4, name: 'Esmeralda' },
+            { series_id: 5, name: 'Esmeralda' },
+        ];
+        const { groups, versionsOf } = groupVodVersions(series, s => s.series_id, true);
+        expect(groups).toHaveLength(5);
+        expect(versionsOf.size).toBe(0);
+    });
+
     it('"L" solto no título não é legendado', () => {
         expect(versionBaseName('L.A. Confidential (1997)')).not.toBe(versionBaseName('A. Confidential (1997)'));
         expect(tagsOf('L.A. Confidential (1997)')).toEqual([]);

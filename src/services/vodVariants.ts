@@ -1,11 +1,10 @@
 // Versões e tags de VOD (backlog itens 21 e 22): listas de IPTV repetem o
-// mesmo filme como DUB/LEG/4K/H265. Agrupa numa ficha só e expõe as tags
+// mesmo filme (ou série) como DUB/LEG/4K/H265. Agrupa numa ficha só e expõe as tags
 // como chips de filtro. Tudo PURO — só o nome do item.
 
 export type VodTag = 'DUB' | 'LEG' | '4K' | 'HD' | 'H265';
 
 export interface VariantableItem {
-    stream_id: number | string;
     name: string;
 }
 
@@ -78,7 +77,14 @@ export function versionBaseName(name: string): string {
  * grupos com 2+ versões, chaveadas pelo stream_id do representante.
  */
 export function groupVodVersions<T extends VariantableItem>(
-    items: T[]
+    items: T[],
+    // Filme é stream_id; série é series_id
+    idOf: (item: T) => number | string = item => (item as T & { stream_id: number | string }).stream_id,
+    // Série não tem ano no nome: "Esmeralda" e "Esmeralda", "Elas por Elas"
+    // e "Elas por Elas" são novelas DIFERENTES (original e remake). Aí só
+    // junta quando é versão de verdade: alguém com marca ([L], 4K...) e no
+    // máximo um sem marca. Visto no catálogo real em 14/10/2026.
+    soVersoesMarcadas = false,
 ): { groups: T[]; versionsOf: Map<string, T[]> } {
     const byBase = new Map<string, T[]>();
     for (const item of items) {
@@ -91,8 +97,9 @@ export function groupVodVersions<T extends VariantableItem>(
     const groups: T[] = [];
     const versionsOf = new Map<string, T[]>();
     for (const list of byBase.values()) {
-        if (list.length === 1) {
-            groups.push(list[0]);
+        const semMarca = list.filter(item => tagsOf(item.name).length === 0).length;
+        if (list.length === 1 || (soVersoesMarcadas && (semMarca === list.length || semMarca > 1))) {
+            groups.push(...list);
             continue;
         }
         // Mesma qualidade: o legendado vai depois — abrir o card toca a
@@ -102,7 +109,7 @@ export function groupVodVersions<T extends VariantableItem>(
             .sort((a, b) => a.score - b.score || a.leg - b.leg)
             .map(entry => entry.item);
         groups.push(sorted[0]);
-        versionsOf.set(String(sorted[0].stream_id), sorted);
+        versionsOf.set(String(idOf(sorted[0])), sorted);
     }
     return { groups, versionsOf };
 }
