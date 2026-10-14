@@ -43,6 +43,26 @@ describe('versionBaseName', () => {
         expect(new Set([a, b, c]).size).toBe(3);
     });
 
+    // Catálogo real (14/10/2026): o mesmo filme escrito de jeitos diferentes
+    it.each([
+        ['Alien - Romulus (2024)', 'Alien: Romulus (2024)'],
+        ['007 Cassino Royale (2006)', '007: Cassino Royale (2006)'],
+        ['The Dirt – Confissões do Mötley Crüe (2019)', 'The Dirt: Confissões do Mötley Crüe (2019)'],
+        ['A Gestora - 2022', 'A Gestora (2022)'],
+        ['A Cinco Passos de Você - 2019', 'A Cinco Passos de Você [L] (2019)'],
+        ['O Protetor: Capítulo Final (2023)', 'O Protetor: Capitulo Final (2023)'],
+        ['Matrix [1999]', 'Matrix (1999)'],
+    ])('junta "%s" com "%s"', (a, b) => {
+        expect(versionBaseName(a)).toBe(versionBaseName(b));
+    });
+
+    it('não confunde: ano diferente, hífen dentro da palavra e número que é título', () => {
+        expect(versionBaseName('Alien - Romulus (2024)')).not.toBe(versionBaseName('Alien: Romulus (2023)'));
+        expect(versionBaseName('Homem-Aranha (2002)')).toBe('homem-aranha|2002');
+        expect(versionBaseName('Blade Runner 2049')).toBe('blade runner 2049');
+        expect(versionBaseName('Brasil 2002 - Os Bastidores do Penta (2022)')).toBe('brasil 2002 os bastidores do penta|2022');
+    });
+
     it('trata nome que vira vazio depois da poda', () => {
         expect(versionBaseName('[DUB]')).not.toBe('');
     });

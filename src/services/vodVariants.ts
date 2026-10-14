@@ -57,13 +57,27 @@ function qualityScore(name: string): number {
  * Nome sem tags de qualidade/idioma/codec — chave que junta as versões.
  * O ANO PERMANECE na chave: sem ele, "Batman (1989)", "(2022)" e "(1966)"
  * virariam um card só e dois deles sumiriam do catálogo.
+ *
+ * O painel escreve o mesmo filme de jeitos diferentes (catálogo real,
+ * 14/10/2026): subtítulo com " - " ou ":" ("Alien - Romulus" / "Alien:
+ * Romulus", 28 casos), ano entre parênteses OU no fim depois de " - "
+ * ("A Gestora - 2022" / "A Gestora (2022)", 76 casos) e acento
+ * ("Capítulo" / "Capitulo"). Tudo isso sai da chave. Hífen DENTRO da
+ * palavra fica ("Homem-Aranha"), e número solto no fim não é ano ("Blade
+ * Runner 2049").
  */
 export function versionBaseName(name: string): string {
-    const year = /[[(]((?:19|20)\d{2})[\])]/.exec(name)?.[1] || '';
+    const year = /[[(]((?:19|20)\d{2})[\])]/.exec(name)?.[1]
+        || /\s[-–—]\s*((?:19|20)\d{2})\s*$/.exec(name)?.[1]
+        || '';
     const base = name
         .replace(/\s*[[(](dub|dublado|dublada|leg|legendado|legendada|sub|l|fhd|hd|sd|4k|uhd|h\.?26[456]|hevc|avc|2160p?|1080p?|720p?|480p?)[\])]/gi, ' ')
         .replace(/\s+(dub|dublado|dublada|leg|legendado|legendada|fhd|hd|sd|4k|uhd|2160p?|1080p?|720p?|480p?)\s*$/gi, '')
         .replace(/\s*[[(](19|20)\d{2}[\])]\s*/g, ' ')
+        .replace(/\s[-–—]\s*(19|20)\d{2}\s*$/, '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s*:\s*|\s+[-–—]\s+/g, ' ')
         .replace(/\s+/g, ' ')
         .trim()
         .toLowerCase();
