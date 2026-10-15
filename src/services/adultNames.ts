@@ -35,8 +35,12 @@ const ADULT_PATTERNS = [
     /^\[x{2,3}\]/i,
 ];
 
+// Uma regex só: a Home testa TODO filme/série/canal (dezenas de milhares) e
+// 20 regex por nome via .some() levava ~1 s no boot da LG (perfil de 15/10/2026)
+const ADULT = new RegExp(ADULT_PATTERNS.map(p => `(?:${p.source})`).join('|'), 'i');
+
 export function isAdultCategoryName(name: string): boolean {
-    return ADULT_PATTERNS.some(pattern => pattern.test(name));
+    return ADULT.test(name);
 }
 
 const HENTAI = /\bhentai\b/i;

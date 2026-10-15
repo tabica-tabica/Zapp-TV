@@ -156,6 +156,25 @@ O que funcionou em 12/10/2026:
       Sem proxy nem servidor próprio, o caminho que sobra é o item abaixo.
       Já feito: falha vale 30 min (`logoFalho.ts`) e as que carregam viram
       miniatura WebP de 128 px no IndexedDB (`logoPequeno.ts`).
+- [x] **Prévia da Home esperando o catálogo** (15/10/2026): na v1.4.0 a
+      bancada deu `home_prévia_ms` 7102 (baseline 5703). Linha do tempo do
+      boot pelo inspetor: catálogo pronto em ~3,8 s e a playlist da prévia só
+      em ~9,3 s — 5,5 s de CPU a 100 % sem rede. Perfil de CPU do boot
+      (`Profiler` + `Page.reload` no inspetor; o Chromium 53 devolve o
+      formato antigo, `head` + `timestamps`): o `fetchData` da Home. Dois
+      culpados: `isAdultCategoryName` com 20 regex por `.some()` em todo
+      filme/série/canal (~1,1 s) → uma regex só; "recentes" ordenando o
+      catálogo inteiro pra pegar 15, com `parseInt` no comparador e o sort do
+      core-js (~1,3 s) → `maioresPor` (uma passada). Depois: intervalo
+      5,5 → 3,8 s, `fetchData` 3,3 → 1,9 s de CPU; bancada (3 rodadas)
+      `home_prévia_ms` 7102 → 6618 (5302–6802), imagem nas 3. Home
+      preguiçosa conferida no mesmo boot: 13 pôsteres pedidos.
+- [ ] **Resto da CPU no boot da Home** (15/10/2026): ainda ~1,9 s no
+      `fetchData` — `normalizeSearch` do Top 10 sobre o catálogo inteiro
+      (`normalize`/`replace`/`toLowerCase`, ~0,35 s), os `filter` por item e
+      `regionalVariants` — mais ~2 s de `(program)` (parse do JSON/GC, não dá
+      pra atribuir). Ideia: a prévia não depende de VOD — pedir o stream
+      assim que os canais chegarem, antes de processar filmes e séries.
 - [ ] **Conferir na TV: Jogos/Kids e o Sair com confirmação** (14/10/2026) —
       a TV ficou deslogada (o Sair de um OK só apagou a conta; a conta
       precisa ser cadastrada de novo na TV e abre no perfil Kids, PIN 0000).

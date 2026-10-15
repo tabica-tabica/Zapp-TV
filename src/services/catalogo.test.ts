@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest';
 import { versionBaseName, groupVodVersions, versionLabel, tagsOf, rotulosDasVersoes, grupoTemLegendada } from './vodVariants';
 import { isRadioChannel } from './liveDiscovery';
-import { fuzzyMatches, normalizeSearch, isRecentlyAdded } from './catalogExtras';
+import { fuzzyMatches, normalizeSearch, isRecentlyAdded, maioresPor } from './catalogExtras';
 import { isAdultCategoryName } from './kidsFilter';
 import type { LiveStream, VODStream } from '../types';
 
@@ -222,15 +222,31 @@ describe('isRecentlyAdded', () => {
 });
 
 describe('isAdultCategoryName', () => {
-    it.each(['ADULTOS', 'XXX', 'Canais +18', 'Adulto | Premium'])(
+    // As 20 regex viraram uma só (15/10/2026): âncora ^ e o 18 sem /i continuam valendo
+    it.each(['ADULTOS', 'XXX', 'Canais +18', 'Adulto | Premium', '[XX] Canal 23', 'Filmes 18+', 'Eróticos', 'SEXY HOT'])(
         'barra categoria adulta: %s', (nome) => {
             expect(isAdultCategoryName(nome)).toBe(true);
         });
 
     // O gate é ancorado de propósito: sem isso, "Documentários" e "Sextante"
     // seriam classificados como adultos por conterem trechos de palavra.
-    it.each(['Documentários', 'Filmes', 'Infantil', 'Sexta-feira'])(
+    it.each(['Documentários', 'Filmes', 'Infantil', 'Sexta-feira', 'Canal [XX]', 'Adult Swim', 'Pornochanchada', '2018', 'Vida Adulta'])(
         'não barra categoria inocente: %s', (nome) => {
             expect(isAdultCategoryName(nome)).toBe(false);
         });
+});
+
+describe('maioresPor (vitrine da Home sem ordenar o catálogo)', () => {
+    it('dá o mesmo que o sort estável + slice, com empate e chave inválida', () => {
+        const itens = Array.from({ length: 200 }, (_, i) => ({ i, added: i % 7 === 0 ? '' : String((i * 37) % 23) }));
+        itens.push({ i: 999, added: 'lixo' });
+        const chave = (x: { added: string }) => parseInt(x.added || '0');
+        const esperado = [...itens].sort((a, b) => (chave(b) || 0) - (chave(a) || 0)).slice(0, 15);
+        expect(maioresPor(itens, chave, 15).map(x => x.i)).toEqual(esperado.map(x => x.i));
+    });
+
+    it('lista menor que n e n = 0', () => {
+        expect(maioresPor([1, 3, 2], x => x, 15)).toEqual([3, 2, 1]);
+        expect(maioresPor([1, 3, 2], x => x, 0)).toEqual([]);
+    });
 });

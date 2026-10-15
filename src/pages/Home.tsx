@@ -15,7 +15,7 @@ import type { Language } from '../i18n';
 import { useFocusZone } from '../contexts/FocusContext';
 import { progressService, type MovieProgress, type SeriesProgress } from '../services/progressService';
 import { storage } from '../services/storage';
-import { categoryAffinity, scoreRecommendations, newEpisodes, normalizeSearch } from '../services/catalogExtras';
+import { categoryAffinity, scoreRecommendations, newEpisodes, normalizeSearch, maioresPor } from '../services/catalogExtras';
 import { usageStats } from '../services/usageStats';
 import { kidsFilter, isAdultCategoryName } from '../services/kidsFilter';
 import { contentFlags } from '../services/contentFlags';
@@ -314,13 +314,8 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 }
 
                 // Get recent items (newest first based on 'added' field)
-                const sortedMovies = [...movies].sort((a, b) =>
-                    parseInt(b.added || '0') - parseInt(a.added || '0')
-                ).slice(0, 15);
-
-                const sortedSeries = [...series].sort((a, b) =>
-                    new Date(b.last_modified || 0).getTime() - new Date(a.last_modified || 0).getTime()
-                ).slice(0, 15);
+                const sortedMovies = maioresPor(movies, m => parseInt(m.added || '0'), 15);
+                const sortedSeries = maioresPor(series, s => new Date(s.last_modified || 0).getTime(), 15);
 
                 setRecentMovies(sortedMovies);
                 setRecentSeries(sortedSeries);

@@ -175,6 +175,25 @@ export function scoreRecommendations<T extends RecommendableItem>(
     return scored.map(entry => entry.item);
 }
 
+/**
+ * Os `n` de maior chave, da maior pra menor (empate: ordem original, como o
+ * sort estável). Uma passada só: ordenar o catálogo inteiro pra pegar 15, com
+ * parseInt no comparador e o sort do core-js, custava ~1 s no boot da LG.
+ */
+export function maioresPor<T>(itens: T[], chave: (item: T) => number, n: number): T[] {
+    if (n <= 0) return [];
+    const top: Array<{ item: T; k: number }> = [];
+    for (const item of itens) {
+        const k = chave(item) || 0;
+        if (top.length === n && k <= top[n - 1].k) continue;
+        let i = top.length;
+        while (i > 0 && top[i - 1].k < k) i--;
+        top.splice(i, 0, { item, k });
+        if (top.length > n) top.pop();
+    }
+    return top.map(t => t.item);
+}
+
 /** Sorteio ponderado pela afinidade (roleta 🎲). rand injetável pra teste. */
 export function spinRoulette<T extends RecommendableItem>(
     candidates: T[],
