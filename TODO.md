@@ -2,11 +2,8 @@
 
 ## Pendências gerais (15/10/2026)
 
-- [ ] **Release v1.4.0**: o workflow do desktop ainda rodava; quando terminar,
-      anexar `com.tabica.zapptv_1.4.0_all.ipk` e `zapp-tv-lg-1.4.0.zip`
-      (`npm run package:webos` → `dist/ipk`) e pôr o trecho 1.4.0 do
-      CHANGELOG como texto do release (o APK do Android TV já se anexa
-      sozinho).
+- [x] **Release v1.4.0** (15/10/2026): desktop, LG (.ipk + zip), APK do Android TV e
+      texto do CHANGELOG no release.
 - [ ] **Painel fora do ar desta rede** (15/10/2026): o DNS do provedor de
       internet não resolve o nome do painel (o DNS público resolve) e nem o
       servidor do painel nem o de segmentos respondem em porta nenhuma — a
