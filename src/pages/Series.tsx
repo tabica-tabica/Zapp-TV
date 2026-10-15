@@ -37,7 +37,8 @@ import './Series.css';
 import { ErrorScreen } from '../components/ErrorScreen';
 
 const CARD_WIDTH = 180;
-const CARD_GAP = 16;
+// Mesma folga da Minha Lista: com 16px os cards ficavam colados
+const CARD_GAP = 24;
 const CARD_INFO_HEIGHT = 40;
 
 interface SeriesCellProps {

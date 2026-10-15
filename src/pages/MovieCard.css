@@ -17,22 +17,24 @@
     transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* Foco SEM aumentar o card: com scale ele passava da própria célula,
+   cobria o vizinho e a moldura invadia a fileira de baixo (e a 1ª fileira
+   era cortada no topo da grade). A moldura de 3px cabe na folga da célula
+   (meio gap de cada lado). Visto no desktop, 14/10/2026. */
 .movie-card:hover,
 .movie-card.tv-focused {
-    transform: scale(1.08);
-    /* Cresce pra baixo e pros lados: crescendo pelo centro, o card da 1ª
-       fileira passava do topo da grade (que rola por dentro) e era cortado */
-    transform-origin: center top;
     z-index: 10;
 }
 
 .movie-card.tv-focused {
-    box-shadow: 0 0 0 3px rgba(var(--accent-primary-rgb), 0.5);
+    /* o .tv-focused global (index.css) aumenta 5% */
+    transform: none;
+    box-shadow: 0 0 0 3px rgba(var(--accent-primary-rgb), 0.8);
     border-radius: 12px;
 }
 
-.movie-card.selected {
-    transform: scale(1.05);
+.movie-card.tv-focused .movie-poster {
+    border-color: var(--accent-primary);
 }
 
 .movie-card.selected .movie-poster {

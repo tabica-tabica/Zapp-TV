@@ -14,6 +14,9 @@
 
 import { useCallback, useLayoutEffect, useState } from 'react';
 
+/** Largura reservada pra barra de rolagem vertical da grade. */
+const RESERVA_BARRA = 14;
+
 interface UseMeasuredColumnsOptions {
     /** Largura-alvo VISÍVEL do card (sem o gap), em px. */
     cardWidth: number;
@@ -37,7 +40,11 @@ export function useMeasuredColumns<T extends HTMLElement = HTMLDivElement>(
     useLayoutEffect(() => {
         if (!node) return;
 
-        const medir = (largura: number) => {
+        const medir = (medida: number) => {
+            // A grade rola por dentro: a barra vertical dela come largura do
+            // container. Sem reservar, a última coluna ia por baixo da barra e
+            // encostava na borda (WebKitGTK do desktop: barra ~12px).
+            const largura = Math.max(0, medida - RESERVA_BARRA);
             setContainerWidth(largura);
             const porLargura = Math.floor(largura / (cardWidth + gap));
             setColumns(Math.max(minColumns, Math.min(maxColumns, porLargura || minColumns)));
