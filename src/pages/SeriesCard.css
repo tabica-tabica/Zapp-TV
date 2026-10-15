@@ -26,6 +26,17 @@
     z-index: 10;
 }
 
+/* Hover igual ao da Minha Lista (CatalogCard): sobe 8px e cresce 2%. Cabe
+   na folga da célula (12px de cada lado), então a 1ª fileira não corta */
+.series-card:hover {
+    transform: translateY(-8px) scale(1.02);
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.series-card:hover .series-poster {
+    border-color: rgba(var(--ns-accent-rgb), 0.4);
+}
+
 .series-card.tv-focused {
     /* o .tv-focused global (index.css) aumenta 5% */
     transform: none;
@@ -65,7 +76,7 @@
 }
 
 .series-card:hover .series-poster img {
-    transform: scale(1.05);
+    transform: scale(1.08);
 }
 
 .poster-placeholder {
