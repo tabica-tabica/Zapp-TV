@@ -4,6 +4,15 @@ All notable project changes should be documented in this file.
 
 Maintained by **Tabica**. Originally created by Rakjsu.
 
+## 1.4.1 - 2026-10-15
+
+### Changed
+
+- Faster Home on TVs: the live channel preview no longer waits for ~2.4 s of catalog processing
+  at startup (adult-name filter is now a single regular expression; the "recently added" rows pick
+  the newest 15 in one pass instead of sorting the whole catalog). Measured on an LG webOS 4 TV:
+  catalog → preview gap 5.5 s → 3.8 s, Home preview start 7.1 s → 6.6 s (median of 3 runs).
+
 ## 1.4.0 - 2026-10-15
 
 ### Added
