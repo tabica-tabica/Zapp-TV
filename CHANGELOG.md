@@ -4,6 +4,23 @@ All notable project changes should be documented in this file.
 
 Maintained by **Tabica**. Originally created by Rakjsu.
 
+## 1.4.0 - 2026-10-15
+
+### Added
+
+- Android TV app (`Zapp.TV_<version>_android-tv.apk`, sideload): a native WebView running the same
+  TV build as LG/Samsung from local files — D-pad focus, TV-lite mode, the remote's Back key
+  (forwarded by the app; Back on Home closes it), Leanback launcher banner, the screen stays on,
+  the TV layout at 1920 px scaled to the screen. Built and signed by CI on every tag with a fixed
+  release key, so updates install over the previous version. First version, not yet tested on a
+  device.
+
+### Fixed
+
+- Series: the card shows "LEG" instead of "N versões" when a subtitled version exists (same as
+  Movies).
+- The close (✕) icon was off-center in the search dialog and in the Live TV preview.
+
 ## 1.3.0 - 2026-10-14
 
 ### Added
