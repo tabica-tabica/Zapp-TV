@@ -70,7 +70,16 @@ async function gravarNoBanco(url: string, src: string): Promise<void> {
     }
 }
 
-function reduzir(url: string): Promise<string | null> {
+/**
+ * Miniatura WebP da logo; se não der pra fazer, a própria URL.
+ *
+ * O canvas exige a imagem com CORS (crossOrigin), e só o host que manda
+ * `Access-Control-Allow-Origin` responde: no app desktop (tauri://localhost)
+ * as logos de outros hosts (sites de logo, emissoras) eram recusadas e
+ * NENHUMA aparecia — visto em 14/10/2026. Recusou com CORS: carrega sem e
+ * usa a URL original, em tamanho cheio (sem miniatura, mas com logo).
+ */
+export function reduzir(url: string): Promise<string | null> {
     return new Promise(resolve => {
         const img = new Image();
         img.crossOrigin = 'anonymous';
@@ -81,15 +90,20 @@ function reduzir(url: string): Promise<string | null> {
                 canvas.width = l;
                 canvas.height = a;
                 const ctx = canvas.getContext('2d');
-                if (!ctx || !l) return resolve(null);
+                if (!ctx || !l) return resolve(url);
                 ctx.drawImage(img, 0, 0, l, a);
                 // WebP onde o navegador grava (LG/Tizen gravam); senão sai PNG
                 resolve(canvas.toDataURL('image/webp', 0.85));
             } catch {
-                resolve(null);
+                resolve(url);
             }
         };
-        img.onerror = () => resolve(null);
+        img.onerror = () => {
+            const semCors = new Image();
+            semCors.onload = () => resolve(url);
+            semCors.onerror = () => resolve(null);
+            semCors.src = url;
+        };
         img.src = url;
     });
 }
