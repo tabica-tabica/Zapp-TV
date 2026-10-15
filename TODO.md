@@ -18,3 +18,22 @@ pelo inspetor remoto do WebKitGTK (`WEBKIT_INSPECTOR_HTTP_SERVER`):
       the configured scope". Escopo agora `http://*:*` / `https://*:*`.
 - [x] Filme toca
 - [x] Logos de canal aparecem (host sem CORS cai na URL original)
+
+## Android TV — conferir num aparelho de verdade
+
+APK: workflow "Release Android TV" (tag `v*` anexa no release; à mão gera o
+artefato). Assinado com a chave de release fixa (secrets
+`ANDROID_KEYSTORE_B64`/`ANDROID_KEYSTORE_PASSWORD`; cópia local fora do repo).
+Já conferido (14/10/2026): o CI compila e assina; o bundle sobe de
+`file://` no Chromium com login, Home, D-pad, OK e o Voltar despachado
+(XF86Back) se comportando como no Tizen/LG. Sem aparelho, falta:
+
+- [ ] Instalar por sideload (adb ou app de arquivos) e abrir pelo launcher
+      (banner e ícone aparecem)
+- [ ] Layout em 1920px reduzido pra tela (viewport width=1920)
+- [ ] D-pad, OK e o Voltar físico; sair do app pela Home
+- [ ] Login no painel (sem "Load failed": página em file:// com acesso universal)
+- [ ] Prévia e player ao vivo (hls.js + MSE da WebView), filme, legendas
+- [ ] Tela não apaga durante o filme (FLAG_KEEP_SCREEN_ON)
+- [ ] Atualizar por cima da versão anterior sem perder o login (mesma chave)
+
