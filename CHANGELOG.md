@@ -4,6 +4,63 @@ All notable project changes should be documented in this file.
 
 Maintained by **Tabica**. Originally created by Rakjsu.
 
+## 1.3.0 - 2026-10-14
+
+### Added
+
+- Live TV: "Jogos" mode (no PIN). Sports channels (Premiere, ESPN, SporTV, Disney+, MAX,
+  Paramount+, DAZN…) and the "Jogos de Hoje" channel leave the main grid and live there, with a
+  bigger preview. The last sports channel watched opens straight in it. Replaces the old
+  "today's matches" panel.
+- Live TV: "Notícias" and "Infantil" toolbar filters (the channels stay in the main grid).
+- Kids profile is now an allow-list: live TV shows only well-known kids brands (Cartoon Network,
+  Cartoonito, Discovery Kids, Gloob, Nick, Nick Jr., TV Rá Tim Bum, Tooncast…) and movies/series
+  only kids categories. Before, it only hid adult content.
+- My List: export/import (🟢 or the header button) — QR pages and paste on the TV, a .json file on
+  the computer; includes the named lists. Importing merges, never replaces.
+- Movies: the subtitled "[L]" copy is now a version of the same card (like 4K): "DUB"/"LEG"
+  buttons on the details screen, dubbed copy plays by default. The card shows "LEG" when a
+  subtitled version exists, and the "Tags → LEG" filter matches whole groups.
+- Series: dubbed and "[L]"/"LEGENDADO" copies grouped the same way (only when it is a real version;
+  same-name shows without a tag stay apart — remakes).
+- Version grouping ignores "-" vs ":" subtitles, "(2022)" vs " - 2022" years and accents.
+- My List opens movies with their versions; full title as a tooltip on Movies/Series/My List cards.
+- TV performance bench (`npm run perf:tv`): drives the app over the TV's network remote and
+  measures through the inspector, with a saved baseline.
+
+### Changed
+
+- Logout ("Sair") asks for a second OK before deleting the playlist and the account.
+- Movies/Series/My List: same card size on every page, focus marked with a frame instead of
+  zooming, the same hover everywhere, the remove button in the poster's corner (away from ▶).
+- Home: rows build only what fits on screen and add cards as you move; posters load only when
+  near the screen (desktop: 46 → 25 cards and 46 → 19 images on the first screen).
+- Home: movies/series without a cover (or whose cover fails to load) are left out.
+- Live TV: a failing variant falls back to any other variant on air (higher or lower), also in
+  the Home preview and in Search.
+
+### Fixed
+
+- Desktop (Linux): live channels did not play — segments on another host with a non-standard port
+  were blocked by the HTTP scope.
+- Desktop: the Home live preview stayed black (a video that starts muted never finished its first
+  seek in WebKitGTK; muted is now volume 0 there).
+- Desktop: channel logos from hosts without CORS did not appear.
+- Layout: My List tabs collapsed to 2 px; focused card cut at the top of the grid; series without
+  a cover showed the title text in an empty box.
+- LG: the remote's Back key works again; the live stream survives Home ⇄ Live TV ⇄ player; the
+  preview shows the picture, not only audio.
+- Nick Jr. was hidden as if it were a regional copy of Nick.
+
+### Performance
+
+- TV: one shared video layer for live previews — Home ⇄ Live TV ⇄ player switch with no reload
+  (LG: from ~8 s to instant); channel change shows the channel instead of a black screen.
+- TV: hls.js light build and explicit polyfills (bundle 278 KB smaller), transmux in a worker,
+  virtualized Live TV grid on webOS, no transitions on TV builds.
+- Live: no back-buffer kept (LG renderer memory −15–20 MB); 20 s preview buffer.
+- Channel logos are shrunk once to 128 px WebP and cached (IndexedDB).
+
 ## 1.2.0 - 2026-10-11
 
 ### Added
