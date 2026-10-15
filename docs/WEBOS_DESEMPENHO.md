@@ -165,7 +165,10 @@ O que funcionou em 12/10/2026:
       categorias de VOD — `isKidsVodCategory` só aceita Infantil/Kids/
       Desenhos); voltar pro Principal pelo PIN; `perf:tv` de uma rodada;
       Minha Lista 🟢 (QR legível da sala, colar pelo teclado do celular —
-      na web já foi visto: arquivo, colar e lista vazia).
+      na web já foi visto: arquivo, colar e lista vazia); Home preguiçosa
+      (fileiras montam só o que cabe, pôster só perto da tela — no desktop
+      46 → 25 cards e 46 → 19 imagens; na LG o `loading="lazy"` não existe,
+      então ali o ganho deve ser maior: medir `home_prévia_ms` no perf:tv).
 - [ ] **Logos via serviço JS do webOS** (proposto em 14/10/2026, só LG) —
       o pacote `.ipk` pode levar, além da página, um serviço Node que roda
       na própria TV; o Node escolhe o próprio User-Agent, então o host de

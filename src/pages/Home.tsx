@@ -28,6 +28,7 @@ import { MoviePlayer } from '../components/MoviePlayer';
 import { SeriesQueuePlayer } from '../components/SeriesQueuePlayer';
 import { buildEpisodeQueue, type EpisodeQueue } from '../services/seriesPlayback';
 import { HomeCard } from './HomeCard';
+import { FileiraPreguicosa } from './FileiraPreguicosa';
 import { HomeChannelPreview, HomeChannelCoverRow } from './HomeChannelPreview';
 import './Home.css';
 import { accountService } from '../services/accountService';
@@ -796,8 +797,8 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 {continueItems.length > 0 && (
                     <div id="home-continue" className="content-section">
                         <h2 className="section-title"><FaPlay className="section-title-icon" /> {t('home_continue_watching')}</h2>
-                        <div className="content-row">
-                            {continueItems.map((item, index) => {
+                        <FileiraPreguicosa itens={continueItems} focado={focusedSection === sectionIndex('continue') ? focusedItem : -1}>
+                            {(item, index) => {
                                 const isMovie = item.kind === 'movie';
                                 const title = isMovie ? item.progress.name : item.progress.seriesName;
                                 const subtitle = isMovie
@@ -826,8 +827,8 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                                         )}
                                     />
                                 );
-                            })}
-                        </div>
+                            }}
+                        </FileiraPreguicosa>
                     </div>
                 )}
 
@@ -837,8 +838,8 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 {seedRow && (
                     <div id="home-seed" className="content-section">
                         <h2 className="section-title"><FaPlay className="section-title-icon" /> {t('home_because_watched').replace('{name}', seedRow.nome)}</h2>
-                        <div className="content-row">
-                            {seedRow.itens.map((item, index) => (
+                        <FileiraPreguicosa itens={seedRow.itens} focado={focusedSection === sectionIndex('seed') ? focusedItem : -1}>
+                            {(item, index) => (
                                 <HomeCard
                                 onImageError={descartarCapa}
                                     key={getKey(item)}
@@ -850,8 +851,8 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                                     fallbackIcon={FaFilm}
                                     onSelect={openDetail}
                                 />
-                            ))}
-                        </div>
+                            )}
+                        </FileiraPreguicosa>
                     </div>
                 )}
 
@@ -859,8 +860,8 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 {topItems.length > 0 && (
                     <div id="home-top10" className="content-section">
                         <h2 className="section-title"><FaListOl className="section-title-icon" /> {t('home_top10')}</h2>
-                        <div className="content-row">
-                            {topItems.map((item, index) => (
+                        <FileiraPreguicosa itens={topItems} focado={focusedSection === sectionIndex('top10') ? focusedItem : -1}>
+                            {(item, index) => (
                                 <HomeCard
                                 onImageError={descartarCapa}
                                     key={getKey(item)}
@@ -873,8 +874,8 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                                     cardClassName="top10-card"
                                     rankBadge={<span className="top10-rank">{index + 1}</span>}
                                 />
-                            ))}
-                        </div>
+                            )}
+                        </FileiraPreguicosa>
                     </div>
                 )}
 
@@ -882,8 +883,8 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 {newEpisodesList.length > 0 && (
                     <div id="home-newepisodes" className="content-section">
                         <h2 className="section-title"><FaCalendarPlus className="section-title-icon" /> {t('home_new_episodes')}</h2>
-                        <div className="content-row">
-                            {newEpisodesList.map((s, index) => (
+                        <FileiraPreguicosa itens={newEpisodesList} focado={focusedSection === sectionIndex('newepisodes') ? focusedItem : -1}>
+                            {(s, index) => (
                                 <HomeCard
                                 onImageError={descartarCapa}
                                     key={s.series_id}
@@ -896,8 +897,8 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                                     onSelect={handleSelectNewEpisode}
                                     imageOverlay={<div className="new-episodes-badge">{t('home_new_episodes_badge')}</div>}
                                 />
-                            ))}
-                        </div>
+                            )}
+                        </FileiraPreguicosa>
                     </div>
                 )}
 
@@ -907,8 +908,8 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 {recommendations.length > 0 && (
                 <div id="home-recommendations" className="content-section">
                     <h2 className="section-title"><FaLightbulb className="section-title-icon" /> {t('home_recommended')}</h2>
-                    <div className="content-row">
-                        {recommendations.map((item, index) => (
+                    <FileiraPreguicosa itens={recommendations} focado={focusedSection === sectionIndex('recommendations') ? focusedItem : -1}>
+                        {(item, index) => (
                             <HomeCard
                                 onImageError={descartarCapa}
                                 key={getKey(item)}
@@ -920,8 +921,8 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                                 fallbackIcon={FaFilm}
                                 onSelect={openDetail}
                             />
-                        ))}
-                    </div>
+                        )}
+                    </FileiraPreguicosa>
                 </div>
                 )}
 
@@ -929,8 +930,8 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 {recentSeries.length > 0 && (
                 <div id="home-series" className="content-section">
                     <h2 className="section-title"><FaCalendarPlus className="section-title-icon" /> {t('home_recent_series')}</h2>
-                    <div className="content-row">
-                        {recentSeries.map((series, index) => (
+                    <FileiraPreguicosa itens={recentSeries} focado={focusedSection === sectionIndex('series') ? focusedItem : -1}>
+                        {(series, index) => (
                             <HomeCard
                                 onImageError={descartarCapa}
                                 key={series.series_id}
@@ -942,8 +943,8 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                                 fallbackIcon={FaTv}
                                 onSelect={openDetail}
                             />
-                        ))}
-                    </div>
+                        )}
+                    </FileiraPreguicosa>
                 </div>
 
                 )}
@@ -952,8 +953,8 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                 {recentMovies.length > 0 && (
                 <div id="home-movies" className="content-section">
                     <h2 className="section-title"><FaFilm className="section-title-icon" /> {t('home_recent_movies')}</h2>
-                    <div className="content-row">
-                        {recentMovies.map((movie, index) => (
+                    <FileiraPreguicosa itens={recentMovies} focado={focusedSection === sectionIndex('movies') ? focusedItem : -1}>
+                        {(movie, index) => (
                             <HomeCard
                                 onImageError={descartarCapa}
                                 key={movie.stream_id}
@@ -965,8 +966,8 @@ export function Home({ onNavigate , onRequestExit, onCancelExit}: HomeProps) {
                                 fallbackIcon={FaFilm}
                                 onSelect={openDetail}
                             />
-                        ))}
-                    </div>
+                        )}
+                    </FileiraPreguicosa>
                 </div>
                 )}
             </section>

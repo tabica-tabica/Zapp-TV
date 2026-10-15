@@ -3,7 +3,8 @@
 // `useCallback` estável POR FILEIRA (não por card) e `item` vem direto do
 // array de estado (referência estável entre renders não relacionados).
 
-import { memo, useState, type ReactNode } from 'react';
+import { memo, useRef, useState, type ReactNode } from 'react';
+import { usePertoDaTela } from '../hooks/usePertoDaTela';
 import type { IconType } from 'react-icons';
 import { posterThumb } from '../services/tmdb';
 
@@ -32,8 +33,12 @@ function HomeCardImpl<T>({
     item, focused, title, image, fallbackIcon: FallbackIcon, onSelect, onImageError, cardClassName, rankBadge, imageOverlay, subtitle,
 }: HomeCardProps<T>) {
     const [broken, setBroken] = useState(false);
+    // Pôster só pedido quando o card chega perto da tela (ver usePertoDaTela)
+    const ref = useRef<HTMLButtonElement>(null);
+    const perto = usePertoDaTela(ref);
     return (
         <button
+            ref={ref}
             className={['content-card', cardClassName, focused ? 'tv-focused' : ''].filter(Boolean).join(' ')}
             onClick={() => onSelect(item)}
         >
@@ -43,7 +48,7 @@ function HomeCardImpl<T>({
                     <div className="card-image-fallback">
                         {FallbackIcon && <FallbackIcon />}
                     </div>
-                ) : (
+                ) : !perto ? null : (
                     <img
                         decoding="async"
                         loading="lazy"
