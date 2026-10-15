@@ -10,7 +10,7 @@ import type Hls from 'hls.js';
 import { useHls } from '../hooks/useHls';
 import { LIVE_START_TIMEOUT_MS, type StreamErrorCause } from '../services/playerDecisions';
 import { pipelineEstacionado } from '../services/pipelineEstacionado';
-import { naDesktop } from '../services/platformApp';
+import { naDesktop, aplicarMudo } from '../services/platformApp';
 import { liveHealth } from '../services/liveHealth';
 import { acompanhar, criarQuadro, desmontar, montar, quadroDe } from '../services/camadaVideo';
 
@@ -167,7 +167,7 @@ export function LiveChannelPreview({ src, onError, muted = true, onResolvedUrl, 
             // O player trocou a classe (tela cheia); o React não volta a mexer
             // nela porque a prop não mudou
             video.className = 'live-channel-preview-video';
-            video.muted = muted;
+            aplicarMudo(video, muted);
             entregueRef.current = false;
             retomar(pipeline.hls);
             return true;
@@ -177,7 +177,7 @@ export function LiveChannelPreview({ src, onError, muted = true, onResolvedUrl, 
     // `muted` do React só vale na montagem; o botão de mudo muda depois
     useEffect(() => {
         const video = videoRef.current;
-        if (video) video.muted = muted;
+        if (video) aplicarMudo(video, muted);
     }, [muted]);
 
     // Autoplay COM som pode ser barrado pelo navegador (sem gesto do usuário):

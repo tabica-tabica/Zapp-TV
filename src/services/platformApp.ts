@@ -52,3 +52,19 @@ export function abrirExterno(url: string): boolean {
     if (plataforma === 'tauri') return tauriApp.abrirExterno(url);
     return false;
 }
+
+/**
+ * Mudo da prévia. No desktop (Tauri = WebKitGTK/GStreamer) um <video> que
+ * COMEÇA mudo trava no seek inicial do hls.js: `seeking` pra sempre,
+ * readyState 1, buffer cheio e nada toca — a prévia da Home (sempre muda)
+ * nunca subia, e a da TV ao Vivo travava ao trocar de canal com o Mudo
+ * ligado (visto 14/10/2026). Lá o mudo vira volume 0, com som "ligado".
+ */
+export function aplicarMudo(video: HTMLVideoElement, mudo: boolean): void {
+    if (naDesktop()) {
+        video.muted = false;
+        video.volume = mudo ? 0 : 1;
+        return;
+    }
+    video.muted = mudo;
+}
