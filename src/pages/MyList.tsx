@@ -89,7 +89,7 @@ export function MyList({ onNavigate }: MyListProps) {
     // junto, o realce sai da area visivel e o usuario navega as cegas
     const destinosRef = useRef<HTMLDivElement>(null);
     const abasRef = useRef<HTMLDivElement>(null);
-    const { containerRef: gridContainerRef, columns, columnWidth } = useMeasuredColumns({
+    const { containerRef: gridContainerRef, columns, columnWidth, larguraCard } = useMeasuredColumns({
         cardWidth: CARD_WIDTH, gap: CARD_GAP, minColumns: 3, maxColumns: 10, tamanhoFixo: true,
     });
     const [removingId, setRemovingId] = useState<string | null>(null);
@@ -409,7 +409,7 @@ export function MyList({ onNavigate }: MyListProps) {
 
     // Altura da linha: pôster 2:3 (a mesma proporção do CSS) + a faixa de
     // título/nota embaixo do card + o gap visual entre linhas.
-    const cardHeight = Math.round((columnWidth - CARD_GAP) * 1.5) + CARD_INFO_HEIGHT + CARD_GAP;
+    const cardHeight = Math.round(larguraCard * 1.5) + CARD_INFO_HEIGHT + CARD_GAP;
     const rowCount = Math.max(1, Math.ceil(displayItems.length / columns));
     const myListCellProps = useMemo<MyListCellProps>(() => ({
         items: displayItems,
@@ -641,7 +641,7 @@ export function MyList({ onNavigate }: MyListProps) {
                     rowCount={rowCount}
                     rowHeight={cardHeight}
                     overscanCount={1}
-                    style={{ height: '100%', width: '100%' }}
+                    style={{ height: '100%', width: '100%', ['--card-largura-max' as string]: `${larguraCard}px` }}
                 />
             </div>
 

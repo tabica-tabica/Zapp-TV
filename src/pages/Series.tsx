@@ -88,7 +88,7 @@ export function Series() {
     const [showModal, setShowModal] = useState(false);
     const [seriesQueue, setSeriesQueue] = useState<EpisodeQueue | null>(null);
     const { isBroken, markBroken } = useBrokenImages<number>();
-    const { containerRef: scrollContainerRef, columns, columnWidth } = useMeasuredColumns({
+    const { containerRef: scrollContainerRef, columns, columnWidth, larguraCard } = useMeasuredColumns({
         cardWidth: CARD_WIDTH, gap: CARD_GAP, minColumns: 3, maxColumns: 10, tamanhoFixo: true,
     });
     const {
@@ -412,7 +412,7 @@ export function Series() {
     }, [followedSeriesIds, nowMs]);
 
     // Altura da linha: pôster 2:3 + a faixa de título + o gap entre linhas.
-    const seriesCardHeight = Math.round((columnWidth - CARD_GAP) * 1.5) + CARD_INFO_HEIGHT + CARD_GAP;
+    const seriesCardHeight = Math.round(larguraCard * 1.5) + CARD_INFO_HEIGHT + CARD_GAP;
     const seriesRowCount = Math.max(1, Math.ceil(filteredSeries.length / columns));
     const seriesCellProps = useMemo<SeriesCellProps>(() => ({
         items: filteredSeries,
@@ -637,7 +637,7 @@ export function Series() {
                         rowCount={seriesRowCount}
                         rowHeight={seriesCardHeight}
                         overscanCount={1}
-                        style={{ height: '100%', width: '100%' }}
+                        style={{ height: '100%', width: '100%', ['--card-largura-max' as string]: `${larguraCard}px` }}
                     />
                 )}
             </div>

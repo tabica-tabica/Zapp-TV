@@ -25,10 +25,12 @@ interface UseMeasuredColumnsOptions {
     minColumns?: number;
     maxColumns?: number;
     /**
-     * Card do MESMO tamanho em toda página (pitch fixo = card + gap) em vez
-     * de esticar as colunas pra preencher: com áreas de grade de larguras
-     * diferentes, a Minha Lista tinha pôster de 206px e Filmes/Séries de 188px.
-     * A sobra fica à direita.
+     * Card do MESMO tamanho em toda página: com áreas de grade de larguras
+     * diferentes, esticar o card dava pôster de 206px na Minha Lista e 188px
+     * em Filmes/Séries. Aqui a COLUNA estica (a grade ocupa a largura toda,
+     * alinhada ao cabeçalho) e o card fica em `larguraCard`, centrado nela —
+     * a sobra vira folga entre os cards. A página limita o card com
+     * `--card-largura-max` e calcula a altura da linha por `larguraCard`.
      */
     tamanhoFixo?: boolean;
 }
@@ -71,9 +73,12 @@ export function useMeasuredColumns<T extends HTMLElement = HTMLDivElement>(
     // célula inteira, gap incluído. O card visível fica `pitch - gap`
     // (CatalogCard/SeriesCard cuidam disso via CSS). A última coluna sobra um
     // resto de pixel não usado na borda direita — cosmético, não afeta a nav.
-    const columnWidth = containerWidth > 0 && !tamanhoFixo
+    const columnWidth = containerWidth > 0
         ? Math.floor(containerWidth / columns)
         : cardWidth + gap;
+    // Largura VISÍVEL do card: fixa com tamanhoFixo (menor só se a coluna
+    // não couber, com minColumns numa janela estreita); senão, a coluna toda
+    const larguraCard = tamanhoFixo ? Math.min(cardWidth, columnWidth - gap) : columnWidth - gap;
 
-    return { containerRef, columns, columnWidth };
+    return { containerRef, columns, columnWidth, larguraCard };
 }

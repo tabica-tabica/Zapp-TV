@@ -96,7 +96,7 @@ export function Movies() {
     // continua sendo o do grupo, que é a chave de progresso/favoritos
     const [playingMovie, setPlayingMovie] = useState<(VODStream & { playStreamId?: number }) | null>(null);
     const { isBroken, markBroken } = useBrokenImages<number>();
-    const { containerRef: scrollContainerRef, columns, columnWidth } = useMeasuredColumns({
+    const { containerRef: scrollContainerRef, columns, columnWidth, larguraCard } = useMeasuredColumns({
         cardWidth: CARD_WIDTH, gap: CARD_GAP, minColumns: 3, maxColumns: 10, tamanhoFixo: true,
     });
     // Painel de gêneros (todos de uma vez)
@@ -616,7 +616,7 @@ export function Movies() {
     }, [navEnabled, focusArea, handlePageSkip]);
 
     // Altura da linha: pôster 2:3 + a faixa de título + o gap entre linhas.
-    const movieCardHeight = Math.round((columnWidth - CARD_GAP) * 1.5) + CARD_INFO_HEIGHT + CARD_GAP;
+    const movieCardHeight = Math.round(larguraCard * 1.5) + CARD_INFO_HEIGHT + CARD_GAP;
     const movieRowCount = Math.max(1, Math.ceil(filteredStreams.length / columns));
     const movieCellProps = useMemo<MovieCellProps>(() => ({
         items: filteredStreams,
@@ -952,7 +952,7 @@ export function Movies() {
                         rowCount={movieRowCount}
                         rowHeight={movieCardHeight}
                         overscanCount={1}
-                        style={{ height: '100%', width: '100%' }}
+                        style={{ height: '100%', width: '100%', ['--card-largura-max' as string]: `${larguraCard}px` }}
                     />
                 )}
             </div>
