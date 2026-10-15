@@ -12,7 +12,7 @@ import { useTVNavigation } from '../hooks/useTVNavigation';
 import './SecretList.css';
 
 /** TV não baixa nem escolhe arquivo: lá só o QR. */
-const TEM_ARQUIVO = __BUILD_TARGET__ !== 'tizen' && __BUILD_TARGET__ !== 'webos';
+const TEM_ARQUIVO = __BUILD_TARGET__ !== 'tizen' && __BUILD_TARGET__ !== 'webos' && __BUILD_TARGET__ !== 'android';
 
 const resumo = (r: Pick<ResultadoMinhaLista, 'novos' | 'listas'>) =>
     `Importado: ${r.novos} item(ns) novo(s)${r.listas ? `, ${r.listas} lista(s) criada(s)` : ''}.`;

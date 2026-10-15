@@ -100,3 +100,16 @@ CLAUDE.md
 
 # Bancada de desempenho na TV (chave de pareamento, fotos, resultados)
 .tv-perf/
+
+# Android TV: bundle e ícones copiados por scripts/build-android.mjs, e o que
+# o Gradle gera
+android/app/src/main/assets/
+android/app/src/main/res/mipmap-*/
+android/app/src/main/res/values/ic_launcher_background.xml
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+*.p12
+*.keystore
+*.jks

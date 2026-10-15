@@ -1,0 +1,54 @@
+import groovy.json.JsonSlurper
+
+plugins {
+    id 'com.android.application'
+}
+
+// Versão: package.json manda (mesmo esquema do appinfo.json/config.xml).
+// versionCode cresce com a versão: 1.3.0 → 10300.
+def pkg = new JsonSlurper().parse(file('../../package.json'))
+def partes = pkg.version.tokenize('.').collect { it.replaceAll(/\D.*/, '') as int }
+def codigo = partes[0] * 10000 + partes[1] * 100 + partes[2]
+
+// Assinatura de release: keystore PKCS12 vinda do CI (secrets) por variável de
+// ambiente. Sem ela, o release sai assinado com a chave de debug (instala por
+// sideload, mas atualizar exige a MESMA chave — por isso o CI usa a fixa).
+def keystorePath = System.getenv('ANDROID_KEYSTORE_PATH')
+
+android {
+    namespace 'com.tabica.zapptv'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.tabica.zapptv'
+        // Android 5 (Lollipop): as TV boxes mais velhas ainda em uso
+        minSdk 21
+        targetSdk 34
+        versionCode codigo
+        versionName pkg.version
+    }
+
+    signingConfigs {
+        release {
+            if (keystorePath) {
+                storeFile file(keystorePath)
+                storeType 'pkcs12'
+                storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('ANDROID_KEY_ALIAS') ?: 'zapptv'
+                keyPassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig keystorePath ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}

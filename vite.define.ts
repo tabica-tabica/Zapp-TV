@@ -4,7 +4,7 @@
 import pkg from './package.json'
 import brand from './brand.config.mjs'
 
-export function brandDefine(target: 'web' | 'tizen' | 'webos' | 'tauri') {
+export function brandDefine(target: 'web' | 'tizen' | 'webos' | 'tauri' | 'android') {
   return {
     // Versao exposta no bundle: a tela de diagnostico (item 59) precisa
     // dizer qual build esta rodando na TV

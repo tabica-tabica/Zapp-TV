@@ -14,6 +14,7 @@
     "build:tizen": "node scripts/build-tizen.mjs",
     "build:webos": "node scripts/build-webos.mjs",
     "package:webos": "node scripts/package-webos.mjs",
+    "build:android": "node scripts/build-android.mjs",
     "install:webos": "sh scripts/install-tv.command",
     "perf:tv": "node scripts/tv-perf.mjs",
     "build:tauri:web": "node scripts/sync-brand.mjs && tsc -b && vite build --config vite.tauri.config.ts",

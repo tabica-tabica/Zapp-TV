@@ -1,0 +1,18 @@
+// App Android TV: uma WebView nativa rodando o bundle de TV (dist/android),
+// copiado pra app/src/main/assets/www por scripts/build-android.mjs.
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+rootProject.name = 'ZappTV'
+include ':app'

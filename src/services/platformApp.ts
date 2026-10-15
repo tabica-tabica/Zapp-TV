@@ -5,18 +5,20 @@
 import * as tizenApp from './tizenApp';
 import * as webosApp from './webosApp';
 import * as tauriApp from './tauriApp';
+import * as androidApp from './androidApp';
 
-function alvo(): 'tizen' | 'webos' | 'tauri' | null {
+function alvo(): 'tizen' | 'webos' | 'tauri' | 'android' | null {
     if (typeof __BUILD_TARGET__ !== 'string') return null;
     if (__BUILD_TARGET__ === 'tizen') return 'tizen';
     if (__BUILD_TARGET__ === 'webos') return 'webos';
     if (__BUILD_TARGET__ === 'tauri') return 'tauri';
+    if (__BUILD_TARGET__ === 'android') return 'android';
     return null;
 }
 
-/** Rodando num build de TV (Tizen ou webOS) — não no navegador nem no desktop. */
+/** Rodando num build de TV (Tizen, webOS ou Android TV) — não no navegador nem no desktop. */
 export function naTV(): boolean {
-    return alvo() === 'tizen' || alvo() === 'webos';
+    return alvo() === 'tizen' || alvo() === 'webos' || alvo() === 'android';
 }
 
 /** Rodando no build da LG (webOS). */
@@ -34,6 +36,7 @@ export function exitApp(): boolean {
     if (plataforma === 'tizen') return tizenApp.exitApp();
     if (plataforma === 'webos') return webosApp.exitApp();
     if (plataforma === 'tauri') return tauriApp.exitApp();
+    if (plataforma === 'android') return androidApp.exitApp();
     return false;
 }
 
@@ -42,6 +45,7 @@ export function podeAbrirExterno(): boolean {
     if (plataforma === 'tizen') return tizenApp.podeAbrirExterno();
     if (plataforma === 'webos') return webosApp.podeAbrirExterno();
     if (plataforma === 'tauri') return tauriApp.podeAbrirExterno();
+    if (plataforma === 'android') return androidApp.podeAbrirExterno();
     return false;
 }
 
@@ -50,6 +54,7 @@ export function abrirExterno(url: string): boolean {
     if (plataforma === 'tizen') return tizenApp.abrirExterno(url);
     if (plataforma === 'webos') return webosApp.abrirExterno(url);
     if (plataforma === 'tauri') return tauriApp.abrirExterno(url);
+    if (plataforma === 'android') return androidApp.abrirExterno(url);
     return false;
 }
 
