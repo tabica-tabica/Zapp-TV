@@ -16,6 +16,8 @@ export interface MovieCardProps {
     broken: boolean;
     isNew: boolean;
     versionCount: number;
+    /** Alguma OUTRA versão do grupo é legendada: o selo diz "LEG" em vez de "N versões" */
+    temLegendada?: boolean;
     onSelect: (movie: VODStream) => void;
     onImageError: (id: number) => void;
     /** Style absoluto de posicionamento que o react-window injeta na célula. */
@@ -24,7 +26,7 @@ export interface MovieCardProps {
 }
 
 function MovieCardImpl({
-    movie, focused, selected, broken, isNew, versionCount, onSelect, onImageError, style, gap = 16,
+    movie, focused, selected, broken, isNew, versionCount, temLegendada = false, onSelect, onImageError, style, gap = 16,
 }: MovieCardProps) {
     // Chamado uma vez só (antes cada card chamava tagsOf duas vezes — uma
     // pra decidir SE mostra o selo, outra pra montar o texto dele).
@@ -40,6 +42,8 @@ function MovieCardImpl({
                 ].filter(Boolean).join(' ')}
                 style={{ '--movie-card-gap': `${gap}px` } as CSSProperties}
                 onClick={() => onSelect(movie)}
+                // Título inteiro: o do card corta com reticências
+                title={movie.name}
             >
                 <div className="movie-poster">
                     {/* Sem capa: <img src=""> não dispara onError (texto alternativo numa caixa vazia) */}
@@ -56,7 +60,7 @@ function MovieCardImpl({
                     )}
                     {isNew && <div className="new-badge">NOVO</div>}
                     {versionCount > 1 && (
-                        <div className="version-badge">{versionCount} versões</div>
+                        <div className="version-badge">{temLegendada ? 'LEG' : `${versionCount} versões`}</div>
                     )}
                     {tags.length > 0 && (
                         <div className="tag-badge">{tags.slice(0, 2).join(' ')}</div>

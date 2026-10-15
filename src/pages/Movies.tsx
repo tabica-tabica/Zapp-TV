@@ -27,7 +27,7 @@ import {
     catalogFilters, matchesFilters, normalizeSearch, fuzzyMatches,
     DECADES, MIN_RATINGS, type CatalogFilters,
 } from '../services/catalogExtras';
-import { groupVodVersions, hasTag, rotulosDasVersoes, ALL_VOD_TAGS, type VodTag } from '../services/vodVariants';
+import { groupVodVersions, hasTag, rotulosDasVersoes, grupoTemLegendada, ALL_VOD_TAGS, type VodTag } from '../services/vodVariants';
 // rotulosDasVersoes é usado nos botões de versão da ficha (abaixo)
 import { storage } from '../services/storage';
 import { kidsFilter, isAdultCategoryName } from '../services/kidsFilter';
@@ -72,6 +72,7 @@ function MovieGridCell({
             broken={isBroken(movie.stream_id)}
             isNew={isRecentlyAdded(movie, nowMs)}
             versionCount={versionsOf.get(String(movie.stream_id))?.length ?? 0}
+            temLegendada={!!versionsOf.get(String(movie.stream_id))?.some(v => v !== movie && hasTag(v.name, 'LEG'))}
             onSelect={onSelect}
             onImageError={onImageError}
             style={style}
@@ -265,6 +266,7 @@ export function Movies() {
     // ORDEM IMPORTA: filtra PRIMEIRO, agrupa DEPOIS. Agrupar antes fazia o
     // filtro olhar só o representante — o chip DUB escondia o filme inteiro
     // mesmo existindo versão DUB no grupo, e categorias perdiam títulos.
+    const tagsPorItem = useMemo(() => activeTags.filter(tag => tag !== 'LEG'), [activeTags]);
     const matchingStreams = useMemo(() => {
         const query = normalizeSearch(searchQuery);
         const hasFilters = filters.decade > 0 || filters.minRating > 0;
@@ -275,8 +277,9 @@ export function Movies() {
             // Adulto só no modo adulto, e o modo adulto só tem adulto (inclui o
             // filme de nome adulto fora de categoria adulta)
             if (ehFilmeAdulto(stream) !== modoAdulto) return false;
-            // Chips de tag: item precisa ter TODAS as tags marcadas
-            if (activeTags.length > 0 && !activeTags.every(tag => hasTag(stream.name || '', tag))) return false;
+            // Chips de tag: item precisa ter TODAS as tags marcadas. LEG não
+            // filtra aqui, item a item: vale pelo GRUPO, depois de agrupar
+            if (tagsPorItem.length > 0 && !tagsPorItem.every(tag => hasTag(stream.name || '', tag))) return false;
             if (hasFilters && !matchesFilters(stream, filters)) return false;
             if (genero && !modoAdulto && generoPorCategoria.get(stream.category_id) !== genero) return false;
             return true;
@@ -285,13 +288,20 @@ export function Movies() {
             list = list.filter(stream => !completedMovieIds.has(String(stream.stream_id)));
         }
         return list;
-    }, [streams, searchQuery, selectedCategory, completedMovieIds, activeTags, filters, genero, generoPorCategoria, ehFilmeAdulto, modoAdulto]);
+    }, [streams, searchQuery, selectedCategory, completedMovieIds, tagsPorItem, filters, genero, generoPorCategoria, ehFilmeAdulto, modoAdulto]);
 
     // Agrupa versões do mesmo filme (DUB/LEG/4K) sobre a lista JÁ filtrada
-    const { groups: groupedStreams, versionsOf } = useMemo(
-        () => groupVodVersions(matchingStreams),
-        [matchingStreams]
-    );
+    // Chip LEG: filme com versão legendada no grupo (o card segue sendo o
+    // dublado, com a legendada no botão da ficha) ou legendado sozinho. Antes
+    // filtrava item a item e o card virava só a cópia [L], sem a dublada.
+    const { groups: groupedStreams, versionsOf } = useMemo(() => {
+        const agrupado = groupVodVersions(matchingStreams);
+        if (!activeTags.includes('LEG')) return agrupado;
+        return {
+            ...agrupado,
+            groups: agrupado.groups.filter(g => grupoTemLegendada(g, agrupado.versionsOf.get(String(g.stream_id)))),
+        };
+    }, [matchingStreams, activeTags]);
 
     // Ordenação roda por mudança de modo/dados; o filtro já aconteceu acima
     // O filtro de letra é uma lente sobre a lista ATUAL: buscar, trocar de

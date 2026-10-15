@@ -19,6 +19,9 @@ import { MoviePlayer } from '../components/MoviePlayer';
 import { SeriesQueuePlayer } from '../components/SeriesQueuePlayer';
 import { CatalogCard } from '../components/CatalogCard/CatalogCard';
 import { buildEpisodeQueue, type EpisodeQueue } from '../services/seriesPlayback';
+import { api } from '../services/api';
+import { groupVodVersions, rotulosDasVersoes } from '../services/vodVariants';
+import type { VODStream } from '../types';
 import './MyList.css';
 
 interface MyListProps {
@@ -95,7 +98,27 @@ export function MyList({ onNavigate }: MyListProps) {
 
     // Playback / modal
     const [modalItem, setModalItem] = useState<WatchLaterItem | null>(null);
-    const [playingMovie, setPlayingMovie] = useState<WatchLaterItem | null>(null);
+    // streamId: a versão escolhida na ficha (o progresso fica no id do item)
+    const [playingMovie, setPlayingMovie] = useState<(WatchLaterItem & { streamId?: number }) | null>(null);
+    // Grupo de versões de cada filme (dublado, [L], 4K...), por id de QUALQUER
+    // membro: o item salvo pode ser a legendada, vinda da Busca ou da Home.
+    // Mesmo agrupamento da página Filmes.
+    const [gruposDeFilme, setGruposDeFilme] = useState<Map<string, VODStream[]>>(() => new Map());
+    const temFilme = items.some(item => item.type === 'movie') || listas.some(l => l.itens.some(item => item.type === 'movie'));
+    useEffect(() => {
+        if (!temFilme || kidsActive) return;
+        let vivo = true;
+        // Catálogo do cache em memória do api (a página Filmes já baixou)
+        api.getVODStreams().then(filmes => {
+            if (!vivo) return;
+            const porMembro = new Map<string, VODStream[]>();
+            for (const grupo of groupVodVersions(filmes).versionsOf.values()) {
+                for (const filme of grupo) porMembro.set(String(filme.stream_id), grupo);
+            }
+            setGruposDeFilme(porMembro);
+        }).catch(() => { /* sem catálogo: a ficha abre sem versões, como antes */ });
+        return () => { vivo = false; };
+    }, [temFilme, kidsActive]);
     const [seriesQueue, setSeriesQueue] = useState<EpisodeQueue | null>(null);
 
     // Focus states for TV navigation
@@ -640,6 +663,17 @@ export function MyList({ onNavigate }: MyListProps) {
                     onClose={() => { setModalItem(null); loadItems(); }}
                     contentId={modalItem.id}
                     contentType={modalItem.type === 'series' ? 'series' : 'movie'}
+                    versions={(() => {
+                        const grupo = modalItem.type === 'movie' ? gruposDeFilme.get(modalItem.id) ?? [] : [];
+                        const rotulos = rotulosDasVersoes(grupo.map(v => v.name));
+                        return grupo.map((v, i) => ({ id: String(v.stream_id), label: rotulos[i] }));
+                    })()}
+                    onSelectVersion={(versionId) => {
+                        const versao = gruposDeFilme.get(modalItem.id)?.find(v => String(v.stream_id) === versionId);
+                        if (!versao) return;
+                        setPlayingMovie({ ...modalItem, container: versao.container_extension || modalItem.container, streamId: Number(versao.stream_id) });
+                        setModalItem(null);
+                    }}
                     contentData={{
                         name: modalItem.title,
                         cover: modalItem.poster || '',
@@ -664,6 +698,7 @@ export function MyList({ onNavigate }: MyListProps) {
                     title={playingMovie.title}
                     poster={playingMovie.poster}
                     container={playingMovie.container}
+                    streamId={playingMovie.streamId}
                     onClose={() => setPlayingMovie(null)}
                 />
             )}

@@ -60,6 +60,7 @@ function CatalogCardImpl({
                 ].filter(Boolean).join(' ')}
                 style={{ '--catalog-card-gap': `${gap}px`, '--catalog-card-accent': accentRgb } as CSSProperties}
                 onClick={() => onSelect(item)}
+                title={item.title}
             >
                 <div className="catalog-card-poster">
                     {item.poster ? (

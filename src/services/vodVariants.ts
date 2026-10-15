@@ -157,3 +157,12 @@ export function rotulosDasVersoes(nomes: readonly string[]): string[] {
         return n > 1 ? `${rotulo} ${n}` : rotulo;
     });
 }
+
+/**
+ * Alguma versão do card é legendada? Vale pro grupo inteiro (dublada + [L])
+ * e pro legendado sozinho. É o que o chip LEG de Filmes filtra e o que troca
+ * o selo "N versões" por "LEG".
+ */
+export function grupoTemLegendada<T extends VariantableItem>(card: T, versoes: readonly T[] | undefined): boolean {
+    return (versoes ?? [card]).some(v => hasTag(v.name || '', 'LEG'));
+}

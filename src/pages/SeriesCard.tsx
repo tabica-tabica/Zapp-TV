@@ -40,6 +40,7 @@ function SeriesCardImpl({
                 ].filter(Boolean).join(' ')}
                 style={{ '--series-card-gap': `${gap}px` } as CSSProperties}
                 onClick={() => onSelect(item)}
+                title={item.name}
             >
                 <div className="series-poster">
                     {/* Sem capa: <img src=""> não dispara onError e o WebKit

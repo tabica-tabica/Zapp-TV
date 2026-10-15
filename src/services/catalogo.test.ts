@@ -5,7 +5,7 @@
 // tem pelo menos um caso que JÁ QUEBROU em produção — estão marcados.
 
 import { describe, it, expect } from 'vitest';
-import { versionBaseName, groupVodVersions, versionLabel, tagsOf, rotulosDasVersoes } from './vodVariants';
+import { versionBaseName, groupVodVersions, versionLabel, tagsOf, rotulosDasVersoes, grupoTemLegendada } from './vodVariants';
 import { isRadioChannel } from './liveDiscovery';
 import { fuzzyMatches, normalizeSearch, isRecentlyAdded } from './catalogExtras';
 import { isAdultCategoryName } from './kidsFilter';
@@ -140,6 +140,17 @@ describe('legendado "[L]" do painel (14/10/2026)', () => {
         const { groups, versionsOf } = groupVodVersions(series, s => s.series_id, true);
         expect(groups).toHaveLength(5);
         expect(versionsOf.size).toBe(0);
+    });
+
+    it('chip LEG: vale pelo grupo (dublada + [L]) e pelo legendado sozinho', () => {
+        const { groups, versionsOf } = groupVodVersions([
+            filme('Alien (1979)', 1), filme('Alien (1979) [L]', 2), // grupo com legendada
+            filme('Duna (2021)', 3), filme('Duna (2021) [4K]', 4), // grupo sem
+            filme('Só Legendado (2020) [L]', 5), filme('Dublado (2020)', 6),
+        ]);
+        const comLeg = groups.filter(g => grupoTemLegendada(g, versionsOf.get(String(g.stream_id))));
+        // O card do grupo segue sendo o dublado (abrir toca a de sempre)
+        expect(comLeg.map(g => g.stream_id)).toEqual([1, 5]);
     });
 
     it('"L" solto no título não é legendado', () => {
