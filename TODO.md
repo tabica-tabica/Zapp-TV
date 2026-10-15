@@ -1,5 +1,30 @@
 # TODO
 
+## Pendências gerais (15/10/2026)
+
+- [ ] **Release v1.4.0**: o workflow do desktop ainda rodava; quando terminar,
+      anexar `com.tabica.zapptv_1.4.0_all.ipk` e `zapp-tv-lg-1.4.0.zip`
+      (`npm run package:webos` → `dist/ipk`) e pôr o trecho 1.4.0 do
+      CHANGELOG como texto do release (o APK do Android TV já se anexa
+      sozinho).
+- [ ] **Painel fora do ar desta rede** (15/10/2026): o DNS do provedor de
+      internet não resolve o nome do painel (o DNS público resolve) e nem o
+      servidor do painel nem o de segmentos respondem em porta nenhuma — a
+      rota morre dentro da rede do provedor de internet. Pode ser o painel
+      fora/trocando de servidor (os registros DNS mudaram no mesmo dia) ou
+      bloqueio do provedor de internet. Conferir de outra rede (celular nos
+      dados móveis abrindo `/player_api.php` do painel): qualquer resposta =
+      bloqueio aqui.
+- [ ] **Com o painel de volta, conferir no app desktop**: selo "LEG" nas
+      séries (ex.: Bleach) e o ✕ centrado na busca e na ficha da TV ao Vivo
+      — conferidos só na web, com catálogo real num painel falso local.
+- [ ] **Faixa escura de 80px** entre a sidebar e o conteúdo na Home e em
+      Filmes (a Minha Lista não tem) — visto no desktop; não corrigido.
+- [ ] **Backup da chave de assinatura do Android**: `~/.config/zapp-tv/`
+      (`android-release.p12` + `android-release.senha`; também nos secrets
+      `ANDROID_KEYSTORE_B64`/`ANDROID_KEYSTORE_PASSWORD`). Perdida, nenhum APK
+      novo atualiza o instalado (desinstalar apaga o login).
+
 ## TV (webOS/Tizen)
 
 A lista de pendências da TV mora na seção 4 de
