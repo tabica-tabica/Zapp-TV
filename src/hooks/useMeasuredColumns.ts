@@ -24,10 +24,17 @@ interface UseMeasuredColumnsOptions {
     gap: number;
     minColumns?: number;
     maxColumns?: number;
+    /**
+     * Card do MESMO tamanho em toda página (pitch fixo = card + gap) em vez
+     * de esticar as colunas pra preencher: com áreas de grade de larguras
+     * diferentes, a Minha Lista tinha pôster de 206px e Filmes/Séries de 188px.
+     * A sobra fica à direita.
+     */
+    tamanhoFixo?: boolean;
 }
 
 export function useMeasuredColumns<T extends HTMLElement = HTMLDivElement>(
-    { cardWidth, gap, minColumns = 2, maxColumns = 10 }: UseMeasuredColumnsOptions
+    { cardWidth, gap, minColumns = 2, maxColumns = 10, tamanhoFixo = false }: UseMeasuredColumnsOptions
 ) {
     const [node, setNode] = useState<T | null>(null);
     const [columns, setColumns] = useState(minColumns);
@@ -64,7 +71,7 @@ export function useMeasuredColumns<T extends HTMLElement = HTMLDivElement>(
     // célula inteira, gap incluído. O card visível fica `pitch - gap`
     // (CatalogCard/SeriesCard cuidam disso via CSS). A última coluna sobra um
     // resto de pixel não usado na borda direita — cosmético, não afeta a nav.
-    const columnWidth = containerWidth > 0
+    const columnWidth = containerWidth > 0 && !tamanhoFixo
         ? Math.floor(containerWidth / columns)
         : cardWidth + gap;
 

@@ -28,7 +28,8 @@ interface MyListProps {
 // Card visível 200x(200*1.5)px + a faixa de título/nota embaixo. Gap 24px:
 // mesma folga do grid antigo. `columnWidth` que sai do useMeasuredColumns já
 // é o PITCH da coluna (o card, mais o gap) — ver o hook pra detalhe.
-const CARD_WIDTH = 200;
+// Mesmo alvo de Filmes/Séries: com 200 os pôsteres daqui ficavam maiores
+const CARD_WIDTH = 180;
 const CARD_GAP = 24;
 const CARD_INFO_HEIGHT = 76;
 
@@ -86,7 +87,7 @@ export function MyList({ onNavigate }: MyListProps) {
     const destinosRef = useRef<HTMLDivElement>(null);
     const abasRef = useRef<HTMLDivElement>(null);
     const { containerRef: gridContainerRef, columns, columnWidth } = useMeasuredColumns({
-        cardWidth: CARD_WIDTH, gap: CARD_GAP, minColumns: 3, maxColumns: 8,
+        cardWidth: CARD_WIDTH, gap: CARD_GAP, minColumns: 3, maxColumns: 10, tamanhoFixo: true,
     });
     const [removingId, setRemovingId] = useState<string | null>(null);
     const { focusZone, setFocusZone } = useFocusZone();

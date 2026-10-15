@@ -89,7 +89,7 @@ export function Series() {
     const [seriesQueue, setSeriesQueue] = useState<EpisodeQueue | null>(null);
     const { isBroken, markBroken } = useBrokenImages<number>();
     const { containerRef: scrollContainerRef, columns, columnWidth } = useMeasuredColumns({
-        cardWidth: CARD_WIDTH, gap: CARD_GAP, minColumns: 3, maxColumns: 10,
+        cardWidth: CARD_WIDTH, gap: CARD_GAP, minColumns: 3, maxColumns: 10, tamanhoFixo: true,
     });
     const {
         lockedCategoryIds, guardSelect: guardCategorySelect, pendingCategoryId,

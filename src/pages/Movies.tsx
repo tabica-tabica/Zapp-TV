@@ -96,7 +96,7 @@ export function Movies() {
     const [playingMovie, setPlayingMovie] = useState<(VODStream & { playStreamId?: number }) | null>(null);
     const { isBroken, markBroken } = useBrokenImages<number>();
     const { containerRef: scrollContainerRef, columns, columnWidth } = useMeasuredColumns({
-        cardWidth: CARD_WIDTH, gap: CARD_GAP, minColumns: 3, maxColumns: 10,
+        cardWidth: CARD_WIDTH, gap: CARD_GAP, minColumns: 3, maxColumns: 10, tamanhoFixo: true,
     });
     // Painel de gêneros (todos de uma vez)
     const [generoPickerOpen, setGeneroPickerOpen] = useState(false);
