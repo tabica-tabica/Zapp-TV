@@ -121,8 +121,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(239, 68, 68, 0.25);
-    border: 1px solid rgba(239, 68, 68, 0.5);
+    background: rgba(0, 0, 0, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 8px;
     color: #fff;
     font-size: 15px;
@@ -153,7 +153,7 @@
 }
 
 .catalog-card-remove-btn:hover {
-    background: rgba(239, 68, 68, 0.6);
+    background: #ef4444;
     border-color: #ef4444;
     transform: scale(1.1);
 }
