@@ -186,6 +186,13 @@
 }
 
 .preview-close {
+    /* Ícone no centro do círculo: sem isto o ✕ ficava na linha de base do
+       texto, deslocado (padding padrão do <button>) */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    flex-shrink: 0;
     background: rgba(255, 255, 255, 0.1);
     border: none;
     color: white;

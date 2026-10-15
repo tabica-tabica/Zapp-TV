@@ -29,7 +29,7 @@ import {
     type CatalogFilters,
 } from '../services/catalogExtras';
 import { kidsFilter } from '../services/kidsFilter';
-import { groupVodVersions, rotulosDasVersoes } from '../services/vodVariants';
+import { groupVodVersions, rotulosDasVersoes, hasTag } from '../services/vodVariants';
 import { contentFlags } from '../services/contentFlags';
 import { progressService } from '../services/progressService';
 import { storage } from '../services/storage';
@@ -68,6 +68,7 @@ function SeriesGridCell({
             broken={isBroken(item.series_id)}
             badge={badgeFor(item)}
             versionCount={versionsOf.get(String(item.series_id))?.length ?? 0}
+            temLegendada={!!versionsOf.get(String(item.series_id))?.some(v => v !== item && hasTag(v.name, 'LEG'))}
             onSelect={onSelect}
             onImageError={onImageError}
             style={style}
