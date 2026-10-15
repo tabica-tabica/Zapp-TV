@@ -110,7 +110,26 @@
     opacity: 1;
 }
 
-.catalog-card-remove-btn,
+/* Remover: canto de cima à direita (o tipo fica à esquerda), fora do caminho
+   do ▶ central */
+.catalog-card-remove-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 34px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(239, 68, 68, 0.25);
+    border: 1px solid rgba(239, 68, 68, 0.5);
+    border-radius: 8px;
+    color: #fff;
+    font-size: 15px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
 .catalog-card-play-btn {
     width: 44px;
     height: 44px;

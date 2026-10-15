@@ -69,9 +69,13 @@ function CatalogCardImpl({
                     )}
                     <div className="catalog-card-type">{typeBadge(item.type)}</div>
                     <div className="catalog-card-overlay">
+                        {/* No canto de cima, longe do ▶ do centro: logo acima
+                            dele, um clique um pouco alto tirava o título da lista */}
                         <button
                             className="catalog-card-remove-btn"
                             onClick={(e) => { e.stopPropagation(); onRemove(item); }}
+                            title="Remover da lista"
+                            aria-label="Remover da lista"
                         >
                             <FaTrashAlt />
                         </button>
