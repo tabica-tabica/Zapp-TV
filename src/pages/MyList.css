@@ -38,6 +38,7 @@
 /* Header */
 .mylist-header {
     position: relative;
+    flex-shrink: 0;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -118,6 +119,10 @@
     position: relative;
     z-index: 10;
     display: flex;
+    /* Rolável (overflow-x) num .mylist-page de altura fixa em coluna: sem
+       isto o flex encolhia a fileira até 2px pra dar lugar à grade — as
+       abas sumiam (visto no desktop, 14/10/2026) */
+    flex-shrink: 0;
     gap: 12px;
     margin-bottom: 28px;
     /* A fileira cresce com as listas nomeadas e passa da largura da tela.
@@ -301,6 +306,9 @@
     backdrop-filter: blur(12px);
     border-radius: 30px;
     border: 1px solid rgba(255, 255, 255, 0.1);
+    /* left: 50% deixa só meia tela de largura disponível: cada dica
+       quebrava em duas linhas */
+    white-space: nowrap;
 }
 
 .mylist-hints span {

@@ -42,7 +42,9 @@ function SeriesCardImpl({
                 onClick={() => onSelect(item)}
             >
                 <div className="series-poster">
-                    {broken ? (
+                    {/* Sem capa: <img src=""> não dispara onError e o WebKit
+                        desenhava o texto alternativo numa caixa vazia */}
+                    {broken || !item.cover ? (
                         <div className="poster-placeholder"><FaTv /></div>
                     ) : (
                         <img

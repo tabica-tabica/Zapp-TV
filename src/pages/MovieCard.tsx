@@ -42,7 +42,8 @@ function MovieCardImpl({
                 onClick={() => onSelect(movie)}
             >
                 <div className="movie-poster">
-                    {broken ? (
+                    {/* Sem capa: <img src=""> não dispara onError (texto alternativo numa caixa vazia) */}
+                    {broken || !(movie.stream_icon || movie.cover) ? (
                         <div className="poster-placeholder"><FaFilm /></div>
                     ) : (
                         <img

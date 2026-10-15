@@ -31,6 +31,8 @@
     outline: 3px solid rgba(var(--catalog-card-accent), 0.8);
     outline-offset: 2px;
     transform: scale(1.05);
+    /* Pra baixo: pelo centro, o card da 1ª fileira passava do topo da grade */
+    transform-origin: center top;
     box-shadow: 0 0 40px rgba(var(--catalog-card-accent), 0.3);
     z-index: 1;
 }

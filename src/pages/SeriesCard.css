@@ -20,6 +20,9 @@
 .series-card:hover,
 .series-card.tv-focused {
     transform: scale(1.08);
+    /* Cresce pra baixo e pros lados: crescendo pelo centro, o card da 1ª
+       fileira passava do topo da grade (que rola por dentro) e era cortado */
+    transform-origin: center top;
     z-index: 10;
 }
 
