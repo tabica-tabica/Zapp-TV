@@ -139,6 +139,9 @@ dois são o que a LG lê).
 
 ### 2.4 Materiais da loja
 
+Respostas prontas pros formulários (conteúdo, rating, privacidade, conta de
+teste, defeitos de QA): `docs/LG_SELLER_LOUNGE_RESPOSTAS.md`.
+
 - Screenshots 1280×720.
 - Mesma descrição/disclaimer de conteúdo da Fase 0.
 - Sem taxa de submissão (diferente da Samsung em alguns fluxos — confirmar
