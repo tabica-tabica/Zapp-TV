@@ -28,27 +28,31 @@ function magick(args) {
     execFileSync('magick', args, { stdio: 'inherit' });
 }
 
-if (brand.logoSource) {
+// Rasteriza brand.logoSource com as cores dadas pra `destino` (1024×1024).
+function rasterizarLogo(accent, accent2, destino) {
     const logoPath = join(root, brand.logoSource);
     if (!existsSync(logoPath)) {
         console.error(`SVG da marca não encontrado: ${brand.logoSource}`);
         process.exit(1);
     }
-    const svgTemplate = readFileSync(logoPath, 'utf8');
-    const svgResolvido = svgTemplate
-        .replaceAll('{{ACCENT}}', brand.accent.hex)
-        .replaceAll('{{ACCENT2}}', brand.accent2.hex);
+    const svgResolvido = readFileSync(logoPath, 'utf8')
+        .replaceAll('{{ACCENT}}', accent)
+        .replaceAll('{{ACCENT2}}', accent2);
     // Arquivo temporário ao lado do destino — rsvg-convert precisa de um
     // caminho de verdade, não de stdin, e o svg resolvido não tem valor
     // nenhum guardado (é derivado, git-ignorado como o próprio iconSource).
-    const svgTemp = `${fonte}.tmp.svg`;
+    const svgTemp = `${destino}.tmp.svg`;
     writeFileSync(svgTemp, svgResolvido, 'utf8');
     try {
-        magick([svgTemp, '-background', 'none', '-resize', '1024x1024', fonte]);
-        console.log(`Ícone-base gerado de ${brand.logoSource} (${brand.accent.hex} → ${brand.accent2.hex}) → ${brand.iconSource}`);
+        magick([svgTemp, '-background', 'none', '-resize', '1024x1024', destino]);
     } finally {
         unlinkSync(svgTemp);
     }
+}
+
+if (brand.logoSource) {
+    rasterizarLogo(brand.accent.hex, brand.accent2.hex, fonte);
+    console.log(`Ícone-base gerado de ${brand.logoSource} (${brand.accent.hex} → ${brand.accent2.hex}) → ${brand.iconSource}`);
 }
 
 if (!existsSync(fonte)) {
@@ -57,9 +61,9 @@ if (!existsSync(fonte)) {
     process.exit(1);
 }
 
-function resize(destinoRelativo, tamanho) {
+function resize(destinoRelativo, tamanho, origem = fonte) {
     const destino = join(root, destinoRelativo);
-    magick([fonte, '-resize', `${tamanho}x${tamanho}`, destino]);
+    magick([origem, '-resize', `${tamanho}x${tamanho}`, destino]);
     console.log(`  ${destinoRelativo} (${tamanho}×${tamanho})`);
 }
 
@@ -87,10 +91,30 @@ resize('tizen/icon.png', 512);
 console.log('  (config.xml não referencia o ícone por nome — Tizen Studio pega por convenção, nada pra sincronizar ali)');
 
 console.log('\nwebOS:');
-// Tamanhos da convenção do LG webOS TV SDK (icon/largeIcon) — não testado num
-// device/emulador real nesta sessão; confirme antes de considerar definitivo.
-resize('webos/icon.png', 80);
-resize('webos/largeIcon.png', 130);
+// A QA da LG reprova se o fundo do ícone não bate com a cor do tile
+// (appinfo.json's iconColor) — rejeição de 2026-10-12, "Appicon background
+// color and tile color do not match". Por isso o ícone do webOS sai com fundo
+// SÓLIDO (sem o gradiente accent→accent2) e o iconColor é escrito daqui, da
+// mesma cor, pra os dois nunca divergirem.
+{
+    let origem = fonte;
+    if (brand.logoSource) {
+        origem = join(root, 'webos', 'icon-solido.tmp.png');
+        rasterizarLogo(brand.accent.hex, brand.accent.hex, origem);
+    } else {
+        console.warn('  sem logoSource: ícone do webOS usa o iconSource como está — confira se o fundo é sólido e igual ao iconColor');
+    }
+    // Tamanhos da convenção do LG webOS TV SDK (icon/largeIcon).
+    resize('webos/icon.png', 80, origem);
+    resize('webos/largeIcon.png', 130, origem);
+    if (origem !== fonte) unlinkSync(origem);
+
+    const appinfoPath = join(root, 'webos', 'appinfo.json');
+    const appinfo = JSON.parse(readFileSync(appinfoPath, 'utf8'));
+    appinfo.iconColor = brand.accent.hex;
+    writeFileSync(appinfoPath, `${JSON.stringify(appinfo, null, 2)}\n`, 'utf8');
+    console.log(`  webos/appinfo.json: iconColor = ${brand.accent.hex}`);
+}
 
 console.log('\nTauri (Windows/Linux):');
 try {

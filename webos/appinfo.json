@@ -8,7 +8,7 @@
   "icon": "icon.png",
   "largeIcon": "largeIcon.png",
   "splashBackground": "splash.png",
-  "iconColor": "#05070d",
+  "iconColor": "#2563eb",
   "resolution": "1920x1080",
   "appDescription": "IPTV player for LG webOS Smart TVs.",
   "disableBackHistoryAPI": true,
