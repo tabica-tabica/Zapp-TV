@@ -4,8 +4,16 @@ Pra quem não tem computador: o celular Android faz o papel do instalador
 (`install-tv.command`), pelo mesmo caminho do computador — Key Server na porta
 9991 e SSH na 9922. Leva uns 10 minutos.
 
-O celular precisa estar no **mesmo Wi-Fi da TV** (Wi-Fi de visitante não serve:
-ele isola os aparelhos).
+## Antes de começar, no celular
+
+- **Mesmo Wi-Fi da TV.** Wi-Fi de visitante não serve: ele isola os aparelhos.
+  Desligue também "Alternar para dados móveis" (Wi-Fi → ⋮ → Avançado), senão o
+  celular pode cair pro 4G no meio da instalação.
+- **VPN desligada** (Tailscale, VPN de operadora, etc.): ela pode impedir o
+  celular de enxergar a TV no Wi-Fi.
+- **Samsung: Bloqueador automático desligado** (Configurações → Segurança e
+  privacidade → Bloqueador automático). Ele impede instalar o Termux fora da
+  Play Store; pode religar depois.
 
 ## 1. Preparar a TV (uma vez só)
 
@@ -51,6 +59,30 @@ sh install-tv.command *.ipk IP-DA-TV
 
 Quando pedir, digite a **Passphrase** da tela da TV. Em alguns segundos aparece
 **"Pronto!"** e o app abre na TV.
+
+## Achar a TV na rede
+
+O IP aparece no app Developer Mode e em Configurações → Rede → Wi-Fi →
+Configurações avançadas, na TV. O do celular fica em Configurações → Wi-Fi →
+⚙️ da rede conectada. Os **três primeiros números** dos dois têm que ser iguais
+(ex.: `192.168.0.20` e `192.168.0.35`); se não forem, estão em redes diferentes.
+
+Testar se o celular enxerga a TV (com o Key Server ligado):
+
+```sh
+curl -m 5 -so /dev/null http://IP-DA-TV:9991/webos_rsa && echo OK || echo "não achei a TV"
+```
+
+Sem saber o IP: procura em toda a rede a TV com o Key Server ligado. Troque
+`192.168.0` pelos três primeiros números do IP do celular; leva uns segundos:
+
+```sh
+for i in $(seq 1 254); do (curl -m 3 -so /dev/null http://192.168.0.$i:9991/webos_rsa && echo "TV: 192.168.0.$i") & done; wait
+```
+
+Não apareceu nada? O Key Server está desligado, a TV está em outra rede ou o
+roteador isola os aparelhos (comum em Wi-Fi de visitante ou mesh com
+"isolamento de clientes" ligado).
 
 ## Depois
 
